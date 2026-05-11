@@ -1,13 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loginWithCredentials, enrichUser, logout, MOCK_USER } from '../utils/auth'
+import { loginWithCredentials, logout } from '../utils/auth'
 import { resolveCurrentMember, isLeaderOrAdmin } from '../utils/membersApi'
-
-const DEMO_USERS = {
-  bacenta: { ...MOCK_USER, roles: ['leaderBacenta'] },
-  governorship: { ...MOCK_USER, roles: ['leaderGovernorship'] },
-  oversight: { ...MOCK_USER, roles: ['leaderOversight', 'adminStream'] },
-}
 
 export default function LoginScreen() {
   const navigate = useNavigate()
@@ -43,13 +37,6 @@ export default function LoginScreen() {
     } finally {
       setLoading(false)
     }
-  }
-
-  function handleDemo(role) {
-    // For demo mode store a fake token so getCurrentUser() works downstream
-    const user = enrichUser(DEMO_USERS[role])
-    localStorage.setItem('demoUser', JSON.stringify(user))
-    navigate('/home')
   }
 
   return (
@@ -154,26 +141,6 @@ export default function LoginScreen() {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        {/* Demo access */}
-        <div className='flex flex-col gap-2'>
-          <p className='eyebrow m-0 justify-center' style={{ color: 'var(--muted)' }}>
-            Demo access
-          </p>
-          <div className='flex gap-2 flex-wrap justify-center'>
-            {(['bacenta', 'governorship', 'oversight'] as const).map((role) => (
-              <button
-                key={role}
-                type='button'
-                onClick={() => handleDemo(role)}
-                className='btn-pill btn-secondary'
-                style={{ fontSize: '12px', padding: '7px 16px' }}
-              >
-                {role}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   )

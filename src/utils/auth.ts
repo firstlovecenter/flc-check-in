@@ -121,35 +121,13 @@ function localFallbackChurchContexts(payload) {
   ].filter(Boolean))
 }
 
-// ── MOCK — swap this whole block when real auth is ready ──────────────────
-export const MOCK_USER = {
-  userId: '7573ecf9-b445-40ce-ba24-5c8ed262bf82',
-  email: 'dabick14@gmail.com',
-  firstName: 'David Dag',
-  lastName: 'Vanderpuije',
-  roles: ['leaderBacenta', 'leaderOversight', 'adminStream'],
-  bacenta:      { id: '9e926ea4', name: 'God Chasers' },
-  governorship: { id: 'a9eda2d9', name: 'Haatso Mabey' },
-  council:      { id: 'c-col-1',  name: 'Colossians 1' },
-  stream:       { id: '2dd77486', name: 'Colossians' },
-  campus:       { id: 'cmp-accra', name: 'Accra Campus' },
-  oversight:    { id: 'ov-flc-gh', name: 'FLC Ghana Oversight' },
-  denomination: { id: 'den-flc',  name: 'First Love Church' },
-};
-
 export function getCurrentUser() {
   const token = localStorage.getItem('accessToken');
   if (token) {
     const payload = decodeJWT(token);
     if (payload) return enrichUser(payload);
   }
-  // Demo mode (no real token)
-  const demo = localStorage.getItem('demoUser');
-  if (demo) {
-    try { return JSON.parse(demo); } catch { /* ignore */ }
-  }
-  // Fall back to mock during development when nothing is stored
-  return enrichUser(MOCK_USER);
+  return null;
 }
 
 export function enrichUser(payload) {
@@ -264,12 +242,6 @@ export async function loginWithCredentials(email, password) {
       const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
       const member = await resolveCurrentMember(user);
       if (member?.id && member.id !== user.userId) {
-        // Patch localStorage so subsequent getCurrentUser() calls use the graph id.
-        const stored = localStorage.getItem('accessToken')
-        if (stored) {
-          const patched = { ...user, userId: member.id, graphMemberId: member.id }
-          localStorage.setItem('demoUser', JSON.stringify(patched))
-        }
       }
       const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
@@ -285,5 +257,4 @@ export async function loginWithCredentials(email, password) {
 export function logout() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
-  localStorage.removeItem('demoUser');
 }

@@ -19,7 +19,7 @@ type QRState =
 
 // Detect "signed-in" via the same source of truth the rest of the app uses.
 function isSignedIn() {
-  return !!localStorage.getItem('accessToken') || !!localStorage.getItem('demoUser')
+  return !!localStorage.getItem('accessToken')
 }
 
 const REFRESH_INTERVAL_MS = 30_000

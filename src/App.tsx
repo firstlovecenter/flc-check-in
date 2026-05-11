@@ -10,6 +10,7 @@ import ScopeBreakdownScreen from './screens/admin/ScopeBreakdownScreen'
 import CreateEventScreen from './screens/admin/CreateEventScreen'
 import ReportsScreen from './screens/admin/ReportsScreen'
 import EventHistoryScreen from './screens/admin/EventHistoryScreen'
+import RequireAuth from './components/RequireAuth'
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
 function RedirectToReportTab({ tab }) {
@@ -30,16 +31,16 @@ export default function App() {
         <Route path='/' element={<LoginScreen />} />
 
         {/* Leader-facing */}
-        <Route path='/home' element={<LeaderHomeScreen />} />
-        <Route path='/events' element={<QRDisplayScreen />} />
+        <Route path='/home' element={<RequireAuth><LeaderHomeScreen /></RequireAuth>} />
+        <Route path='/events' element={<RequireAuth><QRDisplayScreen /></RequireAuth>} />
         <Route path='/qr' element={<Navigate to='/events' replace />} />
-        <Route path='/checkin/:eventId' element={<CheckInFormScreen />} />
+        <Route path='/checkin/:eventId' element={<RequireAuth><CheckInFormScreen /></RequireAuth>} />
 
         {/* Universal event views — dashboard + report adapt to the viewer */}
-        <Route path='/events/:eventId' element={<EventDashboardScreen />} />
-        <Route path='/events/:eventId/edit' element={<EventEditScreen />} />
-        <Route path='/events/:eventId/report' element={<FullReportScreen />} />
-        <Route path='/events/:eventId/scopes' element={<ScopeBreakdownScreen />} />
+        <Route path='/events/:eventId' element={<RequireAuth><EventDashboardScreen /></RequireAuth>} />
+        <Route path='/events/:eventId/edit' element={<RequireAuth><EventEditScreen /></RequireAuth>} />
+        <Route path='/events/:eventId/report' element={<RequireAuth><FullReportScreen /></RequireAuth>} />
+        <Route path='/events/:eventId/scopes' element={<RequireAuth><ScopeBreakdownScreen /></RequireAuth>} />
 
         {/* Old drilldown URLs → report tabs */}
         <Route path='/events/:eventId/checked-in'  element={<RedirectToReportTab tab='checked-in' />} />
@@ -47,9 +48,9 @@ export default function App() {
         <Route path='/events/:eventId/checked-out' element={<RedirectToReportTab tab='checked-out' />} />
 
         {/* Admin-only */}
-        <Route path='/admin/events/new' element={<CreateEventScreen />} />
-        <Route path='/admin/reports' element={<ReportsScreen />} />
-        <Route path='/admin/history' element={<EventHistoryScreen />} />
+        <Route path='/admin/events/new' element={<RequireAuth><CreateEventScreen /></RequireAuth>} />
+        <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
+        <Route path='/admin/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
 
         {/* Old /admin/events/:id/* URLs redirect to /events/:id/* */}
         <Route path='/admin/events/:eventId' element={<RedirectAdminEvent />} />
