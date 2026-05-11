@@ -84,6 +84,8 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
 
   const isAdmin = !!user?.isAdmin
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'
+  const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
+  const initials = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
 
   function handleSignOut() {
     setOpen(false)
@@ -160,17 +162,34 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 </>
               )}
               <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={() => setOpen(false)} />
-              <NavItem to='/profile'       icon={ICONS.profile} label='My Profile'    onClick={() => setOpen(false)} />
             </nav>
 
-            {/* Footer */}
-            <div className='p-3 flex flex-col gap-2' style={{ borderTop: '1px solid var(--border)' }}>
+            {/* Footer — profile · theme · sign out on one row */}
+            <div className='p-3 flex items-center gap-2' style={{ borderTop: '1px solid var(--border)' }}>
+              {/* Profile */}
+              <Link
+                to='/profile'
+                onClick={() => setOpen(false)}
+                aria-label='My profile'
+                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
+                style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)', textDecoration: 'none' }}
+              >
+                {pictureUrl ? (
+                  <img src={pictureUrl} alt={fullName} width={24} height={24} style={{ borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: 'var(--bg)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {initials}
+                  </div>
+                )}
+              </Link>
+
               {/* Theme toggle */}
               <button
                 type='button'
                 onClick={toggleTheme}
-                className='w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold cursor-pointer'
-                style={{ background: 'var(--bg2)', color: 'var(--text)', border: '1.5px solid var(--border)' }}
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
+                style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)' }}
               >
                 {theme === 'dark' ? (
                   <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
@@ -182,16 +201,17 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                     <path d='M12 3a9 9 0 1 1-6.36 15.36A9 9 0 0 0 12 3z' />
                   </svg>
                 )}
-                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
               </button>
+
+              {/* Sign out */}
               <button
                 type='button'
                 onClick={handleSignOut}
-                className='w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold cursor-pointer'
-                style={{ background: 'transparent', color: 'var(--coral)', border: '1px solid var(--border)' }}
+                aria-label='Sign out'
+                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
+                style={{ background: 'transparent', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--coral)' }}
               >
                 <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'><path d={ICONS.signout} /></svg>
-                Sign out
               </button>
             </div>
           </aside>

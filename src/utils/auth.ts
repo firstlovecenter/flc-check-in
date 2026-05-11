@@ -241,8 +241,7 @@ export async function loginWithCredentials(email, password) {
     try {
       const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
       const member = await resolveCurrentMember(user);
-      if (member?.id && member.id !== user.userId) {
-      }
+      if (member?.pictureUrl) localStorage.setItem('pictureUrl', member.pictureUrl);
       const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
       await upsertMemberProfile(row);
@@ -257,6 +256,7 @@ export async function loginWithCredentials(email, password) {
 export function logout() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
+  localStorage.removeItem('pictureUrl');
 }
 
 export async function requestPasswordReset(email: string) {
