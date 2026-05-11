@@ -13,6 +13,7 @@ import EventHistoryScreen from './screens/admin/EventHistoryScreen'
 import RequireAuth from './components/RequireAuth'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
+import ProfileScreen from './screens/ProfileScreen'
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
 function RedirectToReportTab({ tab }) {
@@ -50,6 +51,9 @@ export default function App() {
         <Route path='/events/:eventId/checked-in'  element={<RedirectToReportTab tab='checked-in' />} />
         <Route path='/events/:eventId/defaulted'   element={<RedirectToReportTab tab='defaulted' />} />
         <Route path='/events/:eventId/checked-out' element={<RedirectToReportTab tab='checked-out' />} />
+
+        {/* Profile */}
+        <Route path='/profile' element={<RequireAuth><ProfileScreen /></RequireAuth>} />
 
         {/* Admin-only */}
         <Route path='/admin/events/new' element={<RequireAuth><CreateEventScreen /></RequireAuth>} />
