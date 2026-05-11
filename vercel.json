@@ -3,6 +3,10 @@
     {
       "source": "/flc-graphql",
       "destination": "https://dev-api-synago.firstlovecenter.com/graphql"
+    },
+    {
+      "source": "/((?!api|flc-graphql|assets|.*\\..*).*)",
+      "destination": "/index.html"
     }
   ]
 }
