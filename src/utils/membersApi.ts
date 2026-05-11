@@ -19,18 +19,11 @@ import {
 } from './membersApi.queries.js'
 
 function graphqlEndpoint() {
-  // Dev → use the Vite proxy at /flc-graphql to dodge the missing CORS
-  // headers on the FLC dev API. graphql-request requires an absolute URL, so
-  // we build one against the current page origin.
-  // Prod → use the configured URL directly (configure an equivalent rewrite
-  // on the host if needed).
-  if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined') return `${window.location.origin}/flc-graphql`
-    return '/flc-graphql'
-  }
-  const url = import.meta.env.VITE_MEMBER_GRAPHQL_URL
-  if (!url) throw new Error('VITE_MEMBER_GRAPHQL_URL is not configured')
-  return url
+  // Always use the same-origin /flc-graphql path.
+  // Dev  → Vite proxy (vite.config.js) forwards to the FLC GraphQL endpoint.
+  // Prod → Vercel rewrite (vercel.json) forwards it server-side.
+  if (typeof window !== 'undefined') return `${window.location.origin}/flc-graphql`
+  return '/flc-graphql'
 }
 
 function client() {

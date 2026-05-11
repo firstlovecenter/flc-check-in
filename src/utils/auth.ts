@@ -232,15 +232,13 @@ export function withActiveChurch(user, church) {
 
 // ── Real login call ───────────────────────────────────────────────────────
 
-// In dev, route through the Vite proxy (/flc-auth) to avoid CORS.
-// In prod, use VITE_AUTH_API_URL directly (configure the host with a
-// matching rewrite rule, or ensure the Lambda sets CORS headers).
+// Always use the same-origin /flc-auth path.
+// Dev  → Vite proxy rewrites to the Lambda URL (vite.config.js).
+// Prod → Vercel rewrite in vercel.json forwards it server-side.
+// Neither exposes the Lambda URL to the browser, so CORS is never an issue.
 function authApiUrl() {
-  if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined') return `${window.location.origin}/flc-auth`
-    return '/flc-auth'
-  }
-  return import.meta.env.VITE_AUTH_API_URL || ''
+  if (typeof window !== 'undefined') return `${window.location.origin}/flc-auth`
+  return '/flc-auth'
 }
 
 export async function loginWithCredentials(email, password) {

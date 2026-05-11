@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/flc-auth/:path*",
+      "destination": "https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws/auth/:path*"
+    },
+    {
+      "source": "/flc-graphql",
+      "destination": "https://dev-api-synago.firstlovecenter.com/graphql"
+    }
+  ]
+}
