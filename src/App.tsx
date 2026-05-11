@@ -11,6 +11,8 @@ import CreateEventScreen from './screens/admin/CreateEventScreen'
 import ReportsScreen from './screens/admin/ReportsScreen'
 import EventHistoryScreen from './screens/admin/EventHistoryScreen'
 import RequireAuth from './components/RequireAuth'
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
+import ResetPasswordScreen from './screens/ResetPasswordScreen'
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
 function RedirectToReportTab({ tab }) {
@@ -29,10 +31,12 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path='/' element={<LoginScreen />} />
+        <Route path='/forgot-password' element={<ForgotPasswordScreen />} />
+        <Route path='/reset-password' element={<ResetPasswordScreen />} />
 
         {/* Leader-facing */}
         <Route path='/home' element={<RequireAuth><LeaderHomeScreen /></RequireAuth>} />
-        <Route path='/events' element={<RequireAuth><QRDisplayScreen /></RequireAuth>} />
+        <Route path='/events' element={<QRDisplayScreen />} />
         <Route path='/qr' element={<Navigate to='/events' replace />} />
         <Route path='/checkin/:eventId' element={<RequireAuth><CheckInFormScreen /></RequireAuth>} />
 

@@ -258,3 +258,25 @@ export function logout() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
 }
+
+export async function requestPasswordReset(email: string) {
+  const res = await fetch(`${authApiUrl()}/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || data.message || 'Request failed')
+  return data
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string) {
+  const res = await fetch(`${authApiUrl()}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || data.message || 'Reset failed')
+  return data
+}

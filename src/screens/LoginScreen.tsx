@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { loginWithCredentials, logout } from '../utils/auth'
 import { resolveCurrentMember, isLeaderOrAdmin } from '../utils/membersApi'
 
 export default function LoginScreen() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const resetSuccess = params.get('reset') === 'success'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -55,16 +57,16 @@ export default function LoginScreen() {
         }}
       >
         {/* Logo / wordmark */}
-        <div className='flex flex-col gap-1'>
-          {/* Eyebrow */}
-          <p
-            className='eyebrow m-0'
-            style={{ color: 'var(--muted)' }}
-          >
-            First Love Church
-          </p>
+        <div className='flex flex-col items-center gap-3'>
+          <img
+            src='/flc-logo-circle.jpeg'
+            alt='First Love Church'
+            width={72}
+            height={72}
+            style={{ borderRadius: '50%', objectFit: 'cover' }}
+          />
           <h1
-            className='m-0 leading-tight'
+            className='m-0 leading-tight text-center'
             style={{
               fontSize: '28px',
               fontWeight: 500,
@@ -75,6 +77,21 @@ export default function LoginScreen() {
             Right Here,<br />Right Now
           </h1>
         </div>
+
+        {/* Reset success banner */}
+        {resetSuccess && (
+          <div
+            className='px-4 py-3 text-sm text-center'
+            style={{
+              background: 'rgba(46,203,143,0.08)',
+              color: 'var(--green)',
+              border: '1px solid rgba(46,203,143,0.25)',
+              borderRadius: 'var(--radius-btn)',
+            }}
+          >
+            Password updated — sign in with your new password.
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
@@ -99,12 +116,21 @@ export default function LoginScreen() {
           </div>
 
           <div className='flex flex-col gap-2'>
-            <label
-              className='eyebrow'
-              style={{ color: 'var(--muted)' }}
-            >
-              Password
-            </label>
+            <div className='flex items-center justify-between'>
+              <label
+                className='eyebrow'
+                style={{ color: 'var(--muted)' }}
+              >
+                Password
+              </label>
+              <Link
+                to='/forgot-password'
+                className='text-xs'
+                style={{ color: 'var(--accent)', textDecoration: 'none' }}
+              >
+                Forgot password?
+              </Link>
+            </div>
             <input
               type='password'
               autoComplete='current-password'
@@ -140,6 +166,14 @@ export default function LoginScreen() {
           >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
+
+          <Link
+            to='/events'
+            className='text-sm text-center'
+            style={{ color: 'var(--muted)', textDecoration: 'none' }}
+          >
+            View public check-in events →
+          </Link>
         </form>
       </div>
     </div>
