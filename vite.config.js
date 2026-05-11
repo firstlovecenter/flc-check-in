@@ -77,12 +77,12 @@ export default defineConfig(({ mode }) => {
         },
         // Proxy the auth API to avoid CORS — browser hits /flc-auth/* (same-origin),
         // Vite forwards to the Lambda URL server-side where CORS is not enforced.
-        '/flc-auth': {
+        '/api/flc-auth': {
           target: env.VITE_AUTH_API_URL
             ? new URL(env.VITE_AUTH_API_URL).origin
             : 'https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/flc-auth/, '/auth'),
+          rewrite: (path) => path.replace(/^\/api\/flc-auth/, '/auth'),
         },
       },
     },

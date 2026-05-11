@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/flc-auth/:path*",
-      "destination": "/api/flc-auth/:path*"
-    },
-    {
       "source": "/flc-graphql",
       "destination": "https://dev-api-synago.firstlovecenter.com/graphql"
     }

@@ -215,8 +215,8 @@ export function withActiveChurch(user, church) {
 // Prod → Vercel rewrite in vercel.json forwards it server-side.
 // Neither exposes the Lambda URL to the browser, so CORS is never an issue.
 function authApiUrl() {
-  if (typeof window !== 'undefined') return `${window.location.origin}/flc-auth`
-  return '/flc-auth'
+  if (typeof window !== 'undefined') return `${window.location.origin}/api/flc-auth`
+  return '/api/flc-auth'
 }
 
 export async function loginWithCredentials(email, password) {
