@@ -231,8 +231,20 @@ export function withActiveChurch(user, church) {
 }
 
 // ── Real login call ───────────────────────────────────────────────────────
+
+// In dev, route through the Vite proxy (/flc-auth) to avoid CORS.
+// In prod, use VITE_AUTH_API_URL directly (configure the host with a
+// matching rewrite rule, or ensure the Lambda sets CORS headers).
+function authApiUrl() {
+  if (import.meta.env.DEV) {
+    if (typeof window !== 'undefined') return `${window.location.origin}/flc-auth`
+    return '/flc-auth'
+  }
+  return import.meta.env.VITE_AUTH_API_URL || ''
+}
+
 export async function loginWithCredentials(email, password) {
-  const res = await fetch(`${import.meta.env.VITE_AUTH_API_URL}/login`, {
+  const res = await fetch(`${authApiUrl()}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -243,35 +255,31 @@ export async function loginWithCredentials(email, password) {
   localStorage.setItem('accessToken',  data.tokens.accessToken);
   localStorage.setItem('refreshToken', data.tokens.refreshToken);
 
-  // NOTE: setSupabaseAuth() is only needed if RLS is enabled and Supabase's
-  // JWT secret matches the FLC auth system's signing secret. Skip for now
-  // since RLS is disabled — re-enable once secrets are aligned.
-  // const { setSupabaseAuth } = await import('./supabase');
-  // await setSupabaseAuth(data.tokens.accessToken);
-
   const payload = decodeJWT(data.tokens.accessToken);
   const { id, ...userFields } = data.user;
-  let user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
+  const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
 
-  // The auth API and the FLC member graph use different ID systems. Resolve
-  // the member's GraphQL id (preferring email lookup) and re-stamp user.userId
-  // so every downstream lookup hits the right node.
-  try {
-    const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
-    const member = await resolveCurrentMember(user);
-    if (member?.id && member.id !== user.userId) {
-      user = { ...user, userId: member.id, graphMemberId: member.id };
-    }
-    // Sync the leader's profile to Supabase using the FLC graph data when
-    // available — that way member_profiles.id matches the graph id.
-    const { upsertMemberProfile } = await import('./supabaseCheckins');
-    if (upsertMemberProfile) {
+  // Fire-and-forget: resolve graph ID and sync to Supabase in the background.
+  // This must NOT block navigation — it's a best-effort profile sync.
+  ;(async () => {
+    try {
+      const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
+      const member = await resolveCurrentMember(user);
+      if (member?.id && member.id !== user.userId) {
+        // Patch localStorage so subsequent getCurrentUser() calls use the graph id.
+        const stored = localStorage.getItem('accessToken')
+        if (stored) {
+          const patched = { ...user, userId: member.id, graphMemberId: member.id }
+          localStorage.setItem('demoUser', JSON.stringify(patched))
+        }
+      }
+      const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
       await upsertMemberProfile(row);
+    } catch (err: any) {
+      console.warn('[auth] post-login sync failed:', err.message);
     }
-  } catch (err: any) {
-    console.warn('[auth] post-login sync failed:', err.message);
-  }
+  })();
 
   return user;
 }
