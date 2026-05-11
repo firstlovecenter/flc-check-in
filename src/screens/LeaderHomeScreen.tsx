@@ -1,0 +1,163 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { format } from 'date-fns'
+import TopBar from '../components/TopBar'
+import EventCardForLeader from '../components/checkin/EventCardForLeader'
+import { getCurrentUser } from '../utils/auth'
+import {
+  listActiveEvents, listRecentPastEvents,
+} from '../utils/supabaseCheckins'
+import type { CheckinEventRow } from '../types/app'
+
+type HomeState =
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ok'; active: CheckinEventRow[]; past: CheckinEventRow[] }
+
+export default function LeaderHomeScreen() {
+  const user = getCurrentUser()
+  const [state, setState] = useState<HomeState>({ status: 'loading' })
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Re-fetch whenever the tab becomes visible again (user returns from event edit)
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === 'visible') {
+        setRefreshKey((k) => k + 1)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      // On re-fetch, keep showing current data while loading (don't flash spinner)
+      if (refreshKey > 0 && state.status === 'ok') {
+        // silent refresh — keep old state visible
+      } else {
+        setState({ status: 'loading' })
+      }
+      try {
+        const [active, past] = await Promise.all([
+          listActiveEvents(),
+          listRecentPastEvents(),
+        ])
+        if (cancelled) return
+        setState({ status: 'ok', active, past })
+      } catch (err: any) {
+        if (!cancelled) setState({ status: 'error', error: err.message })
+      }
+    })()
+    return () => { cancelled = true }
+  }, [refreshKey])
+
+  return (
+    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+      <TopBar
+        user={user}
+        right={(
+          <Link
+            to='/events'
+            className='px-3 py-1.5'
+            style={{
+              background: 'var(--bg2)',
+              color: 'var(--text)',
+              border: '1.5px solid var(--border)',
+              borderRadius: 'var(--radius-btn)',
+              textDecoration: 'none',
+              fontSize: '13px',
+              fontWeight: 600,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            QR
+          </Link>
+        )}
+      />
+      <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6'>
+        <p className='eyebrow mb-3'>
+          Upcoming / Current Events
+        </p>
+
+        {state.status === 'loading' && (
+          <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
+        )}
+
+        {state.status === 'error' && (
+          <div
+            className='p-4 text-sm'
+            style={{
+              background: 'rgba(232,96,74,0.08)',
+              color: 'var(--coral)',
+              border: '1px solid rgba(232,96,74,0.25)',
+              borderRadius: 'var(--radius-btn)',
+            }}
+          >
+            {state.error}
+          </div>
+        )}
+
+        {state.status === 'ok' && state.active.length === 0 && (
+          <div
+            className='p-8 text-center'
+            style={{
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-card)',
+            }}
+          >
+            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>
+              No active events right now.
+            </p>
+          </div>
+        )}
+
+        {state.status === 'ok' && state.active.length > 0 && (
+          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
+            {state.active.map((evt) => <EventCardForLeader key={evt.id} event={evt} />)}
+          </div>
+        )}
+
+        {state.status === 'ok' && state.past.length > 0 && (
+          <>
+            <div className='my-6' style={{ borderTop: '1px solid var(--border)' }} />
+            <p className='eyebrow mb-3'>Past Events</p>
+            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2'>
+              {state.past.map((evt) => (
+                <Link
+                  key={evt.id}
+                  to={`/events/${evt.id}`}
+                  className='block p-4 transition-opacity'
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-btn)',
+                    textDecoration: 'none',
+                    opacity: 0.6,
+                  }}
+                >
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{evt.name}</p>
+                      <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                        {evt.scope_church_name} · {format(new Date(evt.starts_at), 'PP')}
+                      </p>
+                    </div>
+                    <span
+                      className='text-[10px] px-2.5 py-1 uppercase font-bold tracking-wider shrink-0'
+                      style={{ background: 'var(--bg2)', color: 'var(--muted)', borderRadius: 'var(--radius-pill)', letterSpacing: '0.06em' }}
+                    >
+                      Ended
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  )
+}

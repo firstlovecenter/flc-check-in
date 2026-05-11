@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/* ─── Shared / invariant tokens ─────────────────────────────────────────── */
+:root {
+  --sans: 'Sofia Sans', 'Arial', sans-serif;
+
+  /* Mastercard invariant palette */
+  --ink:          #141413;   /* warm near-black — Ink Black */
+  --canvas-cream: #F3F0EE;   /* warm putty canvas */
+  --lifted-cream: #FCFBFA;   /* nested raised surface */
+  --signal:       #CF4500;   /* consent / legal orange — do NOT use for marketing CTAs */
+  --signal-arc:   #F37338;   /* lighter carroty orange — accent arcs & indicators */
+  --link-blue:    #3860BE;   /* deep dusty blue — inline links */
+
+  /* Semantic check-in status (kept, slightly warmed) */
+  --green:   #2ECB8F;
+  --amber:   #F0A500;
+  --coral:   #E8604A;
+  --teal:    #2DD4BF;
+  --purple:  #A78BFA;
+
+  /* Border-radius scale (Mastercard: small | medium-large | full-pill) */
+  --radius-sm:   6px;
+  --radius-btn:  20px;
+  --radius-card: 40px;
+  --radius-pill: 999px;
+
+  /* Atmospheric shadow scale */
+  --shadow-1: rgba(0, 0, 0, 0.04) 0px 4px 24px 0px;
+  --shadow-2: rgba(0, 0, 0, 0.12) 0px 24px 48px 0px;
+  --shadow-3: rgba(0, 0, 0, 0.28) 0px 70px 110px 0px;
+
+  /* Typography rhythm */
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Dark theme (default) ───────────────────────────────────────────────── */
+:root {
+  --bg:     #0F0D0C;   /* warm dark canvas — replaces cold navy */
+  --bg2:    #1A1714;   /* raised surface on dark */
+  --card:   #221E1B;   /* card surface on dark */
+  --border: #312C28;   /* subtle dividers */
+  --text:   #F3F0EE;   /* canvas cream as text on dark */
+  --muted:  #9A8F87;   /* muted warm gray */
+  --accent: #7BA4F8;   /* brightened link-blue for dark bg readability */
+
+  /* CTA pill: light-on-dark (cream bg, ink text) */
+  --cta-bg:   var(--canvas-cream);
+  --cta-text: var(--ink);
+
+  /* Level badge colours */
+  --badge-bacenta:      #7fa8ff;
+  --badge-governorship: #c4b5fd;
+  --badge-council:      #fcd34d;
+  --badge-stream:       #fcd34d;
+  --badge-campus:       #86efac;
+  --badge-oversight:    #fda4af;
+  --badge-denomination: #f9a8d4;
+
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* ─── Light theme ────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:     #F3F0EE;   /* Canvas Cream — warm putty body canvas */
+  --bg2:    #FCFBFA;   /* Lifted Cream — nested raised sections */
+  --card:   #FFFFFF;   /* white cards on cream */
+  --border: #D1CDC7;   /* warm bone dividers */
+  --text:   #141413;   /* Ink Black */
+  --muted:  #696969;   /* Slate Gray */
+  --accent: #3860BE;   /* Link Blue (full saturation on light) */
+
+  /* CTA pill: dark-on-light (ink bg, cream text) */
+  --cta-bg:   var(--ink);
+  --cta-text: var(--canvas-cream);
+
+  /* Level badge colours (slightly darkened for light bg legibility) */
+  --badge-bacenta:      #3860BE;
+  --badge-governorship: #7C3AED;
+  --badge-council:      #B45309;
+  --badge-stream:       #B45309;
+  --badge-campus:       #059669;
+  --badge-oversight:    #BE185D;
+  --badge-denomination: #9D174D;
+
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* ─── Global base ────────────────────────────────────────────────────────── */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  font-family: var(--sans);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+/* ─── Utility: eyebrow label pattern ─────────────────────────────────────── */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.eyebrow::before {
+  content: '•';
+  color: var(--signal-arc);
+  font-size: 10px;
+}
+
+/* ─── Utility: pill button base ──────────────────────────────────────────── */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: var(--radius-btn);
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.btn-pill:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-pill:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--cta-bg);
+  color: var(--cta-text);
+  border: 1.5px solid var(--cta-bg);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1.5px solid var(--border);
+}
+
+/* ─── Utility: input base ────────────────────────────────────────────────── */
+.input-field {
+  width: 100%;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-btn);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  padding: 12px 18px;
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.input-field::placeholder {
+  color: var(--muted);
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+}
+
+/* ─── Utility: card surface ──────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-2);
+}
