@@ -97,6 +97,33 @@ export function descriptorDistance(a: Float32Array, b: Float32Array): number {
   return Math.sqrt(sum)
 }
 
+// Rough head pose from 68-landmarks. Returns yaw (negative = looking left,
+// positive = looking right) and pitch (positive = looking up, negative =
+// looking down), both normalised by face geometry so the values are
+// roughly comparable across users and camera distances.
+//
+//   yaw   ≈ (nose.x - eyeMid.x) / inter-eye width
+//   pitch ≈ (eyeMid.y - nose.y) / (chin.y - browMid.y)
+//
+// Note: the video element is mirrored (scaleX(-1)) in the UI, but we read
+// from the raw video frame which is NOT mirrored, so a face looking to
+// the user's left will produce a positive nose.x offset here. The sweep
+// component applies the mirror correction when it labels buckets.
+export function estimateHeadPose(landmarks: faceapi.FaceLandmarks68): { yaw: number; pitch: number } {
+  const pts = landmarks.positions
+  const leftEyeOuter  = pts[36]
+  const rightEyeOuter = pts[45]
+  const nose          = pts[30]
+  const chin          = pts[8]
+  const browMid       = { x: (pts[19].x + pts[24].x) / 2, y: (pts[19].y + pts[24].y) / 2 }
+  const eyeMid = { x: (leftEyeOuter.x + rightEyeOuter.x) / 2, y: (leftEyeOuter.y + rightEyeOuter.y) / 2 }
+  const interEye = Math.hypot(rightEyeOuter.x - leftEyeOuter.x, rightEyeOuter.y - leftEyeOuter.y) || 1
+  const faceHeight = Math.abs(chin.y - browMid.y) || 1
+  const yaw   = (nose.x - eyeMid.x) / interEye
+  const pitch = (eyeMid.y - nose.y) / faceHeight
+  return { yaw, pitch }
+}
+
 // Average several descriptors element-wise. Used during enrollment to smooth
 // out per-frame noise.
 export function averageDescriptors(descriptors: Float32Array[]): Float32Array {
