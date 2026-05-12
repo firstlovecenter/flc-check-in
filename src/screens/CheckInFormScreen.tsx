@@ -4,9 +4,13 @@ import ScreenHeader from '../components/ScreenHeader'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
+import FaceCapture from '../components/checkin/FaceCapture'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import { getCurrentUser } from '../utils/auth'
-import { getEvent, submitCheckIn, getMyRecord, selfCheckOut } from '../utils/supabaseCheckins'
+import {
+  getEvent, submitCheckIn, getMyRecord, selfCheckOut,
+  getMyFaceDescriptor, setMyFaceDescriptor, claimFaceMatch,
+} from '../utils/supabaseCheckins'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
 
@@ -21,6 +25,8 @@ export default function CheckInFormScreen() {
   const [success, setSuccess] = useState(null)
   const [activeTab, setActiveTab] = useState(null)
   const [initialPosition, setInitialPosition] = useState<any>(null)
+  // Face ID — null = not yet loaded, false = no descriptor enrolled, Float32Array = enrolled
+  const [faceDescriptor, setFaceDescriptor] = useState<Float32Array | false | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -83,6 +89,53 @@ export default function CheckInFormScreen() {
       const result = await submitCheckIn({
         eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
         method: 'PIN', lat: position.lat, lng: position.lng, fingerprint, pin, event,
+      })
+      if (result.ok) setSuccess(result.record)
+      else setError(reasonText(result))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
+
+  // Lazy-load the stored face descriptor the first time the user opens the
+  // FACE_ID tab. `false` means "checked, none on file → enrollment needed".
+  useEffect(() => {
+    if (activeTab !== 'FACE_ID') return
+    if (faceDescriptor !== null) return  // already loaded (Float32Array or false)
+    ;(async () => {
+      try {
+        const d = await getMyFaceDescriptor(user.userId)
+        setFaceDescriptor(d ?? false)
+      } catch {
+        setFaceDescriptor(false)
+      }
+    })()
+  }, [activeTab, faceDescriptor, user.userId])
+
+  const handleFaceEnrolled = useCallback(async (descriptor: Float32Array) => {
+    try {
+      await setMyFaceDescriptor(user.userId, descriptor)
+      setFaceDescriptor(descriptor)
+      setError(null)
+    } catch (err: any) {
+      setError(err.message || 'Could not save face enrollment.')
+    }
+  }, [user.userId])
+
+  const handleFaceVerified = useCallback(async (_descriptor: Float32Array, position) => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const claim = await claimFaceMatch(eventId, user.userId)
+      if (!claim?.ok) {
+        setError(reasonText(claim || { reason: 'rpc_error' }))
+        return
+      }
+      const fingerprint = await getDeviceFingerprint()
+      const result = await submitCheckIn({
+        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        method: 'FACE_ID', lat: position.lat, lng: position.lng, fingerprint, event,
       })
       if (result.ok) setSuccess(result.record)
       else setError(reasonText(result))
@@ -294,9 +347,39 @@ export default function CheckInFormScreen() {
             )}
 
             {activeTab === 'FACE_ID' && (
-              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
-                Face ID coming in v1.1.
-              </p>
+              <div className='flex flex-col gap-3'>
+                {faceDescriptor === null && (
+                  <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading face profile…</p>
+                )}
+
+                {faceDescriptor === false && (
+                  <>
+                    <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+                      Set up Face ID on this device. Look at the camera so we can capture your face.
+                    </p>
+                    <FaceCapture
+                      mode='enroll'
+                      onComplete={handleFaceEnrolled}
+                      onError={(err) => setError(err.message)}
+                    />
+                  </>
+                )}
+
+                {faceDescriptor instanceof Float32Array && (
+                  <>
+                    <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+                      Look at the camera, then blink to confirm.
+                    </p>
+                    <FaceCapture
+                      mode='verify'
+                      targetDescriptor={faceDescriptor}
+                      onComplete={(d) => handleFaceVerified(d, position)}
+                      onError={(err) => setError(err.message)}
+                    />
+                    {submitting && <p className='text-xs text-center' style={{ color: 'var(--muted)' }}>Submitting…</p>}
+                  </>
+                )}
+              </div>
             )}
           </main>
         </div>
@@ -329,6 +412,8 @@ function reasonText(result) {
     case 'device_already_used':  return 'This device has already been used by another leader for this event.'
     case 'already_checked_in':   return 'You are already checked in.'
     case 'unsupported_method':   return 'This check-in method is not supported.'
+    case 'face_match_required':  return 'Face check did not complete. Try again.'
+    case 'face_match_expired':   return 'Face check timed out. Try again.'
     case 'server_error':         return result.detail || 'Server error. Try again.'
     case 'rpc_error':
     case 'db_error':             return result.error || 'Server error. Try again.'

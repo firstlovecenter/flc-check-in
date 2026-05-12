@@ -66,6 +66,39 @@ export async function getMemberProfile(memberId) {
   return data
 }
 
+// ─── Face ID ───────────────────────────────────────────────────────────────
+// Descriptors are 128-float vectors from face-api.js. Stored on
+// member_profiles.face_descriptor (double precision[]).
+
+export async function getMyFaceDescriptor(memberId: string): Promise<Float32Array | null> {
+  const { data, error } = await supabase
+    .from('member_profiles').select('face_descriptor').eq('id', memberId).maybeSingle()
+  if (error) throw error
+  const arr = data?.face_descriptor
+  if (!Array.isArray(arr) || arr.length === 0) return null
+  return new Float32Array(arr)
+}
+
+export async function setMyFaceDescriptor(memberId: string, descriptor: Float32Array): Promise<void> {
+  const { error } = await supabase
+    .from('member_profiles')
+    .update({ face_descriptor: Array.from(descriptor) })
+    .eq('id', memberId)
+  if (error) throw error
+}
+
+// Records a server-side claim that the client just matched the user's face
+// locally. submit_checkin requires a fresh claim (<60s) for FACE_ID and
+// consumes it on success.
+export async function claimFaceMatch(eventId: string, memberId: string) {
+  const { data, error } = await supabase.rpc('claim_face_match', {
+    p_event_id: eventId,
+    p_member_id: memberId,
+  })
+  if (error) return { ok: false, reason: 'rpc_error', error: error.message }
+  return data
+}
+
 // ─── checkin_events ─────────────────────────────────────────────────────────
 
 /** Create an event via the create_checkin_event RPC. PIN is hashed
