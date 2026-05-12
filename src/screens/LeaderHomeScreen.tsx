@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
@@ -7,6 +7,7 @@ import { getCurrentUser } from '../utils/auth'
 import {
   listActiveEvents, listRecentPastEvents,
 } from '../utils/supabaseCheckins'
+import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import type { CheckinEventRow } from '../types/app'
 
 type HomeState =
@@ -18,6 +19,9 @@ export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const [state, setState] = useState<HomeState>({ status: 'loading' })
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
+  const { pullDistance, refreshing } = usePullToRefresh({ onRefresh: triggerRefresh })
 
   // Re-fetch whenever the tab becomes visible again (user returns from event edit)
   useEffect(() => {
@@ -55,6 +59,36 @@ export default function LeaderHomeScreen() {
 
   return (
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+      {/* Pull-to-refresh indicator */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: `${pullDistance}px`,
+          overflow: 'hidden',
+          zIndex: 50,
+          pointerEvents: 'none',
+          transition: pullDistance === 0 ? 'height 0.2s ease' : 'none',
+        }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            border: '2.5px solid var(--accent)',
+            borderTopColor: 'transparent',
+            opacity: refreshing ? 1 : pullDistance / (72),
+            animation: refreshing ? 'spin 0.7s linear infinite' : 'none',
+            transform: refreshing ? 'none' : `rotate(${pullDistance * 3}deg)`,
+          }}
+        />
+      </div>
       <TopBar
         user={user}
         right={(

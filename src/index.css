@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ─── Shared / invariant tokens ─────────────────────────────────────────── */
 :root {
   --sans: 'Sofia Sans', 'Arial', sans-serif;

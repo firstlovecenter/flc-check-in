@@ -16,44 +16,32 @@ interface Props {
   onError?: (err: Error) => void
 }
 
-// Match threshold per face-api.js docs: <0.5 is high-confidence. We accept
-// up to 0.55 to allow for lighting variance at venues.
 const MATCH_THRESHOLD = 0.55
-
-// Blink detection: EAR drops below CLOSED then recovers above OPEN.
-const EAR_CLOSED = 0.20
-const EAR_OPEN   = 0.27
-
-// Enrollment: collect this many good frames, then average their descriptors.
-const ENROLL_FRAMES = 3
-
-// Detection cadence (ms). 200ms ≈ 5fps — plenty for face matching, light on CPU.
+const EAR_CLOSED      = 0.20
+const EAR_OPEN        = 0.27
+const ENROLL_FRAMES   = 3
 const DETECT_INTERVAL = 200
 
-type Status =
-  | 'idle'
-  | 'loading-models'
-  | 'starting-camera'
-  | 'ready'        // waiting for face
-  | 'capturing'    // face visible; collecting frames / waiting for blink
-  | 'complete'
-  | 'error'
+type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 
 export default function FaceCapture({ mode, targetDescriptor, onComplete, onError }: Props) {
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [status, setStatus] = useState<Status>('idle')
-  const [message, setMessage] = useState('Loading models…')
-  const [progress, setProgress] = useState(0) // 0..1 for enroll progress, or 0..1 for "blink seen"
+  const videoRef   = useRef<HTMLVideoElement | null>(null)
+  const [status,   setStatus]   = useState<Status>('idle')
+  const [message,  setMessage]  = useState('Loading models…')
+  // enroll: 0..ENROLL_FRAMES collected; verify: 0 = no blink, 1 = blink confirmed
+  const [dotCount, setDotCount] = useState(0)
+  const blinkDone = useRef(false)   // verify: blink fully confirmed (open→closed→open)
 
   useEffect(() => {
     let stopped = false
     let stream: MediaStream | null = null
     let detectTimer: ReturnType<typeof setTimeout> | null = null
 
-    // Mode state
-    const collected: Float32Array[] = []   // enroll: accumulated descriptors
-    let blinkArmed = false                 // verify: have we seen eyes-open?
-    let blinkSeen = false                  // verify: have we seen the closed→open transition?
+    // Mutable loop state — never read React state inside the loop
+    const collected: Float32Array[] = []
+    let blinkArmed = false   // seen eyes-open baseline
+    let eyesClosed = false   // seen eyes-closed after armed
+    blinkDone.current = false
 
     async function start() {
       try {
@@ -65,13 +53,11 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
         setStatus('starting-camera')
         setMessage('Starting camera…')
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } },
+          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 320 } },
           audio: false,
         })
-        if (stopped) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
-        }
+        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           await videoRef.current.play().catch(() => {})
@@ -83,8 +69,9 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       } catch (err: any) {
         if (stopped) return
         setStatus('error')
-        setMessage(err.message || 'Camera error')
-        onError?.(err)
+        const msg = err?.message || 'Camera error'
+        setMessage(msg)
+        onError?.(err instanceof Error ? err : new Error(msg))
       }
     }
 
@@ -92,64 +79,65 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       if (stopped || !videoRef.current) return
       const video = videoRef.current
 
-      // Only process when we actually have video frames
       if (video.readyState >= 2 && video.videoWidth > 0) {
         try {
           const cap = await captureDescriptor(video)
-          if (!stopped && cap) {
+          if (stopped) return
+          if (cap) {
             handleFrame(cap.descriptor, eyeAspectRatio(cap.landmarks))
-          } else if (!stopped) {
-            setMessage(mode === 'enroll' ? 'Position your face in the circle' : 'Position your face in the circle')
+          } else {
+            setStatus('ready')
+            setMessage(mode === 'enroll' ? 'Look at the camera' : 'Look at the camera, then blink')
           }
-        } catch (_) {
-          // ignore single-frame failures
-        }
+        } catch (_) { /* ignore single-frame failures */ }
       }
 
-      if (!stopped) {
-        detectTimer = setTimeout(loop, DETECT_INTERVAL)
-      }
+      if (!stopped) detectTimer = setTimeout(loop, DETECT_INTERVAL)
     }
 
     function handleFrame(descriptor: Float32Array, ear: number) {
+      if (stopped) return
+
       if (mode === 'enroll') {
-        // Collect descriptors on each successful frame. Stop after N.
         collected.push(descriptor)
+        const n = collected.length
         setStatus('capturing')
-        setProgress(collected.length / ENROLL_FRAMES)
-        setMessage(`Capturing ${collected.length} of ${ENROLL_FRAMES}…`)
-        if (collected.length >= ENROLL_FRAMES) {
-          finish(averageDescriptors(collected))
-        }
+        setDotCount(n)
+        setMessage(`Hold still… ${n} of ${ENROLL_FRAMES}`)
+        if (n >= ENROLL_FRAMES) finish(averageDescriptors(collected))
         return
       }
 
-      // verify mode: blink + match
+      // verify mode
       if (!targetDescriptor) return
       const dist = descriptorDistance(descriptor, targetDescriptor)
 
-      // Track blink state machine: open → closed → open
+      if (dist > MATCH_THRESHOLD) {
+        setStatus('capturing')
+        setMessage('Face not recognised — adjust lighting or position')
+        return
+      }
+
+      // Blink state machine — all mutable refs, no stale closure over React state
       if (ear > EAR_OPEN) {
-        if (!blinkArmed) blinkArmed = true
-        else if (blinkArmed && progress === 1) {
-          // already saw blink; stay armed
+        if (!blinkArmed) {
+          blinkArmed = true   // first open baseline
+        } else if (eyesClosed) {
+          // eyes were closed and are now open again → blink complete
+          blinkDone.current = true
+          eyesClosed = false
         }
       } else if (ear < EAR_CLOSED && blinkArmed) {
-        blinkSeen = true // seen eyes closed after open; need to see open again to confirm
-      }
-      if (blinkSeen && ear > EAR_OPEN) {
-        setProgress(1)
+        eyesClosed = true
       }
 
       setStatus('capturing')
-      if (dist > MATCH_THRESHOLD) {
-        setMessage('Face does not match your profile')
+
+      if (!blinkDone.current) {
+        setMessage('Match found — blink once to confirm')
         return
       }
-      if (!blinkSeen || progress < 1) {
-        setMessage('Match found — please blink once')
-        return
-      }
+
       // Match + blink confirmed
       finish(descriptor)
     }
@@ -157,8 +145,9 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
     function finish(descriptor: Float32Array) {
       if (stopped) return
       stopped = true
+      if (detectTimer) clearTimeout(detectTimer)
       setStatus('complete')
-      setMessage(mode === 'enroll' ? 'Enrollment captured' : 'Verified')
+      setMessage(mode === 'enroll' ? 'Enrollment captured!' : 'Identity verified!')
       onComplete(descriptor)
     }
 
@@ -167,18 +156,20 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
     return () => {
       stopped = true
       if (detectTimer) clearTimeout(detectTimer)
-      if (stream) stream.getTracks().forEach((t) => t.stop())
+      stream?.getTracks().forEach((t) => t.stop())
       if (videoRef.current) {
         try { videoRef.current.srcObject = null } catch { /* ignore */ }
       }
     }
   }, [mode, targetDescriptor, onComplete, onError])
 
+  const isCapturing = status === 'capturing' || status === 'ready'
+
   return (
     <div className='flex flex-col gap-3'>
       <div
         className='relative rounded-2xl overflow-hidden mx-auto'
-        style={{ background: '#000', aspectRatio: '1 / 1', width: '100%', maxWidth: 360 }}
+        style={{ background: '#000', aspectRatio: '1 / 1', width: '100%', maxWidth: 320 }}
       >
         <video
           ref={videoRef}
@@ -187,41 +178,72 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           muted
           playsInline
         />
-        {/* Circular face guide */}
-        <div
-          className='absolute inset-0 pointer-events-none flex items-center justify-center'
-        >
+
+        {/* Loading overlay */}
+        {(status === 'idle' || status === 'loading-models' || status === 'starting-camera') && (
           <div
-            style={{
-              width: '78%',
-              height: '78%',
-              borderRadius: '50%',
-              border: `3px solid ${status === 'complete' ? 'var(--green)' : 'rgba(255,255,255,0.55)'}`,
+            className='absolute inset-0 flex flex-col items-center justify-center gap-3'
+            style={{ background: 'rgba(0,0,0,0.7)' }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              border: '3px solid var(--accent)', borderTopColor: 'transparent',
+              animation: 'spin 0.8s linear infinite',
+            }} />
+            <p className='text-xs' style={{ color: 'rgba(255,255,255,0.7)', margin: 0 }}>{message}</p>
+          </div>
+        )}
+
+        {/* Circular face guide */}
+        {isCapturing && (
+          <div className='absolute inset-0 pointer-events-none flex items-center justify-center'>
+            <div style={{
+              width: '78%', height: '78%', borderRadius: '50%',
+              border: `3px solid ${status === 'complete' ? 'var(--green)' : 'rgba(255,255,255,0.6)'}`,
               transition: 'border-color 0.2s',
-            }}
-          />
-        </div>
-        {/* Progress dots for enroll */}
+            }} />
+          </div>
+        )}
+
+        {/* Enroll progress dots */}
         {mode === 'enroll' && status === 'capturing' && (
           <div className='absolute bottom-3 left-0 right-0 flex justify-center gap-2'>
             {Array.from({ length: ENROLL_FRAMES }).map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: i < Math.round(progress * ENROLL_FRAMES) ? 'var(--green)' : 'rgba(255,255,255,0.4)',
-                }}
-              />
+              <span key={i} style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: i < dotCount ? 'var(--green)' : 'rgba(255,255,255,0.35)',
+                transition: 'background 0.15s',
+              }} />
             ))}
+          </div>
+        )}
+
+        {/* Blink indicator for verify */}
+        {mode === 'verify' && status === 'capturing' && (
+          <div className='absolute bottom-3 left-0 right-0 flex justify-center'>
+            <span style={{
+              fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+              color: blinkDone.current ? 'var(--green)' : 'rgba(255,255,255,0.7)',
+              background: 'rgba(0,0,0,0.45)', borderRadius: 99, padding: '2px 10px',
+            }}>
+              {blinkDone.current ? '✓ blink detected' : 'blink once'}
+            </span>
+          </div>
+        )}
+
+        {/* Complete overlay */}
+        {status === 'complete' && (
+          <div className='absolute inset-0 flex items-center justify-center' style={{ background: 'rgba(0,0,0,0.45)' }}>
+            <span style={{ fontSize: 48 }}>✓</span>
           </div>
         )}
       </div>
 
       <p
         className='text-sm text-center m-0'
-        style={{ color: status === 'error' ? 'var(--coral)' : 'var(--muted)' }}
+        style={{ color: status === 'error' ? 'var(--coral)' : 'var(--muted)', minHeight: '1.25rem' }}
       >
-        {message}
+        {(status === 'ready' || status === 'capturing' || status === 'error') ? message : ''}
       </p>
     </div>
   )
