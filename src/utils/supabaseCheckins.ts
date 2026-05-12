@@ -87,6 +87,14 @@ export async function setMyFaceDescriptor(memberId: string, descriptor: Float32A
   if (error) throw error
 }
 
+export async function clearMyFaceDescriptor(memberId: string): Promise<void> {
+  const { error } = await supabase
+    .from('member_profiles')
+    .update({ face_descriptor: null })
+    .eq('id', memberId)
+  if (error) throw error
+}
+
 // Records a server-side claim that the client just matched the user's face
 // locally. submit_checkin requires a fresh claim (<60s) for FACE_ID and
 // consumes it on success.

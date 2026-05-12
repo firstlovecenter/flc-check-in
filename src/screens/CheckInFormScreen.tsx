@@ -9,7 +9,7 @@ import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import { getCurrentUser } from '../utils/auth'
 import {
   getEvent, submitCheckIn, getMyRecord, selfCheckOut,
-  getMyFaceDescriptor, setMyFaceDescriptor, claimFaceMatch,
+  getMyFaceDescriptor, setMyFaceDescriptor, clearMyFaceDescriptor, claimFaceMatch,
 } from '../utils/supabaseCheckins'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
@@ -27,6 +27,9 @@ export default function CheckInFormScreen() {
   const [initialPosition, setInitialPosition] = useState<any>(null)
   // Face ID — null = not yet loaded, false = no descriptor enrolled, Float32Array = enrolled
   const [faceDescriptor, setFaceDescriptor] = useState<Float32Array | false | null>(null)
+  const [faceSetupActive, setFaceSetupActive] = useState(false)
+  const [pendingFaceDescriptor, setPendingFaceDescriptor] = useState<Float32Array | null>(null)
+  const [faceSaving, setFaceSaving] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -112,15 +115,51 @@ export default function CheckInFormScreen() {
     })()
   }, [activeTab, faceDescriptor, user.userId])
 
-  const handleFaceEnrolled = useCallback(async (descriptor: Float32Array) => {
+  useEffect(() => {
+    if (activeTab === 'FACE_ID') return
+    setFaceSetupActive(false)
+    setPendingFaceDescriptor(null)
+  }, [activeTab])
+
+  const handleFaceCapturedForSetup = useCallback((descriptor: Float32Array) => {
+    setPendingFaceDescriptor(descriptor)
+    setFaceSetupActive(false)
+    setError(null)
+  }, [])
+
+  const handleSaveFaceEnrollment = useCallback(async () => {
+    if (!pendingFaceDescriptor || faceSaving) return
+    setFaceSaving(true)
     try {
-      await setMyFaceDescriptor(user.userId, descriptor)
-      setFaceDescriptor(descriptor)
+      await setMyFaceDescriptor(user.userId, pendingFaceDescriptor)
+      setFaceDescriptor(pendingFaceDescriptor)
+      setPendingFaceDescriptor(null)
+      setFaceSetupActive(false)
       setError(null)
     } catch (err: any) {
       setError(err.message || 'Could not save face enrollment.')
+    } finally {
+      setFaceSaving(false)
     }
-  }, [user.userId])
+  }, [faceSaving, pendingFaceDescriptor, user.userId])
+
+  const handleResetFaceEnrollment = useCallback(async () => {
+    if (faceSaving) return
+    const ok = window.confirm('Reset Face ID for this account? You will need to set it up again before using Face ID check-in.')
+    if (!ok) return
+    setFaceSaving(true)
+    try {
+      await clearMyFaceDescriptor(user.userId)
+      setFaceDescriptor(false)
+      setPendingFaceDescriptor(null)
+      setFaceSetupActive(false)
+      setError(null)
+    } catch (err: any) {
+      setError(err.message || 'Could not reset Face ID.')
+    } finally {
+      setFaceSaving(false)
+    }
+  }, [faceSaving, user.userId])
 
   const handleFaceVerified = useCallback(async (_descriptor: Float32Array, position) => {
     if (submitting) return
@@ -352,17 +391,77 @@ export default function CheckInFormScreen() {
                   <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading face profile…</p>
                 )}
 
-                {faceDescriptor === false && (
+                {faceDescriptor === false && !faceSetupActive && !pendingFaceDescriptor && (
+                  <div
+                    className='p-4 flex flex-col gap-3'
+                    style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
+                  >
+                    <p className='text-sm m-0 text-center' style={{ color: 'var(--text)' }}>
+                      Set up Face ID before using face check-in.
+                    </p>
+                    <p className='text-xs m-0 text-center' style={{ color: 'var(--muted)' }}>
+                      We will capture a face descriptor and save it to your member profile only after you confirm.
+                    </p>
+                    <button
+                      type='button'
+                      className='btn-pill btn-primary w-full py-3 text-sm font-semibold cursor-pointer'
+                      onClick={() => { setFaceSetupActive(true); setPendingFaceDescriptor(null); setError(null) }}
+                    >
+                      Start Face ID setup
+                    </button>
+                  </div>
+                )}
+
+                {faceDescriptor === false && faceSetupActive && (
                   <>
                     <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
-                      Set up Face ID on this device. Look at the camera so we can capture your face.
+                      Look at the camera. Nothing is saved until you confirm on the next step.
                     </p>
                     <FaceCapture
                       mode='enroll'
-                      onComplete={handleFaceEnrolled}
+                      onComplete={handleFaceCapturedForSetup}
                       onError={(err) => setError(err.message)}
                     />
+                    <button
+                      type='button'
+                      className='btn-pill btn-secondary w-full py-3 text-sm font-semibold cursor-pointer'
+                      onClick={() => { setFaceSetupActive(false); setPendingFaceDescriptor(null) }}
+                    >
+                      Cancel setup
+                    </button>
                   </>
+                )}
+
+                {faceDescriptor === false && pendingFaceDescriptor && (
+                  <div
+                    className='p-4 flex flex-col gap-3'
+                    style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
+                  >
+                    <p className='text-sm m-0 text-center' style={{ color: 'var(--text)' }}>
+                      Face ID capture is ready.
+                    </p>
+                    <p className='text-xs m-0 text-center' style={{ color: 'var(--muted)' }}>
+                      Save this descriptor to your profile, or retake it if the capture was not intentional.
+                    </p>
+                    <div className='flex gap-2'>
+                      <button
+                        type='button'
+                        className='btn-pill btn-secondary flex-1 py-3 text-sm font-semibold cursor-pointer'
+                        disabled={faceSaving}
+                        onClick={() => { setPendingFaceDescriptor(null); setFaceSetupActive(true) }}
+                      >
+                        Retake
+                      </button>
+                      <button
+                        type='button'
+                        className='btn-pill btn-primary flex-1 py-3 text-sm font-semibold cursor-pointer'
+                        disabled={faceSaving}
+                        onClick={handleSaveFaceEnrollment}
+                      >
+                        {faceSaving ? 'Saving...' : 'Save Face ID'}
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {faceDescriptor instanceof Float32Array && (
@@ -376,6 +475,15 @@ export default function CheckInFormScreen() {
                       onComplete={(d) => handleFaceVerified(d, position)}
                       onError={(err) => setError(err.message)}
                     />
+                    <button
+                      type='button'
+                      className='btn-pill btn-secondary w-full py-3 text-sm font-semibold cursor-pointer'
+                      disabled={faceSaving || submitting}
+                      onClick={handleResetFaceEnrollment}
+                      style={{ color: 'var(--coral)' }}
+                    >
+                      {faceSaving ? 'Resetting...' : 'Reset Face ID'}
+                    </button>
                     {submitting && <p className='text-xs text-center' style={{ color: 'var(--muted)' }}>Submitting…</p>}
                   </>
                 )}
