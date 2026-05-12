@@ -17,10 +17,13 @@ interface Props {
 }
 
 const MATCH_THRESHOLD = 0.55
-const EAR_CLOSED      = 0.20
-const EAR_OPEN        = 0.27
+// TinyFaceDetector landmarks are less precise than the full 68-point model.
+// Real-world blinks with this detector typically bring EAR down to 0.22-0.28
+// rather than the <0.20 seen with higher-res models.
+const EAR_CLOSED      = 0.28   // eyes considered "closing" below this
+const EAR_OPEN        = 0.23   // eyes considered "open" above this
 const ENROLL_FRAMES   = 3
-const DETECT_INTERVAL = 200
+const DETECT_INTERVAL = 120    // ~8fps — catches fast blinks more reliably
 
 type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 
@@ -39,8 +42,9 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
 
     // Mutable loop state — never read React state inside the loop
     const collected: Float32Array[] = []
-    let blinkArmed = false   // seen eyes-open baseline
-    let eyesClosed = false   // seen eyes-closed after armed
+    let blinkArmed    = false  // seen eyes-open baseline
+    let eyesClosed    = false  // currently seeing low EAR (mid-blink)
+    let closedFrames  = 0      // consecutive frames below EAR_CLOSED
     blinkDone.current = false
 
     async function start() {
@@ -118,23 +122,27 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
         return
       }
 
-      // Blink state machine — all mutable refs, no stale closure over React state
+      // Blink state machine
+      // open (EAR > EAR_OPEN) → arm baseline
+      // closing (EAR < EAR_CLOSED) → mark eyesClosed after 1+ consecutive frames
+      // open again after eyesClosed → blink confirmed
       if (ear > EAR_OPEN) {
         if (!blinkArmed) {
-          blinkArmed = true   // first open baseline
+          blinkArmed = true
         } else if (eyesClosed) {
-          // eyes were closed and are now open again → blink complete
           blinkDone.current = true
-          eyesClosed = false
         }
+        closedFrames = 0
+        eyesClosed = false
       } else if (ear < EAR_CLOSED && blinkArmed) {
-        eyesClosed = true
+        closedFrames++
+        if (closedFrames >= 1) eyesClosed = true  // 1 frame is enough at 8fps
       }
 
       setStatus('capturing')
 
       if (!blinkDone.current) {
-        setMessage('Match found — blink once to confirm')
+        setMessage(`Match found — blink once to confirm  (ear: ${ear.toFixed(3)})`)
         return
       }
 
