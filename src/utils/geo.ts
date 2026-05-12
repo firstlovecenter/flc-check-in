@@ -60,34 +60,54 @@ export function pointInGeofence(point: LatLng, event: Partial<CheckinEventRow> |
 
 interface GpsOpts { timeout?: number; enableHighAccuracy?: boolean }
 
+const POSITION_CACHE_MAX_AGE_MS = 30_000
+let cachedPosition: { position: LatLng; timestamp: number } | null = null
+let pendingPosition: Promise<LatLng> | null = null
+
 export function getCurrentPosition(opts: GpsOpts = {}): Promise<LatLng> {
   const { timeout = 15000, enableHighAccuracy = true } = opts
-  return new Promise((resolve, reject) => {
+  const now = Date.now()
+  if (cachedPosition && now - cachedPosition.timestamp <= POSITION_CACHE_MAX_AGE_MS) {
+    return Promise.resolve(cachedPosition.position)
+  }
+  if (pendingPosition) return pendingPosition
+
+  pendingPosition = new Promise<LatLng>((resolve, reject) => {
     if (!('geolocation' in navigator)) {
       reject(new Error('Geolocation not supported in this browser'))
       return
     }
-    const toLatLng = (pos: GeolocationPosition): LatLng =>
-      ({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+    const resolveWithCache = (pos: GeolocationPosition) => {
+      const position = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }
+      cachedPosition = { position, timestamp: Date.now() }
+      resolve(position)
+    }
+    const rejectAndClear = (err: Error) => {
+      pendingPosition = null
+      reject(err)
+    }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(toLatLng(pos)),
+      resolveWithCache,
       (err) => {
         // High-accuracy timed out or unavailable — retry with coarse location.
         // This recovers desktop browsers and weak-GPS environments.
         if (enableHighAccuracy) {
           navigator.geolocation.getCurrentPosition(
-            (pos) => resolve(toLatLng(pos)),
-            (err2) => reject(new Error(err2.message || 'Failed to acquire GPS position')),
+            resolveWithCache,
+            (err2) => rejectAndClear(new Error(err2.message || 'Failed to acquire GPS position')),
             { timeout, enableHighAccuracy: false, maximumAge: 60000 }
           )
         } else {
-          reject(new Error(err.message || 'Failed to acquire GPS position'))
+          rejectAndClear(new Error(err.message || 'Failed to acquire GPS position'))
         }
       },
       // maximumAge: 30s — use a cached fix if available; avoids cold-start every call
-      { timeout, enableHighAccuracy, maximumAge: 30000 }
+      { timeout, enableHighAccuracy, maximumAge: POSITION_CACHE_MAX_AGE_MS }
     )
+  }).finally(() => {
+    pendingPosition = null
   })
+  return pendingPosition
 }
 
 // Returns an unsubscribe function. Calls onPosition with { lat, lng, accuracy }

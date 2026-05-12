@@ -4,6 +4,11 @@ import { BrowserMultiFormatReader } from '@zxing/browser'
 export default function QRScanner({ onDecode, onError }) {
   const videoRef = useRef(null)
   const [error, setError] = useState(null)
+  const onDecodeRef = useRef(onDecode)
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => { onDecodeRef.current = onDecode }, [onDecode])
+  useEffect(() => { onErrorRef.current = onError }, [onError])
 
   useEffect(() => {
     const reader = new BrowserMultiFormatReader()
@@ -14,16 +19,16 @@ export default function QRScanner({ onDecode, onError }) {
         controls = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result, err) => {
           if (stopped) return
           if (result) {
-            onDecode?.(result.getText())
+            onDecodeRef.current?.(result.getText())
           } else if (err && err.name !== 'NotFoundException') {
             // NotFoundException is normal — emitted on every frame with no QR
             // Anything else is worth surfacing.
-            onError?.(err)
+            onErrorRef.current?.(err)
           }
         })
       } catch (e: any) {
         setError(e.message)
-        onError?.(e)
+        onErrorRef.current?.(e)
       }
     })()
     return () => {
@@ -34,7 +39,7 @@ export default function QRScanner({ onDecode, onError }) {
         if (stream) stream.getTracks?.().forEach((t) => t.stop())
       } catch (_) { /* ignore */ }
     }
-  }, [onDecode, onError])
+  }, [])
 
   if (error) {
     return (
