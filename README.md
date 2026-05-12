@@ -59,16 +59,15 @@ that would trigger CORS errors. Instead:
 ## Supabase setup
 
 1. Create a new Supabase project; paste URL + publishable key into `.env`.
-2. **SQL editor** → paste `supabase/checkins_schema.sql` → Run. This creates
-   the 5 tables, all RPCs, helper functions, and disables RLS.
-3. Apply migrations in `supabase/migrations/` in order. The most recent is
-   `20260512_face_id_checkin.sql` which adds the Face ID surface.
-4. Verify end-to-end:
+2. **SQL editor** → paste `supabase/init.sql` → Run. This is the full schema
+   in one file: all 6 tables, every RPC, helpers, grants. Idempotent — safe
+   to re-run.
+3. Verify end-to-end:
    ```bash
    node supabase/smoke_test.mjs
    ```
    Should print 17 ✓ checks and "smoke test PASSED".
-5. Deploy the auto-checkout Edge Function — see
+4. Deploy the auto-checkout Edge Function — see
    `supabase/functions/auto-checkout/README.md`.
 
 ## App structure
@@ -138,10 +137,8 @@ public/
   icon-192x192.png             PWA / favicon
   icon-512x512.png             PWA / favicon
 supabase/
-  checkins_schema.sql          Apply once in Supabase SQL editor
-  checkins_schema_fix_001.sql  First-run patch (RLS off + pgcrypto schema)
+  init.sql                     Full schema — run once in Supabase SQL editor
   smoke_test.mjs               Phase-1 RPC smoke test
-  migrations/                  Incremental schema changes — apply in order
   functions/
     auto-checkout/             Edge Function for time-based auto-checkout
 ```
