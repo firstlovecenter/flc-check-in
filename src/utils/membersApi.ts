@@ -205,6 +205,26 @@ export function getAdminScopes(member) {
   return unique
 }
 
+// ─── adminCoversMember(adminScopes, memberRow) ─────────────────────────────
+// Returns true if the admin (via any of their adminFor* scopes) has authority
+// over the target member, i.e. one of their scope (level, id) pairs matches
+// the corresponding *_id column on the member's profile row.
+//
+// Authority flows DOWNWARD in the hierarchy: a council admin covers every
+// member whose council_id matches that council, regardless of their bacenta.
+// A campus admin covers anyone whose campus_id matches, etc.
+//
+// adminScopes:  output of getAdminScopes(member) — [{ level, id, name }]
+// memberRow:    a member_profiles row (has bacenta_id, governorship_id, …)
+export function adminCoversMember(adminScopes, memberRow): boolean {
+  if (!adminScopes?.length || !memberRow) return false
+  for (const s of adminScopes) {
+    const memberChurchId = memberRow[`${s.level}_id`]
+    if (memberChurchId && memberChurchId === s.id) return true
+  }
+  return false
+}
+
 // ─── allowedRolesForScope(scopeLevel) ──────────────────────────────────────
 // The role labels that should appear in the "Allowed roles" picker for an
 // event at the given scope. Returns, for each level strictly BELOW the scope,

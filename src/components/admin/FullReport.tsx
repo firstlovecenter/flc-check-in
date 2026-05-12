@@ -5,12 +5,12 @@ import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
 import {
-  getEvent, listCheckedIn, bulkUpsertMemberProfiles,
+  getEvent, listCheckedIn, bulkUpsertMemberProfiles, adminClearFaceDescriptor,
 } from '../../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
   resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
-  childScopeLevel,
+  childScopeLevel, getAdminScopes, adminCoversMember,
 } from '../../utils/membersApi'
 import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
 
@@ -33,10 +33,12 @@ export default function FullReport({ eventId }) {
   const [event, setEvent] = useState(null)
   const [allEligible, setAllEligible] = useState([])  // full event-scope eligible members
   const [viewerCaps, setViewerCaps] = useState(null)
+  const [adminScopes, setAdminScopes] = useState([])  // viewer's adminFor* scopes
   const [records, setRecords] = useState([])
   const [search, setSearch] = useState('')
   const [error, setError] = useState(null)
   const [modalMember, setModalMember] = useState(null)
+  const [resetting, setResetting] = useState<string | null>(null)  // memberId currently being reset
 
   // Scope filter state (level + child-church selector)
   const [filterLevel, setFilterLevel]   = useState<string | null>(urlLevel)
@@ -80,6 +82,7 @@ export default function FullReport({ eventId }) {
 
       const caps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
       setViewerCaps(caps)
+      setAdminScopes(getAdminScopes(viewer))
 
       let sliceRows = eligibleRows
       if (!caps.canManage && caps.viewerScope) {
@@ -130,6 +133,19 @@ export default function FullReport({ eventId }) {
 
   function setTab(id) {
     setParams((p) => { p.set('tab', id); return p }, { replace: true })
+  }
+
+  async function handleResetFaceId(member) {
+    const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
+    if (!window.confirm(`Reset Face ID for ${name}? They will be prompted to re-enrol on their next login.`)) return
+    setResetting(member.id)
+    try {
+      await adminClearFaceDescriptor(member.id)
+    } catch (err: any) {
+      setError(err.message || 'Could not reset Face ID')
+    } finally {
+      setResetting(null)
+    }
   }
 
   function exportCsv() {
@@ -290,7 +306,10 @@ export default function FullReport({ eventId }) {
               entry={b}
               tab={activeTab}
               canManage={viewerCaps.canManage}
+              canResetFaceId={adminCoversMember(adminScopes, b.member)}
+              resetting={resetting === b.member.id}
               onManual={() => setModalMember(b.member)}
+              onResetFaceId={() => handleResetFaceId(b.member)}
             />
           ))}
         </div>
@@ -321,7 +340,7 @@ function Stat({ value, label, color = 'var(--text)' }) {
   )
 }
 
-function ListRow({ entry, tab, canManage, onManual }) {
+function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, onResetFaceId }) {
   const { member, record } = entry
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
   const unit = member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
@@ -359,6 +378,16 @@ function ListRow({ entry, tab, canManage, onManual }) {
               {record.is_late && <Tag color='var(--amber)'>Late</Tag>}
             </div>
           </>
+        )}
+        {canResetFaceId && (
+          <button
+            onClick={onResetFaceId}
+            disabled={resetting}
+            className='text-xs px-3 py-1 cursor-pointer mt-1 disabled:opacity-50'
+            style={{ background: 'transparent', color: 'var(--coral)', border: '1.5px solid var(--coral)', borderRadius: 'var(--radius-btn)' }}
+          >
+            {resetting ? 'Resetting…' : 'Reset Face ID'}
+          </button>
         )}
       </div>
     </div>

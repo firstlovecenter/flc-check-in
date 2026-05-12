@@ -34,6 +34,7 @@ const ICONS = {
   plus: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z',
   history: 'M13 3a9 9 0 0 0-9 9H1l4 4 4-4H6a7 7 0 1 1 7 7c-1.93 0-3.68-.78-4.94-2.06l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z',
   report: 'M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z',
+  faceId: 'M9 2H4v5h2V4h3V2zm11 0h-5v2h3v3h2V2zM6 17H4v5h5v-2H6v-3zm14 0h-2v3h-3v2h5v-5zM9 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM7 16c1.5 1.2 3.1 1.8 5 1.8s3.5-.6 5-1.8v-1c-1.5 1.2-3.1 1.8-5 1.8s-3.5-.6-5-1.8v1z',
   profile: 'M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z',
   signout: 'M17 7l-1.4 1.4L18.2 11H10v2h8.2l-2.6 2.6L17 17l5-5-5-5zM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5z',
 }
@@ -157,8 +158,9 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               <NavItem to='/events'  icon={ICONS.qr}      label='Events Around' onClick={() => setOpen(false)} />
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/events/new' icon={ICONS.plus}    label='Create Event' onClick={() => setOpen(false)} />
-                  <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/events/new'  icon={ICONS.plus}    label='Create Event'      onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/reports'     icon={ICONS.report}  label='Reports'           onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/biometrics'  icon={ICONS.faceId}  label='Member Biometrics' onClick={() => setOpen(false)} />
                 </>
               )}
               <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={() => setOpen(false)} />

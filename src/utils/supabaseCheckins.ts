@@ -79,20 +79,56 @@ export async function getMyFaceDescriptor(memberId: string): Promise<Float32Arra
   return new Float32Array(arr)
 }
 
+// Self-service first-time enrolment. Refuses to overwrite an existing
+// descriptor — once a user has Face ID set up, only an admin can clear it
+// (which then re-enables this path on the user's next login).
 export async function setMyFaceDescriptor(memberId: string, descriptor: Float32Array): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('member_profiles')
     .update({ face_descriptor: Array.from(descriptor) })
     .eq('id', memberId)
+    .is('face_descriptor', null)
+    .select('id')
   if (error) throw error
+  if (!data || data.length === 0) {
+    throw new Error('Face ID is already set up. Contact an admin to reset it.')
+  }
 }
 
-export async function clearMyFaceDescriptor(memberId: string): Promise<void> {
+// Admin-only: wipe a member's Face ID. After this the member's next login
+// will re-trigger the first-time enrolment modal.
+export async function adminClearFaceDescriptor(memberId: string): Promise<void> {
   const { error } = await supabase
     .from('member_profiles')
     .update({ face_descriptor: null })
     .eq('id', memberId)
   if (error) throw error
+}
+
+// Fetches member profile rows for an admin's biometrics dashboard. Returns
+// every member within the OR of the given (level, churchId) scope pairs,
+// with a boolean `has_face_id` derived from face_descriptor presence.
+//
+// scopes: [{ level, id }] — typically getAdminScopes(member).
+export async function listMembersForBiometricsAdmin(
+  scopes: Array<{ level: string; id: string }>
+): Promise<Array<any>> {
+  if (!scopes?.length) return []
+  // OR over (<level>_id eq <id>) pairs.
+  const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select('id, first_name, last_name, email, roles, bacenta_id, bacenta_name, governorship_id, governorship_name, council_id, council_name, stream_id, stream_name, campus_id, campus_name, oversight_id, oversight_name, denomination_id, denomination_name, face_descriptor')
+    .or(orFilter)
+  if (error) throw error
+  return (data || []).map((r) => {
+    const arr = r.face_descriptor
+    const has_face_id = Array.isArray(arr) && arr.length > 0
+    // Drop the descriptor bytes from the row — UI just needs the boolean.
+    const { face_descriptor, ...rest } = r
+    void face_descriptor
+    return { ...rest, has_face_id }
+  })
 }
 
 // Records a server-side claim that the client just matched the user's face
