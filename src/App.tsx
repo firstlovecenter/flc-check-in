@@ -11,6 +11,7 @@ import CreateEventScreen from './screens/admin/CreateEventScreen'
 import ReportsScreen from './screens/admin/ReportsScreen'
 import EventHistoryScreen from './screens/admin/EventHistoryScreen'
 import RequireAuth from './components/RequireAuth'
+import SplashScreen from './components/SplashScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
 import ProfileScreen from './screens/ProfileScreen'
@@ -31,7 +32,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path='/' element={<LoginScreen />} />
+        <Route path='/' element={<SplashScreen><LoginScreen /></SplashScreen>} />
         <Route path='/forgot-password' element={<ForgotPasswordScreen />} />
         <Route path='/reset-password' element={<ResetPasswordScreen />} />
 
