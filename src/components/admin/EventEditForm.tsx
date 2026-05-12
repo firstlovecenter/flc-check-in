@@ -8,7 +8,7 @@ import { allowedRolesForScope } from '../../utils/membersApi'
 import { generatePin } from '../../utils/checkinsCrypto'
 import type { CheckinEventRow, GeofenceInput } from '../../types/app'
 
-const ALL_METHODS = ['QR', 'PIN', 'MANUAL']
+const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 
 // Fields that we refuse to change while the event is ACTIVE — they would
 // silently affect ongoing check-ins. Edit them only when PAUSED or ENDED.

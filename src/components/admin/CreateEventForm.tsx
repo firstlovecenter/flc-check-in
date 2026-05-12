@@ -11,7 +11,7 @@ import type { GeofenceInput } from '../../types/app'
 
 interface AdminScope { level: string; id: string; name: string }
 
-const ALL_METHODS = ['QR', 'PIN', 'MANUAL'] // FACE_ID deferred to v1.1
+const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 
 export default function CreateEventForm() {
   const navigate = useNavigate()
