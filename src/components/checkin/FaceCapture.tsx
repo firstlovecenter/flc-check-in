@@ -17,13 +17,13 @@ interface Props {
 }
 
 const MATCH_THRESHOLD = 0.55
-// TinyFaceDetector landmarks are less precise than the full 68-point model.
-// Real-world blinks with this detector typically bring EAR down to 0.22-0.28
-// rather than the <0.20 seen with higher-res models.
-const EAR_CLOSED      = 0.28   // eyes considered "closing" below this
-const EAR_OPEN        = 0.23   // eyes considered "open" above this
+// EAR is HIGH when eyes are open (~0.30+), LOW when closed (~0.15).
+// TinyFaceDetector landmarks are less precise than the full model so we use
+// generous thresholds with a clear gap between them.
+const EAR_OPEN        = 0.25   // EAR above this = eyes open
+const EAR_CLOSED      = 0.20   // EAR below this = eyes closed
 const ENROLL_FRAMES   = 3
-const DETECT_INTERVAL = 120    // ~8fps — catches fast blinks more reliably
+const DETECT_INTERVAL = 100    // ~10fps — catches fast blinks more reliably
 
 type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 
@@ -142,7 +142,8 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       setStatus('capturing')
 
       if (!blinkDone.current) {
-        setMessage(`Match found — blink once to confirm  (ear: ${ear.toFixed(3)})`)
+        const state = eyesClosed ? 'closed' : (blinkArmed ? 'open' : 'detecting')
+        setMessage(`Match found — blink to confirm  [ear ${ear.toFixed(3)} · ${state}]`)
         return
       }
 
