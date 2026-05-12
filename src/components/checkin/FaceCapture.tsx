@@ -17,13 +17,16 @@ interface Props {
 }
 
 const MATCH_THRESHOLD = 0.55
-// EAR is HIGH when eyes are open (~0.30+), LOW when closed (~0.15).
-// TinyFaceDetector landmarks are less precise than the full model so we use
-// generous thresholds with a clear gap between them.
-const EAR_OPEN        = 0.25   // EAR above this = eyes open
-const EAR_CLOSED      = 0.20   // EAR below this = eyes closed
+// EAR varies by camera angle and face shape, so blink detection uses a
+// rolling open-eye baseline with fallback fixed thresholds.
+const EAR_OPEN        = 0.23
+const EAR_CLOSED      = 0.19
+const EAR_DROP_RATIO  = 0.72
+const EAR_RISE_RATIO  = 0.86
+const BASELINE_ALPHA  = 0.18
+const MATCH_GRACE_MS  = 1000
 const ENROLL_FRAMES   = 3
-const DETECT_INTERVAL = 100    // ~10fps — catches fast blinks more reliably
+const DETECT_INTERVAL = 35
 
 type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 
@@ -45,6 +48,8 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
     let blinkArmed    = false  // seen eyes-open baseline
     let eyesClosed    = false  // currently seeing low EAR (mid-blink)
     let closedFrames  = 0      // consecutive frames below EAR_CLOSED
+    let openEarBaseline = 0
+    let lastMatchedAt = 0
     blinkDone.current = false
 
     async function start() {
@@ -115,8 +120,11 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       // verify mode
       if (!targetDescriptor) return
       const dist = descriptorDistance(descriptor, targetDescriptor)
+      const isMatch = dist <= MATCH_THRESHOLD
 
-      if (dist > MATCH_THRESHOLD) {
+      if (isMatch) {
+        lastMatchedAt = Date.now()
+      } else if (Date.now() - lastMatchedAt > MATCH_GRACE_MS) {
         setStatus('capturing')
         setMessage('Face not recognised — adjust lighting or position')
         return
@@ -126,7 +134,20 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       // open (EAR > EAR_OPEN) → arm baseline
       // closing (EAR < EAR_CLOSED) → mark eyesClosed after 1+ consecutive frames
       // open again after eyesClosed → blink confirmed
-      if (ear > EAR_OPEN) {
+      if (!eyesClosed && ear > EAR_OPEN) {
+        openEarBaseline = openEarBaseline
+          ? (openEarBaseline * (1 - BASELINE_ALPHA)) + (ear * BASELINE_ALPHA)
+          : ear
+      }
+
+      const closedThreshold = openEarBaseline
+        ? Math.max(EAR_CLOSED, openEarBaseline * EAR_DROP_RATIO)
+        : EAR_CLOSED
+      const openThreshold = openEarBaseline
+        ? Math.max(EAR_OPEN, openEarBaseline * EAR_RISE_RATIO)
+        : EAR_OPEN
+
+      if (ear >= openThreshold) {
         if (!blinkArmed) {
           blinkArmed = true
         } else if (eyesClosed) {
@@ -134,9 +155,9 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
         }
         closedFrames = 0
         eyesClosed = false
-      } else if (ear < EAR_CLOSED && blinkArmed) {
+      } else if (ear <= closedThreshold && blinkArmed) {
         closedFrames++
-        if (closedFrames >= 1) eyesClosed = true  // 1 frame is enough at 8fps
+        if (closedFrames >= 1) eyesClosed = true
       }
 
       setStatus('capturing')
@@ -148,6 +169,10 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       }
 
       // Match + blink confirmed
+      if (!isMatch) {
+        setMessage('Blink detected - hold still')
+        return
+      }
       finish(descriptor)
     }
 
