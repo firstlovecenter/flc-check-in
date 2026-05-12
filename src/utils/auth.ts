@@ -121,13 +121,48 @@ function localFallbackChurchContexts(payload) {
   ].filter(Boolean))
 }
 
+const TOKEN_SKEW_SEC = 30  // treat token as expired 30s early
+
+export function isTokenExpired(token: string): boolean {
+  const payload = decodeJWT(token)
+  if (!payload?.exp) return true
+  return payload.exp - TOKEN_SKEW_SEC < Date.now() / 1000
+}
+
 export function getCurrentUser() {
   const token = localStorage.getItem('accessToken');
   if (token) {
     const payload = decodeJWT(token);
-    if (payload) return enrichUser(payload);
+    if (payload && !isTokenExpired(token)) return enrichUser(payload);
   }
   return null;
+}
+
+// Attempt a silent token refresh using the stored refreshToken.
+// Returns the new enriched user on success, null on failure.
+export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | null> {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) return null
+  try {
+    const res = await fetch(`${authApiUrl()}/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null)
+    if (!data?.tokens?.accessToken) return null
+    localStorage.setItem('accessToken', data.tokens.accessToken)
+    if (data.tokens.refreshToken) {
+      localStorage.setItem('refreshToken', data.tokens.refreshToken)
+    }
+    const payload = decodeJWT(data.tokens.accessToken)
+    if (!payload) return null
+    const { id, ...userFields } = data.user ?? {}
+    return enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id })
+  } catch {
+    return null
+  }
 }
 
 export function enrichUser(payload) {

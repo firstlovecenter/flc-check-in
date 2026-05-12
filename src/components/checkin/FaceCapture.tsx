@@ -207,7 +207,7 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           <div className='absolute inset-0 pointer-events-none flex items-center justify-center'>
             <div style={{
               width: '78%', height: '78%', borderRadius: '50%',
-              border: `3px solid ${status === 'complete' ? 'var(--green)' : 'rgba(255,255,255,0.6)'}`,
+              border: '3px solid rgba(255,255,255,0.6)',
               transition: 'border-color 0.2s',
             }} />
           </div>
