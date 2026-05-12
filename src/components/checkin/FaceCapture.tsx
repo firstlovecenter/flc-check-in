@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   averageDescriptors,
   captureDescriptor,
+  captureLandmarks,
   descriptorDistance,
   eyeAspectRatio,
   loadFaceModels,
@@ -21,51 +22,52 @@ const MATCH_THRESHOLD = 0.55
 // rolling open-eye baseline with fallback fixed thresholds.
 const EAR_OPEN        = 0.23
 const EAR_CLOSED      = 0.19
-const EAR_DROP_RATIO  = 0.72
-const EAR_RISE_RATIO  = 0.86
-const BASELINE_ALPHA  = 0.18
-const MATCH_GRACE_MS  = 1000
+const EAR_DROP_RATIO  = 0.82
+const EAR_RISE_RATIO  = 0.90
+const BASELINE_ALPHA  = 0.14
 const ENROLL_FRAMES   = 3
-const DETECT_INTERVAL = 35
+const RECOGNITION_INTERVAL = 120
+const LIVENESS_INTERVAL    = 35
 
 type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 
 export default function FaceCapture({ mode, targetDescriptor, onComplete, onError }: Props) {
-  const videoRef   = useRef<HTMLVideoElement | null>(null)
-  const [status,   setStatus]   = useState<Status>('idle')
-  const [message,  setMessage]  = useState('Loading models…')
-  // enroll: 0..ENROLL_FRAMES collected; verify: 0 = no blink, 1 = blink confirmed
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [status, setStatus] = useState<Status>('idle')
+  const [message, setMessage] = useState('Loading models...')
   const [dotCount, setDotCount] = useState(0)
-  const blinkDone = useRef(false)   // verify: blink fully confirmed (open→closed→open)
+  const blinkDone = useRef(false)
 
   useEffect(() => {
     let stopped = false
     let stream: MediaStream | null = null
     let detectTimer: ReturnType<typeof setTimeout> | null = null
 
-    // Mutable loop state — never read React state inside the loop
     const collected: Float32Array[] = []
-    let blinkArmed    = false  // seen eyes-open baseline
-    let eyesClosed    = false  // currently seeing low EAR (mid-blink)
-    let closedFrames  = 0      // consecutive frames below EAR_CLOSED
+    let faceMatched = false
+    let blinkArmed = false
+    let eyesClosed = false
+    let closedFrames = 0
     let openEarBaseline = 0
-    let lastMatchedAt = 0
     blinkDone.current = false
 
     async function start() {
       try {
         setStatus('loading-models')
-        setMessage('Loading face models…')
+        setMessage('Loading face models...')
         await loadFaceModels()
         if (stopped) return
 
         setStatus('starting-camera')
-        setMessage('Starting camera…')
+        setMessage('Starting camera...')
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 320 } },
           audio: false,
         })
-        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return }
+        if (stopped) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream
@@ -87,24 +89,41 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
     async function loop() {
       if (stopped || !videoRef.current) return
       const video = videoRef.current
+      const useFastLiveness = mode === 'verify' && faceMatched && !blinkDone.current
+      const nextInterval = useFastLiveness ? LIVENESS_INTERVAL : RECOGNITION_INTERVAL
 
       if (video.readyState >= 2 && video.videoWidth > 0) {
         try {
-          const cap = await captureDescriptor(video)
-          if (stopped) return
-          if (cap) {
-            handleFrame(cap.descriptor, eyeAspectRatio(cap.landmarks))
+          if (useFastLiveness) {
+            const cap = await captureLandmarks(video)
+            if (stopped) return
+            if (cap) {
+              handleBlinkFrame(eyeAspectRatio(cap.landmarks))
+            } else {
+              faceMatched = false
+              resetBlink()
+              setStatus('ready')
+              setMessage('Keep your face in the circle')
+            }
           } else {
-            setStatus('ready')
-            setMessage(mode === 'enroll' ? 'Look at the camera' : 'Look at the camera, then blink')
+            const cap = await captureDescriptor(video)
+            if (stopped) return
+            if (cap) {
+              handleDescriptorFrame(cap.descriptor, eyeAspectRatio(cap.landmarks))
+            } else {
+              setStatus('ready')
+              setMessage(mode === 'enroll' ? 'Look at the camera' : 'Look at the camera, then blink')
+            }
           }
-        } catch (_) { /* ignore single-frame failures */ }
+        } catch (_) {
+          // Ignore single-frame detection failures; the next frame usually recovers.
+        }
       }
 
-      if (!stopped) detectTimer = setTimeout(loop, DETECT_INTERVAL)
+      if (!stopped) detectTimer = setTimeout(loop, nextInterval)
     }
 
-    function handleFrame(descriptor: Float32Array, ear: number) {
+    function handleDescriptorFrame(descriptor: Float32Array, ear: number) {
       if (stopped) return
 
       if (mode === 'enroll') {
@@ -112,28 +131,44 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
         const n = collected.length
         setStatus('capturing')
         setDotCount(n)
-        setMessage(`Hold still… ${n} of ${ENROLL_FRAMES}`)
+        setMessage(`Hold still... ${n} of ${ENROLL_FRAMES}`)
         if (n >= ENROLL_FRAMES) finish(averageDescriptors(collected))
         return
       }
 
-      // verify mode
       if (!targetDescriptor) return
-      const dist = descriptorDistance(descriptor, targetDescriptor)
-      const isMatch = dist <= MATCH_THRESHOLD
+      const isMatch = descriptorDistance(descriptor, targetDescriptor) <= MATCH_THRESHOLD
+      setStatus('capturing')
 
-      if (isMatch) {
-        lastMatchedAt = Date.now()
-      } else if (Date.now() - lastMatchedAt > MATCH_GRACE_MS) {
-        setStatus('capturing')
-        setMessage('Face not recognised — adjust lighting or position')
+      if (!faceMatched) {
+        if (!isMatch) {
+          resetBlink()
+          setMessage('Face not recognised - adjust lighting or position')
+          return
+        }
+        faceMatched = true
+        handleBlinkFrame(ear)
         return
       }
 
-      // Blink state machine
-      // open (EAR > EAR_OPEN) → arm baseline
-      // closing (EAR < EAR_CLOSED) → mark eyesClosed after 1+ consecutive frames
-      // open again after eyesClosed → blink confirmed
+      if (!blinkDone.current) {
+        handleBlinkFrame(ear)
+        return
+      }
+
+      if (!isMatch) {
+        faceMatched = false
+        resetBlink()
+        setMessage('Blink detected - hold still for final match')
+        return
+      }
+
+      finish(descriptor)
+    }
+
+    function handleBlinkFrame(ear: number) {
+      if (stopped) return
+
       if (!eyesClosed && ear > EAR_OPEN) {
         openEarBaseline = openEarBaseline
           ? (openEarBaseline * (1 - BASELINE_ALPHA)) + (ear * BASELINE_ALPHA)
@@ -156,24 +191,26 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
         closedFrames = 0
         eyesClosed = false
       } else if (ear <= closedThreshold && blinkArmed) {
-        closedFrames++
+        closedFrames += 1
         if (closedFrames >= 1) eyesClosed = true
       }
 
       setStatus('capturing')
 
       if (!blinkDone.current) {
-        const state = eyesClosed ? 'closed' : (blinkArmed ? 'open' : 'detecting')
-        setMessage(`Match found — blink to confirm  [ear ${ear.toFixed(3)} · ${state}]`)
+        setMessage(eyesClosed ? 'Blink seen - open your eyes' : 'Match found - blink once')
         return
       }
 
-      // Match + blink confirmed
-      if (!isMatch) {
-        setMessage('Blink detected - hold still')
-        return
-      }
-      finish(descriptor)
+      setMessage('Blink detected - hold still')
+    }
+
+    function resetBlink() {
+      blinkArmed = false
+      eyesClosed = false
+      closedFrames = 0
+      openEarBaseline = 0
+      blinkDone.current = false
     }
 
     function finish(descriptor: Float32Array) {
@@ -190,7 +227,7 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
     return () => {
       stopped = true
       if (detectTimer) clearTimeout(detectTimer)
-      stream?.getTracks().forEach((t) => t.stop())
+      stream?.getTracks().forEach((track) => track.stop())
       if (videoRef.current) {
         try { videoRef.current.srcObject = null } catch { /* ignore */ }
       }
@@ -213,7 +250,6 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           playsInline
         />
 
-        {/* Loading overlay */}
         {(status === 'idle' || status === 'loading-models' || status === 'starting-camera') && (
           <div
             className='absolute inset-0 flex flex-col items-center justify-center gap-3'
@@ -228,7 +264,6 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           </div>
         )}
 
-        {/* Circular face guide */}
         {isCapturing && (
           <div className='absolute inset-0 pointer-events-none flex items-center justify-center'>
             <div style={{
@@ -239,7 +274,6 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           </div>
         )}
 
-        {/* Enroll progress dots */}
         {mode === 'enroll' && status === 'capturing' && (
           <div className='absolute bottom-3 left-0 right-0 flex justify-center gap-2'>
             {Array.from({ length: ENROLL_FRAMES }).map((_, i) => (
@@ -252,7 +286,6 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           </div>
         )}
 
-        {/* Blink indicator for verify */}
         {mode === 'verify' && status === 'capturing' && (
           <div className='absolute bottom-3 left-0 right-0 flex justify-center'>
             <span style={{
@@ -260,15 +293,14 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
               color: blinkDone.current ? 'var(--green)' : 'rgba(255,255,255,0.7)',
               background: 'rgba(0,0,0,0.45)', borderRadius: 99, padding: '2px 10px',
             }}>
-              {blinkDone.current ? '✓ blink detected' : 'blink once'}
+              {blinkDone.current ? 'blink detected' : 'blink once'}
             </span>
           </div>
         )}
 
-        {/* Complete overlay */}
         {status === 'complete' && (
           <div className='absolute inset-0 flex items-center justify-center' style={{ background: 'rgba(0,0,0,0.45)' }}>
-            <span style={{ fontSize: 48 }}>✓</span>
+            <span style={{ fontSize: 48 }}>OK</span>
           </div>
         )}
       </div>

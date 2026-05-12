@@ -47,6 +47,11 @@ export interface CaptureResult {
   detectionScore: number
 }
 
+export interface LandmarkResult {
+  landmarks: faceapi.FaceLandmarks68
+  detectionScore: number
+}
+
 // Run detection + landmarks + descriptor on a single video frame. Returns
 // null if no face (or multiple faces) is detected — multi-face is rejected
 // to avoid ambiguity about who is checking in.
@@ -60,6 +65,21 @@ export async function captureDescriptor(
   if (!result) return null
   return {
     descriptor: result.descriptor,
+    landmarks: result.landmarks,
+    detectionScore: result.detection.score,
+  }
+}
+
+// Faster frame capture for liveness. This skips the recognition network so
+// blink detection can sample many more frames after the face has matched.
+export async function captureLandmarks(
+  video: HTMLVideoElement,
+): Promise<LandmarkResult | null> {
+  const result = await faceapi
+    .detectSingleFace(video, TINY_OPTIONS)
+    .withFaceLandmarks()
+  if (!result) return null
+  return {
     landmarks: result.landmarks,
     detectionScore: result.detection.score,
   }
