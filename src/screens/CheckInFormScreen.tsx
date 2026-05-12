@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ScreenHeader from '../components/ScreenHeader'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
@@ -8,6 +8,7 @@ import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import { getCurrentUser } from '../utils/auth'
 import { getEvent, submitCheckIn, getMyRecord, selfCheckOut } from '../utils/supabaseCheckins'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
+import { getCurrentPosition } from '../utils/geo'
 
 export default function CheckInFormScreen() {
   const { eventId } = useParams()
@@ -19,17 +20,27 @@ export default function CheckInFormScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(null)
   const [activeTab, setActiveTab] = useState(null)
+  const [initialPosition, setInitialPosition] = useState<any>(null)
 
   useEffect(() => {
     let cancelled = false
+    setInitialPosition(null)
+
+    void getCurrentPosition({ timeout: 15000 })
+      .then((position) => {
+        if (!cancelled) setInitialPosition(position)
+        return position
+      })
+      .catch(() => null)
+
     ;(async () => {
       try {
-        const evt = await getEvent(eventId)
+        const [evt, rec] = await Promise.all([
+          getEvent(eventId),
+          getMyRecord(eventId, user.userId),
+        ])
         if (cancelled) return
         setEvent(evt)
-        // Check if user already has a record for this event
-        const rec = await getMyRecord(eventId, user.userId)
-        if (cancelled) return
         setExistingRecord(rec)
         // Default tab: first allowed method that's not MANUAL
         const tabs = evt.allowed_check_in_methods.filter((m) => m !== 'MANUAL')
@@ -39,7 +50,46 @@ export default function CheckInFormScreen() {
       }
     })()
     return () => { cancelled = true }
-  }, [eventId])
+  }, [eventId, user.userId])
+
+  const handleHeartbeatCheckedOut = useCallback(async () => {
+    const updated = await getMyRecord(eventId, user.userId)
+    setExistingRecord(updated)
+  }, [eventId, user.userId])
+
+  const handleQR = useCallback(async (token, position) => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const fingerprint = await getDeviceFingerprint()
+      const result = await submitCheckIn({
+        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        method: 'QR', lat: position.lat, lng: position.lng, fingerprint, qrToken: token, event,
+      })
+      if (result.ok) setSuccess(result.record)
+      else setError(reasonText(result))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
+
+  const handlePIN = useCallback(async (pin, position) => {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const fingerprint = await getDeviceFingerprint()
+      const result = await submitCheckIn({
+        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        method: 'PIN', lat: position.lat, lng: position.lng, fingerprint, pin, event,
+      })
+      if (result.ok) setSuccess(result.record)
+      else setError(reasonText(result))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
 
   if (error) {
     return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
@@ -171,10 +221,7 @@ export default function CheckInFormScreen() {
             <LocationHeartbeat
               eventId={event.id}
               memberId={user.userId}
-              onCheckedOut={async () => {
-                const updated = await getMyRecord(eventId, user.userId)
-                setExistingRecord(updated)
-              }}
+              onCheckedOut={handleHeartbeatCheckedOut}
             />
           )}
         </main>
@@ -182,41 +229,8 @@ export default function CheckInFormScreen() {
     )
   }
 
-  async function handleQR(token, position) {
-    if (submitting) return
-    setSubmitting(true)
-    try {
-      const fingerprint = await getDeviceFingerprint()
-      const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
-        method: 'QR', lat: position.lat, lng: position.lng, fingerprint, qrToken: token, event,
-      })
-      if (result.ok) setSuccess(result.record)
-      else setError(reasonText(result))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  async function handlePIN(pin, position) {
-    if (submitting) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const fingerprint = await getDeviceFingerprint()
-      const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
-        method: 'PIN', lat: position.lat, lng: position.lng, fingerprint, pin, event,
-      })
-      if (result.ok) setSuccess(result.record)
-      else setError(reasonText(result))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   return (
-    <GeofenceGuard event={event}>
+    <GeofenceGuard event={event} initialPosition={initialPosition}>
       {(position) => (
         <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
           <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />

@@ -10,18 +10,19 @@ type GuardState =
 
 interface Props {
   event?: Partial<CheckinEventRow> | null
+  initialPosition?: LatLng | null
   children: ReactNode | ((position: LatLng) => ReactNode)
 }
 
 /** HOC: requests GPS, blocks render if outside fence. Passes `position` to children. */
-export default function GeofenceGuard({ event, children }: Props) {
+export default function GeofenceGuard({ event, initialPosition = null, children }: Props) {
   const [state, setState] = useState<GuardState>({ status: 'loading' })
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const pos = await getCurrentPosition({ timeout: 15000 })
+        const pos = initialPosition || await getCurrentPosition({ timeout: 15000 })
         if (cancelled) return
         if (!event) {
           setState({ status: 'ok', position: pos })
@@ -45,7 +46,7 @@ export default function GeofenceGuard({ event, children }: Props) {
       }
     })()
     return () => { cancelled = true }
-  }, [event])
+  }, [event, initialPosition])
 
   if (state.status === 'loading') {
     return <Centered><Card><p style={{ color: 'var(--muted)' }}>Acquiring GPS…</p></Card></Centered>
