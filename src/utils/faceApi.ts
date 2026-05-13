@@ -102,8 +102,16 @@ export function descriptorDistance(a: Float32Array, b: Float32Array): number {
 // looking down), both normalised by face geometry so the values are
 // roughly comparable across users and camera distances.
 //
-//   yaw   ≈ (nose.x - eyeMid.x) / inter-eye width
-//   pitch ≈ (eyeMid.y - nose.y) / (chin.y - browMid.y)
+//   yaw   ≈ (nose.x - eyeMid.x)     / inter-eye width
+//   pitch ≈ (faceMidY - nose.y)      / face height
+//         where faceMidY = (browMid.y + chin.y) / 2
+//
+// WHY faceMidY for pitch (not eyeMid.y):
+//   eyeMid is ~25–35% of face height ABOVE the nose tip at neutral gaze,
+//   giving a raw pitch of ≈ −0.3 at neutral — far outside the center-bucket
+//   threshold of ±0.056. The face vertical midpoint (brow-to-chin) sits
+//   within ~0.02 of the nose tip at neutral, so pitch ≈ 0 when looking
+//   straight ahead and crosses ±0.08 with a small deliberate tilt.
 //
 // Note: the video element is mirrored (scaleX(-1)) in the UI, but we read
 // from the raw video frame which is NOT mirrored, so a face looking to
@@ -116,11 +124,12 @@ export function estimateHeadPose(landmarks: faceapi.FaceLandmarks68): { yaw: num
   const nose          = pts[30]
   const chin          = pts[8]
   const browMid       = { x: (pts[19].x + pts[24].x) / 2, y: (pts[19].y + pts[24].y) / 2 }
-  const eyeMid = { x: (leftEyeOuter.x + rightEyeOuter.x) / 2, y: (leftEyeOuter.y + rightEyeOuter.y) / 2 }
-  const interEye = Math.hypot(rightEyeOuter.x - leftEyeOuter.x, rightEyeOuter.y - leftEyeOuter.y) || 1
-  const faceHeight = Math.abs(chin.y - browMid.y) || 1
+  const eyeMid        = { x: (leftEyeOuter.x + rightEyeOuter.x) / 2, y: (leftEyeOuter.y + rightEyeOuter.y) / 2 }
+  const interEye      = Math.hypot(rightEyeOuter.x - leftEyeOuter.x, rightEyeOuter.y - leftEyeOuter.y) || 1
+  const faceHeight    = Math.abs(chin.y - browMid.y) || 1
+  const faceMidY      = (browMid.y + chin.y) / 2  // ~same vertical position as nose tip at neutral
   const yaw   = (nose.x - eyeMid.x) / interEye
-  const pitch = (eyeMid.y - nose.y) / faceHeight
+  const pitch = (faceMidY - nose.y) / faceHeight
   return { yaw, pitch }
 }
 
