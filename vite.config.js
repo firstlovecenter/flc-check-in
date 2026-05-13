@@ -46,15 +46,34 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
-          // Cache the app shell and static assets
-          globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
-          // Network-first for API/Supabase calls — never serve stale auth or
-          // event data from cache
+          // Cache the app shell and static assets.
+          // Include json (model manifests) and jpeg (logo).
+          globPatterns: ['**/*.{js,css,html,svg,png,webp,jpeg,jpg,woff2,json}'],
+          // face-api.js model shards have no file extension so they won't
+          // match any glob. Precache them explicitly with a revision hash
+          // derived from their path (content is immutable — models never change).
+          additionalManifestEntries: [
+            { url: '/models/tiny_face_detector_model-shard1',           revision: 'v1' },
+            { url: '/models/face_landmark_68_model-shard1',             revision: 'v1' },
+            { url: '/models/face_recognition_model-shard1',             revision: 'v1' },
+            { url: '/models/face_recognition_model-shard2',             revision: 'v1' },
+          ],
           runtimeCaching: [
+            // Network-first for Supabase — never serve stale auth or event data
             {
               urlPattern: /^https:\/\/.*\.supabase\.co\//,
               handler: 'NetworkFirst',
               options: { cacheName: 'supabase-api', networkTimeoutSeconds: 10 },
+            },
+            // CARTO map tiles — cache-first; tiles are content-addressed by
+            // z/x/y so a cached tile is always correct.
+            {
+              urlPattern: /basemaps\.cartocdn\.com/,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'map-tiles',
+                expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              },
             },
             {
               urlPattern: /fonts\.googleapis\.com|fonts\.gstatic\.com/,
