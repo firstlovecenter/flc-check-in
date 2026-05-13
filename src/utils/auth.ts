@@ -11,8 +11,10 @@ export function decodeJWT(token) {
 }
 
 // FLC scope hierarchy — single source of truth lives in types/app.ts.
-// Re-exported here so existing imports of `{ SCOPE_LEVELS }` from auth keep working.
-export { SCOPE_LEVELS } from '../types/app'
+// Imported into this module AND re-exported so existing imports of
+// `{ SCOPE_LEVELS }` from auth keep working.
+import { SCOPE_LEVELS } from '../types/app'
+export { SCOPE_LEVELS }
 
 export function getLevelFromRoles(roles = []) {
   const r = roles.map((x) => x.toLowerCase())
@@ -264,6 +266,11 @@ function authApiUrl() {
 }
 
 export async function loginWithCredentials(email, password) {
+  // Start the SA check IMMEDIATELY — in parallel with the Lambda login fetch.
+  // The Supabase RPC (~150-300ms) will usually resolve before the Lambda
+  // returns (~500-1500ms), so awaiting it after the fetch costs ~0ms extra.
+  const saCheckPromise = checkSuperAdminTable(email.toLowerCase().trim()).catch(() => null)
+
   const res = await fetch(`${authApiUrl()}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -278,19 +285,13 @@ export async function loginWithCredentials(email, password) {
   const payload = decodeJWT(data.tokens.accessToken);
   const { id, ...userFields } = data.user;
 
-  // Check the superadmins table — runs in parallel with the profile sync below.
+  // Await the SA check — likely already resolved (ran concurrently above).
   // Store the result in localStorage so getCurrentUser() picks it up instantly
   // on subsequent page loads without another round-trip.
-  const loginEmail = (userFields.email || payload.email || '').toLowerCase().trim()
-  try {
-    const isSA = await checkSuperAdminTable(loginEmail)
-    if (isSA) {
-      localStorage.setItem('superAdminOverride', '1')
-    } else {
-      localStorage.removeItem('superAdminOverride')
-    }
-  } catch {
-    // Table unreachable — clear any stale override to fail safely.
+  const isSA = await saCheckPromise
+  if (isSA) {
+    localStorage.setItem('superAdminOverride', '1')
+  } else {
     localStorage.removeItem('superAdminOverride')
   }
 

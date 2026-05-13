@@ -24,7 +24,7 @@ export default function LoginScreen() {
         // 4-second timeout so a slow/unreachable graph doesn't block login.
         try {
           const memberPromise = resolveCurrentMember(user)
-          const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 4000))
+          const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 2000))
           const member = await Promise.race([memberPromise, timeoutPromise])
           if (member && !isLeaderOrAdmin(member)) {
             logout()

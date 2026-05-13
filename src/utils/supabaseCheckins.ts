@@ -6,6 +6,13 @@ import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
 
+// ─── Module-level SWR cache for event listings ───────────────────────────
+// Makes the home screen and QR screen instant on revisit (no spinner, no
+// extra network round-trip while the background revalidation runs in parallel).
+const EVENTS_LIST_TTL = 30 * 1000  // 30 s — events don't change minute-to-minute
+let _activeEventsCache: { data: any[]; ts: number } | null = null
+let _pastEventsCache:   { data: any[]; ts: number } | null = null
+
 // ─── member_profiles ────────────────────────────────────────────────────────
 
 /** Upsert a single leader after login. Mirrors the user object built by
@@ -199,6 +206,7 @@ export async function createEvent(input) {
   }
   const { data, error } = await supabase.rpc('create_checkin_event', params)
   if (error) throw error
+  invalidateEventListCache()
   return { eventId: data, qrSecretHex, pin: input.pin || null }
 }
 
@@ -212,6 +220,9 @@ export async function getEvent(eventId) {
 /** Active events (status=ACTIVE, within time window) — all events, no
  *  location filtering. Used for listing on the leader home screen. */
 export async function listActiveEvents() {
+  if (_activeEventsCache && Date.now() - _activeEventsCache.ts < EVENTS_LIST_TTL) {
+    return _activeEventsCache.data
+  }
   const nowIso = new Date().toISOString()
   const { data, error } = await supabase
     .from('checkin_events')
@@ -221,12 +232,17 @@ export async function listActiveEvents() {
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
   if (error) throw error
-  return (data || []).map(mapEventRow)
+  const result = (data || []).map(mapEventRow)
+  _activeEventsCache = { data: result, ts: Date.now() }
+  return result
 }
 
 /** Recent past events (status=ENDED, ended within `daysBack` days) — no
  *  location filtering. Used for listing on the leader home screen. */
 export async function listRecentPastEvents({ daysBack = 30 } = {}) {
+  if (_pastEventsCache && Date.now() - _pastEventsCache.ts < EVENTS_LIST_TTL) {
+    return _pastEventsCache.data
+  }
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('checkin_events')
@@ -236,7 +252,9 @@ export async function listRecentPastEvents({ daysBack = 30 } = {}) {
     .order('ends_at', { ascending: false })
     .limit(20)
   if (error) throw error
-  return (data || []).map(mapEventRow)
+  const result = (data || []).map(mapEventRow)
+  _pastEventsCache = { data: result, ts: Date.now() }
+  return result
 }
 
 /** Active events filtered to the caller's GPS position (geofence check).
@@ -312,9 +330,14 @@ export async function listEventsAttendedByMember(memberId: string) {
 }
 
 // ─── Event lifecycle (admin actions) ────────────────────────────────────────
-export async function pauseEvent(eventId)  { return updateEventStatus(eventId, 'PAUSED') }
-export async function resumeEvent(eventId) { return updateEventStatus(eventId, 'ACTIVE') }
-export async function endEvent(eventId)    { return updateEventStatus(eventId, 'ENDED') }
+function invalidateEventListCache() {
+  _activeEventsCache = null
+  _pastEventsCache   = null
+}
+
+export async function pauseEvent(eventId)  { invalidateEventListCache(); return updateEventStatus(eventId, 'PAUSED') }
+export async function resumeEvent(eventId) { invalidateEventListCache(); return updateEventStatus(eventId, 'ACTIVE') }
+export async function endEvent(eventId)    { invalidateEventListCache(); return updateEventStatus(eventId, 'ENDED') }
 
 async function updateEventStatus(eventId, status) {
   const { data, error } = await supabase
@@ -372,6 +395,7 @@ export async function updateEvent(eventId, patch) {
   const { data, error } = await supabase
     .from('checkin_events').update(safe).eq('id', eventId).select().single()
   if (error) throw error
+  invalidateEventListCache()
   return mapEventRow(data)
 }
 

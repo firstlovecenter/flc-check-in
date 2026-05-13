@@ -51,8 +51,14 @@ interface ScopeMembersEntry { data: any[]; ts: number }
 const scopeMembersCache   = new Map<string, ScopeMembersEntry>()
 const scopeMembersPending = new Map<string, Promise<any[]>>()
 
-// resolveCurrentMember in-flight dedup (positive hits stay in memberByUserCache)
-const memberByUserPending = new Map<string, Promise<any>>()
+// resolveCurrentMember caches — positive hits are permanent for the session;
+// null hits are cached with a short TTL so a transient graph failure doesn't
+// permanently exclude a user without forcing a page reload.
+const MEMBER_NULL_TTL = 2 * 60 * 1000  // 2 min
+
+const memberByUserCache    = new Map<string, any>()       // positive hits
+const memberByUserNullTs   = new Map<string, number>()    // null-hit timestamps
+const memberByUserPending  = new Map<string, Promise<any>>()
 
 // ─── Convert a Member node into the shape we cache in member_profiles ──────
 // Picks the church the member LEADS or ADMINS at each level, falling back to
@@ -146,46 +152,46 @@ export async function getMemberByEmail(email) {
 }
 
 // ─── resolveCurrentMember(user) ────────────────────────────────────────────
-// Best-effort lookup of the logged-in user in the FLC member graph. The auth
-// API and the member graph may use different ID systems, so we try id first
-// then fall back to email.
+// Best-effort lookup of the logged-in user in the FLC member graph. ID and
+// email lookups run IN PARALLEL so auth-system IDs that don't match graph IDs
+// don't add a second serial round-trip.
 //
-// Cached per-session so we don't re-query the graph on every screen.
-// Only positive hits are cached — null results retry on the next call so a
-// transient network failure doesn't poison the session.
-//
-// In-flight dedup: if EventDashboard and FullReport both mount at the same
-// time and both call resolveCurrentMember(user), only one GraphQL round-trip
-// is made; the second caller awaits the same Promise.
-const memberByUserCache = new Map()
+// Caching:
+//   • Positive hits are cached permanently for the session.
+//   • Null hits are cached for MEMBER_NULL_TTL so a temporary graph outage
+//     doesn't fire duplicate requests on every screen mount — but the user
+//     can recover by waiting ~2 min without a reload.
+//   • In-flight dedup: concurrent callers share the same Promise.
 export async function resolveCurrentMember(user) {
   if (!user) return null
   const cacheKey = user.userId || user.email
   if (!cacheKey) return null
+
+  // Positive cache hit
   if (memberByUserCache.has(cacheKey)) return memberByUserCache.get(cacheKey)
-  // Return the in-flight promise if one already exists for this key.
+  // Null cache hit (recent confirmed miss — don't re-query yet)
+  const nullTs = memberByUserNullTs.get(cacheKey)
+  if (nullTs && Date.now() - nullTs < MEMBER_NULL_TTL) return null
+  // In-flight dedup
   if (memberByUserPending.has(cacheKey)) return memberByUserPending.get(cacheKey)
 
   const p = (async () => {
-    let member = null
-    if (user.userId) {
-      try {
-        member = await getMemberById(user.userId)
-      } catch (err: any) {
-        console.warn('[resolveCurrentMember] getMemberById failed:', err.message)
-      }
-    }
-    if (!member && user.email) {
-      try {
-        member = await getMemberByEmail(user.email)
-      } catch (err: any) {
-        console.warn('[resolveCurrentMember] getMemberByEmail failed:', err.message)
-      }
-    }
-    return member
+    // Run ID and email lookups in parallel — saves ~500ms when the auth-system
+    // userId doesn't exist in the graph (each query is ~400-600ms independently).
+    const [byId, byEmail] = await Promise.allSettled([
+      user.userId ? getMemberById(user.userId) : Promise.resolve(null),
+      user.email  ? getMemberByEmail(user.email) : Promise.resolve(null),
+    ])
+    return (byId.status === 'fulfilled' ? byId.value : null)
+        || (byEmail.status === 'fulfilled' ? byEmail.value : null)
+        || null
   })().then((member) => {
     memberByUserPending.delete(cacheKey)
-    if (member) memberByUserCache.set(cacheKey, member)  // only cache hits
+    if (member) {
+      memberByUserCache.set(cacheKey, member)
+    } else {
+      memberByUserNullTs.set(cacheKey, Date.now())
+    }
     return member
   }).catch((err) => {
     memberByUserPending.delete(cacheKey)
