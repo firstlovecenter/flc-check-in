@@ -6,6 +6,7 @@ import {
   descriptorDistance,
   eyeAspectRatio,
   loadFaceModels,
+  measureFrameBrightness,
 } from '../../utils/faceApi'
 
 type Mode = 'enroll' | 'verify'
@@ -36,7 +37,27 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
   const [status, setStatus] = useState<Status>('idle')
   const [message, setMessage] = useState('Loading models...')
   const [dotCount, setDotCount] = useState(0)
+  const [lowLight, setLowLight] = useState(false)
+  // ref so the capture loop closure always reads the current value
+  const lowLightRef = useRef(false)
   const blinkDone = useRef(false)
+
+  // Use the screen as a fill light when low-light mode is active.
+  // Setting the body background to warm white makes the phone screen emit
+  // visible light that illuminates the user's face (like Face ID's flood
+  // illuminator, but using the display instead of IR).
+  useEffect(() => {
+    if (!lowLight) return
+    const prev = document.body.style.background
+    document.body.style.background = '#FFF8E7'
+    return () => { document.body.style.background = prev }
+  }, [lowLight])
+
+  function toggleLowLight() {
+    const next = !lowLightRef.current
+    lowLightRef.current = next
+    setLowLight(next)
+  }
 
   useEffect(() => {
     let stopped = false
@@ -76,6 +97,17 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
 
         setStatus('ready')
         setMessage(mode === 'enroll' ? 'Look at the camera' : 'Look at the camera, then blink')
+        // Auto-detect dark conditions: sample first frame after camera warms up.
+        // Luminance < 60/255 (~24%) triggers low-light mode automatically.
+        setTimeout(() => {
+          if (stopped || !videoRef.current) return
+          const lum = measureFrameBrightness(videoRef.current)
+          if (lum < 60 && !lowLightRef.current) {
+            lowLightRef.current = true
+            setLowLight(true)
+            setMessage('Low-light detected — screen is illuminating your face')
+          }
+        }, 600)
         loop()
       } catch (err: any) {
         if (stopped) return
@@ -95,7 +127,7 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       if (video.readyState >= 2 && video.videoWidth > 0) {
         try {
           if (useFastLiveness) {
-            const cap = await captureLandmarks(video)
+            const cap = await captureLandmarks(video, lowLightRef.current)
             if (stopped) return
             if (cap) {
               handleBlinkFrame(eyeAspectRatio(cap.landmarks))
@@ -106,7 +138,7 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
               setMessage('Keep your face in the circle')
             }
           } else {
-            const cap = await captureDescriptor(video)
+            const cap = await captureDescriptor(video, lowLightRef.current)
             if (stopped) return
             if (cap) {
               handleDescriptorFrame(cap.descriptor, eyeAspectRatio(cap.landmarks))
@@ -311,6 +343,31 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
       >
         {(status === 'ready' || status === 'capturing' || status === 'error') ? message : ''}
       </p>
+
+      {(status === 'ready' || status === 'capturing') && (
+        <button
+          type='button'
+          onClick={toggleLowLight}
+          style={{
+            alignSelf: 'center',
+            background: 'none',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-pill)',
+            color: lowLight ? '#F59E0B' : 'var(--muted)',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: 'var(--sans)',
+            padding: '3px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+          }}
+          aria-pressed={lowLight}
+          aria-label='Toggle low-light mode'
+        >
+          💡 {lowLight ? 'Low-light on' : 'Low-light'}
+        </button>
+      )}
     </div>
   )
 }

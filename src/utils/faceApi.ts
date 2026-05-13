@@ -28,6 +28,46 @@ const TINY_OPTIONS = new faceapi.TinyFaceDetectorOptions({
   scoreThreshold: 0.5,
 })
 
+// Relaxed options for low-light — slightly lower score threshold so partially
+// lit faces still register. Descriptor distance threshold in FaceCapture is
+// unchanged, so security is not compromised.
+const TINY_OPTIONS_LOWLIGHT = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 224,
+  scoreThreshold: 0.35,
+})
+
+// Draw a video frame onto an off-screen canvas with brightness/contrast boost.
+// face-api.js accepts HTMLCanvasElement as input, same as HTMLVideoElement.
+function preprocessVideoFrame(video: HTMLVideoElement, brightness: number): HTMLCanvasElement {
+  const w = video.videoWidth || 320
+  const h = video.videoHeight || 320
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.filter = `brightness(${brightness}) contrast(1.15)`
+  ctx.drawImage(video, 0, 0, w, h)
+  return canvas
+}
+
+// Sample average luminance (0–255) from the current video frame.
+// Returns 128 (neutral) if the video is not yet ready.
+export function measureFrameBrightness(video: HTMLVideoElement): number {
+  if (!video || video.readyState < 2 || video.videoWidth === 0) return 128
+  const size = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(video, 0, 0, size, size)
+  const { data } = ctx.getImageData(0, 0, size, size)
+  let sum = 0
+  for (let i = 0; i < data.length; i += 4) {
+    sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  }
+  return sum / (size * size)
+}
+
 // Eye-aspect ratio: drops below ~0.2 during a blink, recovers above ~0.25.
 // 68-landmark indices: left eye 36..41, right eye 42..47.
 export function eyeAspectRatio(landmarks: faceapi.FaceLandmarks68): number {
@@ -57,9 +97,14 @@ export interface LandmarkResult {
 // to avoid ambiguity about who is checking in.
 export async function captureDescriptor(
   video: HTMLVideoElement,
+  lowLight?: boolean,
 ): Promise<CaptureResult | null> {
+  const input: HTMLVideoElement | HTMLCanvasElement = lowLight
+    ? preprocessVideoFrame(video, 1.8)
+    : video
+  const opts = lowLight ? TINY_OPTIONS_LOWLIGHT : TINY_OPTIONS
   const result = await faceapi
-    .detectSingleFace(video, TINY_OPTIONS)
+    .detectSingleFace(input, opts)
     .withFaceLandmarks()
     .withFaceDescriptor()
   if (!result) return null
@@ -74,9 +119,14 @@ export async function captureDescriptor(
 // blink detection can sample many more frames after the face has matched.
 export async function captureLandmarks(
   video: HTMLVideoElement,
+  lowLight?: boolean,
 ): Promise<LandmarkResult | null> {
+  const input: HTMLVideoElement | HTMLCanvasElement = lowLight
+    ? preprocessVideoFrame(video, 1.8)
+    : video
+  const opts = lowLight ? TINY_OPTIONS_LOWLIGHT : TINY_OPTIONS
   const result = await faceapi
-    .detectSingleFace(video, TINY_OPTIONS)
+    .detectSingleFace(input, opts)
     .withFaceLandmarks()
   if (!result) return null
   return {
