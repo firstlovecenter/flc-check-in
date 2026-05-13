@@ -5,13 +5,33 @@
 import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
+import type { AppUser } from '../types/app'
 
 // ─── Module-level SWR cache for event listings ───────────────────────────
-// Makes the home screen and QR screen instant on revisit (no spinner, no
-// extra network round-trip while the background revalidation runs in parallel).
-const EVENTS_LIST_TTL = 30 * 1000  // 30 s — events don't change minute-to-minute
-let _activeEventsCache: { data: any[]; ts: number } | null = null
-let _pastEventsCache:   { data: any[]; ts: number } | null = null
+// Keyed by the scope filter string so different users get separate cache
+// buckets (relevant when multiple users share a device / test session).
+const EVENTS_LIST_TTL = 30 * 1000  // 30 s
+const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
+const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
+
+// Build a PostgREST compound-OR filter that restricts events to those whose
+// scope church is anywhere in the user's own church hierarchy.
+// e.g. a bacenta leader sees bacenta-scoped events for their bacenta AND
+// governorship-scoped events for their governorship, etc.
+// Returns null for superAdmins (they manage across the whole org).
+function buildScopeOrFilter(user: AppUser): string | null {
+  if (user.isSuperAdmin) return null
+  const LEVELS = [
+    'bacenta', 'governorship', 'council',
+    'stream', 'campus', 'oversight', 'denomination',
+  ] as const
+  const conditions: string[] = []
+  for (const level of LEVELS) {
+    const id = user[level]?.id
+    if (id) conditions.push(`and(scope_level.eq.${level},scope_church_id.eq.${id})`)
+  }
+  return conditions.length ? conditions.join(',') : null
+}
 
 // ─── member_profiles ────────────────────────────────────────────────────────
 
@@ -217,47 +237,54 @@ export async function getEvent(eventId) {
   return mapEventRow(data)
 }
 
-/** Active events (status=ACTIVE, within time window) — all events, no
- *  location filtering. Used for listing on the leader home screen.
- *  Includes events starting within the next hour so members can check in
- *  during the pre-event window. */
-export async function listActiveEvents() {
-  if (_activeEventsCache && Date.now() - _activeEventsCache.ts < EVENTS_LIST_TTL) {
-    return _activeEventsCache.data
-  }
+/** Active events (status=ACTIVE, within time window), filtered to the events
+ *  whose scope church appears in the calling user's church hierarchy.
+ *  SuperAdmins bypass the filter and see all events.
+ *  Includes events starting within the next hour (pre-event check-in window). */
+export async function listActiveEvents(user?: AppUser) {
+  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  const cacheKey    = scopeFilter ?? 'all'
+  const cached = _activeEventsCaches.get(cacheKey)
+  if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+
   const nowIso          = new Date().toISOString()
-  // Show events whose check-in window has opened (starts_at ≤ now + 1 hour)
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
-  const { data, error } = await supabase
+  let query = supabase
     .from('checkin_events')
     .select('*')
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
+  if (scopeFilter) query = query.or(scopeFilter)
+  const { data, error } = await query
   if (error) throw error
   const result = (data || []).map(mapEventRow)
-  _activeEventsCache = { data: result, ts: Date.now() }
+  _activeEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
 
-/** Recent past events (status=ENDED, ended within `daysBack` days) — no
- *  location filtering. Used for listing on the leader home screen. */
-export async function listRecentPastEvents({ daysBack = 30 } = {}) {
-  if (_pastEventsCache && Date.now() - _pastEventsCache.ts < EVENTS_LIST_TTL) {
-    return _pastEventsCache.data
-  }
+/** Recent past events (status=ENDED, ended within `daysBack` days), filtered
+ *  to the calling user's church hierarchy scope. */
+export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
+  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  const cacheKey    = `past:${scopeFilter ?? 'all'}`
+  const cached = _pastEventsCaches.get(cacheKey)
+  if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
-  const { data, error } = await supabase
+  let query = supabase
     .from('checkin_events')
     .select('*')
     .eq('status', 'ENDED')
     .gte('ends_at', cutoff)
     .order('ends_at', { ascending: false })
     .limit(20)
+  if (scopeFilter) query = query.or(scopeFilter)
+  const { data, error } = await query
   if (error) throw error
   const result = (data || []).map(mapEventRow)
-  _pastEventsCache = { data: result, ts: Date.now() }
+  _pastEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
 

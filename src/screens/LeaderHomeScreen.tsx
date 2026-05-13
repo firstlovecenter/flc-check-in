@@ -45,8 +45,8 @@ export default function LeaderHomeScreen() {
       }
       try {
         const [active, past] = await Promise.all([
-          listActiveEvents(),
-          listRecentPastEvents(),
+          listActiveEvents(user ?? undefined),
+          listRecentPastEvents({ user: user ?? undefined }),
         ])
         if (cancelled) return
         setState({ status: 'ok', active, past })
