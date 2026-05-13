@@ -10,7 +10,8 @@
 --
 --  What this sets up:
 --    • Tables: member_profiles, checkin_events, checkin_records,
---              checkin_attempts, checkin_devices, face_match_claims
+--              event_scope_members, checkin_attempts, checkin_devices,
+--              face_match_claims
 --    • Helpers: point_in_polygon, haversine_meters, point_in_event_geofence
 --    • RPCs:    create_checkin_event, reset_event_pin, record_pin_attempt,
 --              claim_device_for_event, claim_face_match,
@@ -150,6 +151,23 @@ create index if not exists checkin_records_event_idx  on public.checkin_records 
 create index if not exists checkin_records_member_idx on public.checkin_records (member_id, checked_in_at desc);
 
 
+-- ─── event_scope_members ────────────────────────────────────────────────────
+-- Permanent snapshot: every member who was in-scope at event creation time,
+-- keyed by their stable FLC graph ID (m.id from Neo4j — never changes even if
+-- name / email / church unit changes). No FK to member_profiles so the row is
+-- never dropped for members who haven't logged into the app yet.
+create table if not exists public.event_scope_members (
+  event_id    uuid  not null references public.checkin_events(id) on delete cascade,
+  member_id   text  not null,   -- stable FLC graph ID (m.id)
+  created_at  timestamptz not null default now(),
+  primary key (event_id, member_id)
+);
+
+-- Fast lookup of all events a member was ever scoped to (History screen)
+create index if not exists event_scope_members_member_idx
+  on public.event_scope_members (member_id);
+
+
 -- ─── checkin_attempts (PIN rate-limiting state, kept for back-compat) ───────
 create table if not exists public.checkin_attempts (
   id              bigserial primary key,
@@ -191,14 +209,16 @@ create table if not exists public.face_match_claims (
 alter table public.member_profiles   enable row level security;
 alter table public.checkin_events    enable row level security;
 alter table public.checkin_records   enable row level security;
+alter table public.event_scope_members enable row level security;
 alter table public.checkin_attempts  enable row level security;
 alter table public.checkin_devices   enable row level security;
 alter table public.face_match_claims enable row level security;
 alter table public.superadmins       enable row level security;
 
-create policy "anon_all_member_profiles"  on public.member_profiles  for all to anon using (true) with check (true);
-create policy "anon_all_checkin_events"   on public.checkin_events   for all to anon using (true) with check (true);
-create policy "anon_all_checkin_records"  on public.checkin_records  for all to anon using (true) with check (true);
+create policy "anon_all_member_profiles"       on public.member_profiles       for all to anon using (true) with check (true);
+create policy "anon_all_checkin_events"        on public.checkin_events        for all to anon using (true) with check (true);
+create policy "anon_all_checkin_records"       on public.checkin_records       for all to anon using (true) with check (true);
+create policy "anon_all_event_scope_members"   on public.event_scope_members   for all to anon using (true) with check (true);
 -- superadmins: no policy → deny-all for direct access (RPC is the only read path).
 
 

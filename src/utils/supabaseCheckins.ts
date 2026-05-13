@@ -329,6 +329,68 @@ export async function listEventsAttendedByMember(memberId: string) {
   return (data || []).map(mapEventRow)
 }
 
+// ─── event_scope_members ─────────────────────────────────────────────────────
+// Permanent scope snapshot: every member who was in-scope at event creation is
+// recorded by their stable graph ID. This is the source of truth for event
+// history and replaces live Neo4j queries on the dashboard.
+
+/** Bulk-upsert a set of graph member IDs as the scope snapshot for an event.
+ *  Safe to call repeatedly — upsert is idempotent. */
+export async function snapshotEventScopeMembers(
+  eventId: string,
+  memberIds: string[],
+): Promise<void> {
+  if (!eventId || !memberIds.length) return
+  const rows = memberIds.map((member_id) => ({ event_id: eventId, member_id }))
+  const { error } = await supabase
+    .from('event_scope_members')
+    .upsert(rows, { onConflict: 'event_id,member_id' })
+  if (error) throw error
+}
+
+/** Load the scope snapshot for an event joined with current member_profiles.
+ *  Returns member_profiles rows for every snapshotted member that has a
+ *  profile row. Members who have never logged in are omitted from the join
+ *  result but remain in event_scope_members for history purposes.
+ *  Returns [] if no snapshot exists yet (caller should fall back to graph). */
+export async function listEventScopeMembersWithProfiles(eventId: string): Promise<any[]> {
+  if (!eventId) return []
+  const { data: snap, error: se } = await supabase
+    .from('event_scope_members')
+    .select('member_id')
+    .eq('event_id', eventId)
+  if (se) throw se
+  const ids = (snap || []).map((r: any) => r.member_id)
+  if (!ids.length) return []
+  const { data: profiles, error: pe } = await supabase
+    .from('member_profiles')
+    .select('*')
+    .in('id', ids)
+  if (pe) throw pe
+  return profiles || []
+}
+
+/** Events where the given graph member ID appears in the scope snapshot.
+ *  Used by EventHistory to include events a member was scoped to even if
+ *  they didn't check in and were later moved to a different scope. */
+export async function listScopedEventsForMember(graphMemberId: string): Promise<any[]> {
+  if (!graphMemberId) return []
+  const { data: snap, error: se } = await supabase
+    .from('event_scope_members')
+    .select('event_id')
+    .eq('member_id', graphMemberId)
+  if (se) throw se
+  const ids = (snap || []).map((r: any) => r.event_id)
+  if (!ids.length) return []
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select('*')
+    .in('id', ids)
+    .order('starts_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(mapEventRow)
+}
+
 // ─── Event lifecycle (admin actions) ────────────────────────────────────────
 function invalidateEventListCache() {
   _activeEventsCache = null

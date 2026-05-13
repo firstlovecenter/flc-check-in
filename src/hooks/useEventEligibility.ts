@@ -1,11 +1,15 @@
-// SWR-style hook that loads the expensive eligibility pipeline for an event:
+// SWR-style hook that loads the eligibility pipeline for an event:
 //   getEvent + listCheckedIn + resolveCurrentMember + getChurchAncestors
-//   + getMembersInScope → eligible members + viewer capabilities.
+//   + scope members (snapshot-first) → eligible members + viewer capabilities.
 //
 // Performance design:
 //   • Stale-while-revalidate: serves the previous result from the module-level
 //     cache IMMEDIATELY (no spinner on revisit), then revalidates in the
 //     background and updates the UI when fresh data arrives.
+//   • Snapshot-first: loads scope members from event_scope_members (Supabase,
+//     fast) instead of querying the live Neo4j graph. Falls back to the graph
+//     only if no snapshot exists yet (legacy events / create race), and saves
+//     the snapshot immediately so the next load is fast.
 //   • bulkUpsertMemberProfiles fires in the background — never blocks render.
 //   • All graph calls are already deduplicated / TTL-cached in membersApi.ts.
 //   • Optional poll: only refreshes the cheap part (event status + records).
@@ -14,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
+  listEventScopeMembersWithProfiles, snapshotEventScopeMembers,
 } from '../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -102,19 +107,35 @@ export function useEventEligibility(
         setEvent(evt)
         setRecords(recs)
 
-        // Tier 2: graph queries — run in parallel; all are cached/deduped in membersApi.
-        const [viewer, ancestors, eventScopeMembers, childTotal] = await Promise.all([
+        // Tier 2: load scope members (snapshot-first) + viewer identity in parallel.
+        // listEventScopeMembersWithProfiles hits Supabase (~50ms) vs Neo4j (~1s+).
+        const [viewer, ancestors, snapshotProfiles, childTotal] = await Promise.all([
           resolveCurrentMember(user),
           getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }),
-          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id }),
+          listEventScopeMembersWithProfiles(eventId),
           countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
         ])
         if (cancelled) return
 
-        const allRows = eventScopeMembers.map(memberToProfileRow)
-        // Fire-and-forget: syncing member profiles to Supabase is non-critical.
-        // Never block the UI on this write.
-        bulkUpsertMemberProfiles(allRows).catch(() => {})
+        let allRows: any[]
+        if (snapshotProfiles.length > 0) {
+          // Snapshot exists — use it directly. No graph round-trip needed.
+          allRows = snapshotProfiles
+        } else {
+          // No snapshot yet (legacy event or first load after create).
+          // Hit the live graph, then save snapshot + profiles for next time.
+          const graphMembers = await getMembersInScope({
+            level: evt.scope_level, churchId: evt.scope_church_id,
+          })
+          if (cancelled) return
+          allRows = graphMembers.map(memberToProfileRow)
+          const ids = graphMembers.map((m: any) => m.id).filter(Boolean)
+          // Fire-and-forget: save snapshot so subsequent loads skip the graph.
+          Promise.all([
+            snapshotEventScopeMembers(eventId, ids),
+            bulkUpsertMemberProfiles(allRows),
+          ]).catch(() => {})
+        }
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const eligibleRows = allRows.filter((r) =>

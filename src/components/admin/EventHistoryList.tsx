@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import {
-  listEventsForAdminScopes, listEventsAttendedByMember,
+  listEventsForAdminScopes, listEventsAttendedByMember, listScopedEventsForMember,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { resolveCurrentMember, getAdminScopes } from '../../utils/membersApi'
@@ -23,18 +23,21 @@ export default function EventHistoryList() {
         const member = await resolveCurrentMember(user)
         if (cancelled) return
         const scopes = getAdminScopes(member)
-        // Union: events in scopes the user currently admins, plus every
-        // event the user personally attended (record exists). The attended
-        // set is the stable thread — a leader keeps seeing it even after
-        // being moved to a different scope.
-        const [adminEvts, attendedEvts] = await Promise.all([
+        // Union three sources:
+        //  1. Admin scopes — events in any scope the user currently admins
+        //  2. Attended     — events the user personally checked into
+        //  3. Scoped       — events the user was in scope for at creation time
+        //                    (captured by stable graph ID even if they moved)
+        const [adminEvts, attendedEvts, scopedEvts] = await Promise.all([
           listEventsForAdminScopes(scopes),
           listEventsAttendedByMember(user.userId),
+          member?.id ? listScopedEventsForMember(member.id) : Promise.resolve([]),
         ])
         if (cancelled) return
         const byId = new Map<string, any>()
-        for (const e of adminEvts) byId.set(e.id, e)
+        for (const e of adminEvts)    byId.set(e.id, e)
         for (const e of attendedEvts) if (!byId.has(e.id)) byId.set(e.id, e)
+        for (const e of scopedEvts)   if (!byId.has(e.id)) byId.set(e.id, e)
         const merged = [...byId.values()].sort(
           (a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
         )
@@ -57,7 +60,9 @@ export default function EventHistoryList() {
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
       <ScreenHeader
         title='History'
-        right={<Link to='/admin/reports' className='text-xs' style={{ color: 'var(--accent)' }}>Reports</Link>}
+        right={user?.isAdmin
+          ? <Link to='/admin/reports' className='text-xs' style={{ color: 'var(--accent)' }}>Reports</Link>
+          : null}
       />
       <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-3'>
         <div
@@ -88,7 +93,7 @@ export default function EventHistoryList() {
           {filtered.map((evt) => (
             <Link
               key={evt.id}
-              to={`/admin/events/${evt.id}`}
+              to={`/events/${evt.id}`}
               className='block p-4'
               style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
             >

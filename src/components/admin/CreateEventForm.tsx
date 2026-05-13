@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser } from '../../utils/auth'
-import { createEvent } from '../../utils/supabaseCheckins'
+import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
-  resolveCurrentMember, getAdminScopes, allowedRolesForScope,
+  resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 
@@ -107,6 +107,26 @@ export default function CreateEventForm() {
         pin: methods.includes('PIN') ? pin : null,
         createdBy: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim() },
       })
+      // Fire-and-forget: snapshot every member currently in scope by their
+      // stable graph ID. Done in the background so navigation is instant.
+      // If this fails the dashboard falls back to a live graph query and
+      // re-saves the snapshot on first load.
+      ;(async () => {
+        try {
+          const scopeMembers = await getMembersInScope({
+            level: selectedScope.level,
+            churchId: selectedScope.id,
+          })
+          const rows = scopeMembers.map(memberToProfileRow)
+          const ids = rows.map((r: any) => r.id).filter(Boolean)
+          await Promise.all([
+            snapshotEventScopeMembers(eventId, ids),
+            bulkUpsertMemberProfiles(rows),
+          ])
+        } catch {
+          // Non-critical — dashboard will fall back to the live graph.
+        }
+      })()
       navigate(`/admin/events/${eventId}`, { replace: true })
     } catch (err: any) {
       setError(err.message || 'Create failed')
