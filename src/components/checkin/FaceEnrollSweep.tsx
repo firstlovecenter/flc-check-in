@@ -390,13 +390,11 @@ function FaceRing({ videoRef, status, filledCount, softProgress, arrow }: RingPr
           let glow = 'none'
           let animation: string | undefined
           if (isFilled) {
-            stroke = isComplete ? 'var(--green)' : 'var(--text)'
-            glow = isComplete
-              ? 'drop-shadow(0 0 4px rgba(46,203,143,0.85))'
-              : 'drop-shadow(0 0 4px rgba(243,240,238,0.7))'
+            stroke = 'var(--green)'
+            glow = 'drop-shadow(0 0 4px rgba(52,211,153,0.8))'
           } else if (softLit) {
-            stroke = 'var(--text)'
-            glow = 'drop-shadow(0 0 3px rgba(243,240,238,0.55))'
+            stroke = 'rgba(52,211,153,0.6)'
+            glow = 'drop-shadow(0 0 3px rgba(52,211,153,0.45))'
           } else if (isActive) {
             stroke = 'rgba(243,240,238,0.55)'
             animation = `faceRingShimmer 1.6s ease-in-out ${wedgeIdx * 0.08}s infinite`
