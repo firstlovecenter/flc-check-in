@@ -6,8 +6,7 @@
 import { useEffect, useState } from 'react'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
-import { listActiveEventsAtLocation } from '../utils/supabaseCheckins'
-import { getCurrentPosition } from '../utils/geo'
+import { listActiveEvents } from '../utils/supabaseCheckins'
 import { generateQrToken, currentBucket, generateRotatingPin } from '../utils/checkinsCrypto'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
@@ -49,9 +48,7 @@ export default function QRDisplayScreen() {
     let cancelled = false
     ;(async () => {
       try {
-        const pos = await getCurrentPosition({ timeout: 15000 })
-        if (cancelled) return
-        const events = await listActiveEventsAtLocation(pos.lat, pos.lng)
+        const events = await listActiveEvents()
         if (cancelled) return
         setState({ status: 'ok', events })
         // Auto-select when there's exactly one event
@@ -73,11 +70,11 @@ export default function QRDisplayScreen() {
 
   // Header shared across all views
   const header = signedIn ? (
-    <ScreenHeader title='Events Around' back={{ to: '/home', label: 'Home' }} />
+    <ScreenHeader title='Active Events' back={{ to: '/home', label: 'Home' }} />
   ) : (
     <header className='px-4 py-3 relative flex items-center justify-center' style={{ borderBottom: '1px solid var(--border)' }}>
       <div className='text-center'>
-        <h1 className='text-base font-semibold m-0' style={{ color: 'var(--text)' }}>Events Around</h1>
+        <h1 className='text-base font-semibold m-0' style={{ color: 'var(--text)' }}>Active Events</h1>
         <p className='text-xs mt-1 m-0' style={{ color: 'var(--muted)' }}>Scan to check in</p>
       </div>
       <button
@@ -124,7 +121,7 @@ export default function QRDisplayScreen() {
       {header}
       <main className='max-w-md mx-auto px-4 py-6'>
         {state.status === 'loading' && (
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>Acquiring GPS…</p>
+          <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
         )}
 
         {state.status === 'error' && (
@@ -147,7 +144,7 @@ export default function QRDisplayScreen() {
             style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
           >
             <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>
-              No active events at your location.
+              No active events right now.
             </p>
           </div>
         )}

@@ -74,6 +74,7 @@ export interface CheckinEventRow {
   scope_level: ScopeLevel
   scope_church_id: string
   scope_church_name: string
+  venue_name: string | null
   starts_at: string
   ends_at: string
   grace_period_min: number

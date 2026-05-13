@@ -82,17 +82,30 @@ export async function getMyFaceDescriptor(memberId: string): Promise<Float32Arra
 // Self-service first-time enrolment. Refuses to overwrite an existing
 // descriptor — once a user has Face ID set up, only an admin can clear it
 // (which then re-enables this path on the user's next login).
+//
+// Uses a check-then-upsert pattern so enrollment succeeds even when the
+// member_profiles row hasn't been written yet (the post-login profile sync
+// is fire-and-forget and may not have landed by the time the user completes
+// the face sweep).
 export async function setMyFaceDescriptor(memberId: string, descriptor: Float32Array): Promise<void> {
-  const { data, error } = await supabase
+  // Read current state first (maybeSingle → null if row doesn't exist yet)
+  const { data: existing, error: checkErr } = await supabase
     .from('member_profiles')
-    .update({ face_descriptor: Array.from(descriptor) })
+    .select('face_descriptor')
     .eq('id', memberId)
-    .is('face_descriptor', null)
-    .select('id')
-  if (error) throw error
-  if (!data || data.length === 0) {
+    .maybeSingle()
+  if (checkErr) throw checkErr
+
+  if (existing?.face_descriptor) {
     throw new Error('Face ID is already set up. Contact an admin to reset it.')
   }
+
+  // Row either doesn't exist yet (upsert will create it) or exists with
+  // face_descriptor = null (upsert will update just that column).
+  const { error } = await supabase
+    .from('member_profiles')
+    .upsert({ id: memberId, face_descriptor: Array.from(descriptor) }, { onConflict: 'id' })
+  if (error) throw error
 }
 
 // Admin-only: wipe a member's Face ID. After this the member's next login
@@ -167,6 +180,7 @@ export async function createEvent(input) {
     p_scope_level: input.scopeLevel,
     p_scope_church_id: input.scopeChurchId,
     p_scope_church_name: input.scopeChurchName,
+    p_venue_name: input.venueName || null,
     p_starts_at: toIso(input.startsAt),
     p_ends_at: toIso(input.endsAt),
     p_grace_period_min: input.gracePeriodMin ?? 15,

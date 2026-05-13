@@ -176,7 +176,9 @@ export default function LeaderHomeScreen() {
                     <div className='min-w-0'>
                       <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{evt.name}</p>
                       <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-                        {evt.scope_church_name} · {format(new Date(evt.starts_at), 'PP')}
+                        {evt.scope_church_name}
+                        {evt.venue_name ? ` · ${evt.venue_name}` : ''}
+                        {' · '}{format(new Date(evt.starts_at), 'PP')}
                       </p>
                     </div>
                     <span

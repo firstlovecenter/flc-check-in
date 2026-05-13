@@ -29,6 +29,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
 
   // Editable state
   const [name, setName]                       = useState('')
+  const [venueName, setVenueName]             = useState('')
   const [startsAt, setStartsAt]               = useState('')
   const [endsAt, setEndsAt]                   = useState('')
   const [gracePeriodMin, setGracePeriodMin]   = useState<number | string>(15)
@@ -46,6 +47,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         if (cancelled) return
         setEvent(evt)
         setName(evt.name)
+        setVenueName(evt.venue_name || '')
         setStartsAt(toLocalInput(evt.starts_at))
         setEndsAt(toLocalInput(evt.ends_at))
         setGracePeriodMin(evt.grace_period_min ?? 15)
@@ -92,6 +94,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
 
     const patch: Patch = {
       name,
+      venue_name: venueName.trim() || null,
       starts_at: new Date(startsAt) as any,
       ends_at: new Date(endsAt) as any,
       grace_period_min: Number(gracePeriodMin),
@@ -161,6 +164,11 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       <Section title='Event'>
         <Field label='Name'>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
+            className={inputClasses()} style={inputStyle} />
+        </Field>
+        <Field label='Venue / Location name'>
+          <input type='text' value={venueName} onChange={(e) => setVenueName(e.target.value)}
+            placeholder='e.g. First Love Center, The Qodesh'
             className={inputClasses()} style={inputStyle} />
         </Field>
         <Field label='Scope (read-only)'>

@@ -155,7 +155,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             {/* Nav items */}
             <nav className='flex-1 overflow-y-auto p-2 flex flex-col gap-1'>
               <NavItem to='/home'    icon={ICONS.home}    label='Home'          onClick={() => setOpen(false)} />
-              <NavItem to='/events'  icon={ICONS.qr}      label='Events Around' onClick={() => setOpen(false)} />
+              <NavItem to='/events'  icon={ICONS.qr}      label='Events'        onClick={() => setOpen(false)} />
               {isAdmin && (
                 <>
                   <NavItem to='/admin/events/new'  icon={ICONS.plus}    label='Create Event'      onClick={() => setOpen(false)} />

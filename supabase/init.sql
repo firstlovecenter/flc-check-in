@@ -93,6 +93,7 @@ create table if not exists public.checkin_events (
     check (scope_level in ('bacenta','governorship','council','stream','campus','oversight','denomination')),
   scope_church_id             text not null,
   scope_church_name           text not null,
+  venue_name                  text,
   starts_at                   timestamptz not null,
   ends_at                     timestamptz not null,
   grace_period_min            int  not null default 15,
@@ -305,6 +306,7 @@ drop function if exists public.claim_face_match(uuid, uuid);
 drop function if exists public.report_member_location(uuid, uuid, double precision, double precision);
 drop function if exists public.submit_checkin(uuid, uuid, text, text, text, text, double precision, double precision, text, text, text);
 drop function if exists public.create_checkin_event(text, text, text, text, text, timestamptz, timestamptz, int, int, text[], text[], text, double precision, double precision, int, jsonb, text, text, uuid, text);
+drop function if exists public.create_checkin_event(text, text, text, text, text, timestamptz, timestamptz, int, int, text[], text[], text, double precision, double precision, int, jsonb, text, text, text, text);
 
 
 -- ─── record_pin_attempt: bcrypt PIN with rate limiting ──────────────────────
@@ -495,6 +497,7 @@ create or replace function public.create_checkin_event(
   p_scope_level              text,
   p_scope_church_id          text,
   p_scope_church_name        text,
+  p_venue_name               text,
   p_starts_at                timestamptz,
   p_ends_at                  timestamptz,
   p_grace_period_min         int,
@@ -524,14 +527,14 @@ begin
   end if;
 
   insert into public.checkin_events (
-    name, event_type, scope_level, scope_church_id, scope_church_name,
+    name, event_type, scope_level, scope_church_id, scope_church_name, venue_name,
     starts_at, ends_at, grace_period_min, auto_checkout_min,
     allowed_check_in_methods, allowed_roles,
     geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, geofence_polygon,
     pin_hash, pin_set_at, qr_secret,
     created_by_id, created_by_name
   ) values (
-    p_name, p_event_type, p_scope_level, p_scope_church_id, p_scope_church_name,
+    p_name, p_event_type, p_scope_level, p_scope_church_id, p_scope_church_name, p_venue_name,
     p_starts_at, p_ends_at, p_grace_period_min, p_auto_checkout_min,
     p_allowed_check_in_methods, p_allowed_roles,
     p_geofence_type, p_geofence_center_lat, p_geofence_center_lng, p_geofence_radius_m, p_geofence_polygon,
@@ -796,7 +799,7 @@ grant execute on function
   public.report_member_location(uuid, text, double precision, double precision),
   public.auto_checkout_expired_events(),
   public.create_checkin_event(
-    text, text, text, text, text,
+    text, text, text, text, text, text,
     timestamptz, timestamptz, int, int,
     text[], text[],
     text, double precision, double precision, int, jsonb,

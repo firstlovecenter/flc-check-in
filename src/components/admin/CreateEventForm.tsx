@@ -22,6 +22,7 @@ export default function CreateEventForm() {
   const [scopesError, setScopesError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
+  const [venueName, setVenueName] = useState('')
   // Selected admin scope (always one of `scopes`). Stored as "level:id".
   const [scopeId, setScopeId] = useState('')
   const [startsAt, setStartsAt] = useState(defaultStartsAt())
@@ -92,6 +93,7 @@ export default function CreateEventForm() {
     try {
       const { eventId } = await createEvent({
         name,
+        venueName: venueName.trim() || null,
         scopeLevel: selectedScope.level,
         scopeChurchId: selectedScope.id,
         scopeChurchName: selectedScope.name,
@@ -135,6 +137,11 @@ export default function CreateEventForm() {
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
             className='input-field'
             placeholder='e.g. Sunday Bacenta Leaders Meeting' />
+        </Field>
+        <Field label='Venue / Location name'>
+          <input type='text' value={venueName} onChange={(e) => setVenueName(e.target.value)}
+            className='input-field'
+            placeholder='e.g. First Love Center, The Qodesh' />
         </Field>
       </Section>
 
