@@ -18,20 +18,22 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       const user = await loginWithCredentials(email, password)
-      // App is leaders + admins only — confirm via the FLC member graph.
-      // We give the graph 4 seconds; if it's slow or unreachable we let the
-      // user in and let downstream screens handle it — don't block login.
-      try {
-        const memberPromise = resolveCurrentMember(user)
-        const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 4000))
-        const member = await Promise.race([memberPromise, timeoutPromise])
-        if (member && !isLeaderOrAdmin(member)) {
-          logout()
-          setError('This app is for leaders and admins only.')
-          return
+      // Superadmins bypass the FLC member graph entirely.
+      if (!user.isSuperAdmin) {
+        // Confirm the user is a leader/admin via the FLC member graph.
+        // 4-second timeout so a slow/unreachable graph doesn't block login.
+        try {
+          const memberPromise = resolveCurrentMember(user)
+          const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 4000))
+          const member = await Promise.race([memberPromise, timeoutPromise])
+          if (member && !isLeaderOrAdmin(member)) {
+            logout()
+            setError('This app is for leaders and admins only.')
+            return
+          }
+        } catch {
+          // GraphQL unreachable — proceed.
         }
-      } catch {
-        // GraphQL unreachable — proceed.
       }
       navigate('/home')
     } catch (err: any) {

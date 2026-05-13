@@ -121,7 +121,25 @@ export function useEventEligibility(
           (r.roles || []).some((role: string) => allowed.has(role)),
         )
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
-        const caps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        // getViewerCapabilities requires a graph viewer node. Superadmins may
+        // not be in the graph (viewer === null), so we compute caps from graph
+        // data when available, then unconditionally force canManage: true for
+        // superadmins — their additional FLC roles are honoured where possible.
+        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        const caps = user.isSuperAdmin
+          ? {
+              ...rawCaps,
+              canManage: true,
+              canCheckIn: true,
+              // If the graph resolved a viewerScope use it; otherwise fall back
+              // to the full event scope so dashboards render correctly.
+              viewerScope: rawCaps.viewerScope ?? {
+                level: evt.scope_level,
+                id: evt.scope_church_id,
+                name: evt.scope_church_name,
+              },
+            }
+          : rawCaps
         const scopes = getAdminScopes(viewer)
 
         // Tier 3: viewer slice (only needed for non-admin leaders).

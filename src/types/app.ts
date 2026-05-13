@@ -43,6 +43,10 @@ export interface AppUser {
   level?: ScopeLevel
   unitName?: string
   isAdmin: boolean
+  /** True when the JWT contains the 'superAdmin' role.
+   *  Superadmins bypass all FLC member-graph checks and have full
+   *  management capabilities on every event. */
+  isSuperAdmin?: boolean
   churchContexts?: ChurchRef[]
   activeChurch?: ChurchRef | null
   graphMemberId?: string

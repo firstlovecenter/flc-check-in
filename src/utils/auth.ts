@@ -157,8 +157,24 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
   }
 }
 
+/** Check the superadmins Supabase table for this email via a security-definer
+ * RPC — the anon role has no direct SELECT on the table. */
+async function checkSuperAdminTable(email: string): Promise<boolean> {
+  if (!email) return false
+  const { supabase } = await import('./supabase')
+  const { data, error } = await supabase
+    .rpc('is_super_admin', { p_email: email.toLowerCase().trim() })
+  if (error) throw error
+  return !!data
+}
+
 export function enrichUser(payload) {
-  const level = getLevelFromRoles(payload.roles || []);
+  const roles = payload.roles || []
+  // isSuperAdmin can come from the JWT role OR from the localStorage override
+  // (set by loginWithCredentials after a Supabase table check).
+  const localOverride = localStorage.getItem('superAdminOverride') === '1'
+  const superAdmin = roles.includes('superAdmin') || localOverride
+  const level = getLevelFromRoles(roles);
   const unitName =
     payload.bacenta?.name ||
     payload.governorship?.name ||
@@ -173,7 +189,8 @@ export function enrichUser(payload) {
     ...payload,
     level: activeChurch?.level || level,
     unitName: activeChurch?.name || unitName,
-    isAdmin: isAdmin(payload.roles || []),
+    isAdmin: superAdmin || isAdmin(roles),
+    isSuperAdmin: superAdmin,
     churchContexts,
     activeChurch,
   }
@@ -260,6 +277,23 @@ export async function loginWithCredentials(email, password) {
 
   const payload = decodeJWT(data.tokens.accessToken);
   const { id, ...userFields } = data.user;
+
+  // Check the superadmins table — runs in parallel with the profile sync below.
+  // Store the result in localStorage so getCurrentUser() picks it up instantly
+  // on subsequent page loads without another round-trip.
+  const loginEmail = (userFields.email || payload.email || '').toLowerCase().trim()
+  try {
+    const isSA = await checkSuperAdminTable(loginEmail)
+    if (isSA) {
+      localStorage.setItem('superAdminOverride', '1')
+    } else {
+      localStorage.removeItem('superAdminOverride')
+    }
+  } catch {
+    // Table unreachable — clear any stale override to fail safely.
+    localStorage.removeItem('superAdminOverride')
+  }
+
   const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
 
   // Fire-and-forget: resolve graph ID and sync to Supabase in the background.
@@ -284,6 +318,7 @@ export function logout() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('pictureUrl');
+  localStorage.removeItem('superAdminOverride');
 }
 
 export async function requestPasswordReset(email: string) {

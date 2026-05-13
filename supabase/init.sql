@@ -70,6 +70,18 @@ create index if not exists member_profiles_campus_idx       on public.member_pro
 create index if not exists member_profiles_oversight_idx    on public.member_profiles (oversight_id);
 
 
+-- ─── superadmins ────────────────────────────────────────────────────────────
+-- Email allowlist for accounts that bypass the FLC member graph.
+-- Managed via the Supabase dashboard Table Editor (no app UI needed).
+create table if not exists public.superadmins (
+  email       text primary key,
+  note        text,
+  created_at  timestamptz not null default now()
+);
+-- Direct SELECT intentionally NOT granted to anon.
+-- Use the is_super_admin(p_email) RPC (defined in the GRANTS section below).
+
+
 -- ─── checkin_events ─────────────────────────────────────────────────────────
 create table if not exists public.checkin_events (
   id                          uuid primary key default gen_random_uuid(),
@@ -172,13 +184,21 @@ create table if not exists public.face_match_claims (
 );
 
 
--- ─── RLS off (enforced via security-definer RPCs) ───────────────────────────
-alter table public.member_profiles    disable row level security;
-alter table public.checkin_events     disable row level security;
-alter table public.checkin_records    disable row level security;
-alter table public.checkin_attempts   disable row level security;
-alter table public.checkin_devices    disable row level security;
-alter table public.face_match_claims  disable row level security;
+-- ─── RLS enabled with minimum-required policies ─────────────────────────────
+-- checkin_attempts, checkin_devices, face_match_claims have no policy
+-- (deny-all for direct access) — they are only written via security-definer RPCs.
+alter table public.member_profiles   enable row level security;
+alter table public.checkin_events    enable row level security;
+alter table public.checkin_records   enable row level security;
+alter table public.checkin_attempts  enable row level security;
+alter table public.checkin_devices   enable row level security;
+alter table public.face_match_claims enable row level security;
+alter table public.superadmins       enable row level security;
+
+create policy "anon_all_member_profiles"  on public.member_profiles  for all to anon using (true) with check (true);
+create policy "anon_all_checkin_events"   on public.checkin_events   for all to anon using (true) with check (true);
+create policy "anon_all_checkin_records"  on public.checkin_records  for all to anon using (true) with check (true);
+-- superadmins: no policy → deny-all for direct access (RPC is the only read path).
 
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -750,7 +770,8 @@ $$;
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  GRANTS
---  RLS is OFF; the @supabase/supabase-js client authenticates as `anon`.
+--  RLS is ON with permissive policies for tables the client accesses directly.
+--  Tables accessed only via security-definer RPCs have no policy (deny-all).
 -- ════════════════════════════════════════════════════════════════════════════
 
 grant usage on schema public to anon;
@@ -758,11 +779,10 @@ grant usage on schema public to anon;
 grant select, insert, update, delete on
   public.member_profiles,
   public.checkin_events,
-  public.checkin_records,
-  public.checkin_attempts,
-  public.checkin_devices,
-  public.face_match_claims
+  public.checkin_records
   to anon;
+-- checkin_attempts, checkin_devices, face_match_claims: no direct grant
+-- (security-definer RPCs run as postgres and bypass RLS/grants).
 
 grant usage, select on sequence public.checkin_attempts_id_seq to anon;
 
@@ -787,8 +807,27 @@ grant execute on function
     uuid, text, text, text, text, text,
     double precision, double precision, text,
     text, text
-  )
+  ),
+  public.is_super_admin(text)
   to anon;
+
+-- ─── is_super_admin(p_email) ─────────────────────────────────────────────────
+-- Security-definer: runs as postgres so it can read the superadmins table
+-- even though anon has no direct SELECT on it. search_path pinned to prevent
+-- search-path injection.
+create or replace function public.is_super_admin(p_email text)
+  returns boolean
+  language plpgsql
+  security definer
+  set search_path = public, extensions
+as $$
+begin
+  return exists (
+    select 1 from public.superadmins
+    where email = lower(trim(p_email))
+  );
+end;
+$$;
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Done. Verify with:
