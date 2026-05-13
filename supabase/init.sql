@@ -791,6 +791,25 @@ end;
 $$;
 
 
+-- ─── is_super_admin(p_email) ─────────────────────────────────────────────────
+-- Security-definer: runs as postgres so it can read the superadmins table
+-- even though anon has no direct SELECT on it. search_path pinned to prevent
+-- search-path injection.
+create or replace function public.is_super_admin(p_email text)
+  returns boolean
+  language plpgsql
+  security definer
+  set search_path = public, extensions
+as $$
+begin
+  return exists (
+    select 1 from public.superadmins
+    where email = lower(trim(p_email))
+  );
+end;
+$$;
+
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  GRANTS
 --  RLS is ON with permissive policies for tables the client accesses directly.
@@ -802,7 +821,8 @@ grant usage on schema public to anon;
 grant select, insert, update, delete on
   public.member_profiles,
   public.checkin_events,
-  public.checkin_records
+  public.checkin_records,
+  public.event_scope_members
   to anon;
 -- checkin_attempts, checkin_devices, face_match_claims: no direct grant
 -- (security-definer RPCs run as postgres and bypass RLS/grants).
@@ -833,24 +853,6 @@ grant execute on function
   ),
   public.is_super_admin(text)
   to anon;
-
--- ─── is_super_admin(p_email) ─────────────────────────────────────────────────
--- Security-definer: runs as postgres so it can read the superadmins table
--- even though anon has no direct SELECT on it. search_path pinned to prevent
--- search-path injection.
-create or replace function public.is_super_admin(p_email text)
-  returns boolean
-  language plpgsql
-  security definer
-  set search_path = public, extensions
-as $$
-begin
-  return exists (
-    select 1 from public.superadmins
-    where email = lower(trim(p_email))
-  );
-end;
-$$;
 
 -- ════════════════════════════════════════════════════════════════════════════
 --  Done. Verify with:
