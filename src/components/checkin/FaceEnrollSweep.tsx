@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   averageDescriptors,
   captureDescriptor,
+  descriptorDistance,
   estimateHeadPose,
   loadFaceModels,
 } from '../../utils/faceApi'
@@ -92,6 +93,9 @@ export default function FaceEnrollSweep({ onComplete, onError }: Props) {
   const [currentKey, setCurrentKey] = useState<BucketKey>('center')
   const [softProgress, setSoftProgress] = useState(0)          // 0..1 for current bucket
   const [message, setMessage] = useState('Loading face models...')
+  // Quality score derived from mean pairwise descriptor distance after enrol.
+  // Higher spread = better discriminability. 'good' | 'fair' | 'poor' | null
+  const [quality, setQuality] = useState<'good' | 'fair' | 'poor' | null>(null)
 
   useEffect(() => {
     let stopped = false
@@ -173,6 +177,22 @@ export default function FaceEnrollSweep({ onComplete, onError }: Props) {
                     .map((bb) => collected[bb.key])
                     .filter((d): d is Float32Array => !!d)
                   const avg = averageDescriptors(descriptors)
+
+                  // Compute mean pairwise distance as a proxy for descriptor
+                  // variance. A higher spread means the 5 pose samples are
+                  // genuinely different — indicating good coverage.
+                  if (descriptors.length >= 2) {
+                    let sum = 0, n = 0
+                    for (let i = 0; i < descriptors.length; i++) {
+                      for (let j = i + 1; j < descriptors.length; j++) {
+                        sum += descriptorDistance(descriptors[i], descriptors[j])
+                        n++
+                      }
+                    }
+                    const mean = n > 0 ? sum / n : 0
+                    setQuality(mean < 0.35 ? 'good' : mean < 0.50 ? 'fair' : 'poor')
+                  }
+
                   stopped = true
                   if (timer) clearTimeout(timer)
                   setStatus('complete')
@@ -232,9 +252,21 @@ export default function FaceEnrollSweep({ onComplete, onError }: Props) {
           </>
         )}
         {status === 'complete' && (
-          <p className='text-sm m-0' style={{ color: 'var(--green)', fontWeight: 600 }}>
-            {message}
-          </p>
+          <>
+            <p className='text-sm m-0' style={{ color: 'var(--green)', fontWeight: 600 }}>
+              {message}
+            </p>
+            {quality && (
+              <p
+                className='text-xs m-0 mt-1 font-semibold'
+                style={{
+                  color: quality === 'good' ? 'var(--green)' : quality === 'fair' ? 'var(--amber)' : 'var(--coral)',
+                }}
+              >
+                Enrollment quality: {quality === 'good' ? '✓ Good' : quality === 'fair' ? '▲ Fair' : '⚠ Poor — consider re-enrolling'}
+              </p>
+            )}
+          </>
         )}
         {status !== 'capturing' && status !== 'complete' && (
           <p className='text-sm m-0' style={{ color: status === 'error' ? 'var(--coral)' : 'var(--muted)' }}>

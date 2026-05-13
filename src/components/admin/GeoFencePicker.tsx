@@ -6,6 +6,17 @@ import { getCurrentPosition } from '../../utils/geo'
 import { PRESET_VENUES } from '../../data/venues'
 import type { GeofenceInput } from '../../types/app'
 
+function useThemeMode() {
+  const isDark = () => document.documentElement.getAttribute('data-theme') !== 'light'
+  const [dark, setDark] = useState(isDark)
+  useEffect(() => {
+    const obs = new MutationObserver(() => setDark(isDark()))
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => obs.disconnect()
+  }, [])
+  return dark
+}
+
 // Fix default marker icons (Leaflet expects them at the same path as the CSS).
 delete (L.Icon.Default.prototype as any)._getIconUrl
 L.Icon.Default.mergeOptions({
@@ -26,6 +37,7 @@ interface Props {
 /** Output: { type: 'circle', centerLat, centerLng, radiusM }
  *       OR { type: 'polygon', polygon: [[lat,lng], ...] } */
 export default function GeoFencePicker({ value, onChange }: Props) {
+  const isDark = useThemeMode()
   const [mode, setMode] = useState<'circle' | 'polygon'>(value?.type || 'circle')
   const [center, setCenter] = useState<LatLngTuple>(
     value?.type === 'circle' ? [value.centerLat, value.centerLng] : DEFAULT_CENTER
@@ -210,7 +222,9 @@ export default function GeoFencePicker({ value, onChange }: Props) {
         <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution='&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            url={isDark
+              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'}
             subdomains='abcd'
             maxZoom={19}
           />

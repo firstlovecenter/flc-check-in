@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCurrentPosition, pointInGeofence } from '../../utils/geo'
-import { submitManualCheckIn } from '../../utils/supabaseCheckins'
+import { submitManualCheckIn, addAuditLog } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import type { CheckinEventRow, MemberProfileRow, CheckinRecordRow, LatLng } from '../../types/app'
 
@@ -57,8 +57,18 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
         reason: reason.trim(),
         event,
       })
-      if (result.ok) onSuccess?.(result.record)
-      else setError(result.reason || 'Manual check-in failed')
+      if (result.ok) {
+        addAuditLog({
+          action: 'checkin.manual',
+          actorId: admin.userId,
+          actorName: `${admin.firstName} ${admin.lastName}`.trim(),
+          eventId: event.id,
+          targetId: member.id,
+          targetName: [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id,
+          details: reason.trim() ? { reason: reason.trim() } : undefined,
+        }).catch(() => {})
+        onSuccess?.(result.record)
+      } else setError(result.reason || 'Manual check-in failed')
     } catch (err: any) {
       setError(err.message)
     } finally {

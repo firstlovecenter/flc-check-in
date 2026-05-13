@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import ScreenHeader from '../components/ScreenHeader'
 import { getCurrentUser } from '../utils/auth'
 import { resolveCurrentMember } from '../utils/membersApi'
+import { getAttendanceStats } from '../utils/supabaseCheckins'
 
 const LEVEL_ORDER = ['denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta']
 
@@ -54,6 +55,7 @@ export default function ProfileScreen() {
   const [member, setMember] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [stats, setStats] = useState<any>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -69,6 +71,14 @@ export default function ProfileScreen() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    const id = member?.id || user?.userId
+    if (!id) return
+    getAttendanceStats(id)
+      .then(setStats)
+      .catch(() => {})
+  }, [member?.id, user?.userId])
 
   const hierarchy = buildHierarchy(member)
   const displayName = member
@@ -214,6 +224,39 @@ export default function ProfileScreen() {
                 </Section>
               </div>
             )}
+
+            {/* Attendance stats */}
+            {stats && (
+              <div
+                className='p-5 flex flex-col gap-4'
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-card)',
+                }}
+              >
+                <Section title='Attendance Stats'>
+                  <div className='grid grid-cols-2 gap-3'>
+                    <StatBox
+                      label='Events Attended'
+                      value={`${stats.attendedCount} / ${stats.scopedCount}`}
+                    />
+                    <StatBox
+                      label='Attendance Rate'
+                      value={stats.pct != null ? `${stats.pct}%` : '—'}
+                      color={stats.pct == null ? undefined : stats.pct >= 80 ? 'var(--green)' : stats.pct >= 50 ? 'var(--amber)' : 'var(--coral)'}
+                    />
+                    <StatBox label='On Time'  value={String(stats.onTimeCount)} color='var(--green)' />
+                    <StatBox label='Late'     value={String(stats.lateCount)}   color={stats.lateCount > 0 ? 'var(--amber)' : undefined} />
+                  </div>
+                  {stats.lastCheckIn && (
+                    <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>
+                      Last check-in: <span style={{ color: 'var(--text)' }}>{new Date(stats.lastCheckIn).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                    </p>
+                  )}
+                </Section>
+              </div>
+            )}
           </>
         )}
 
@@ -232,6 +275,22 @@ export default function ProfileScreen() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function StatBox({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div
+      className='p-3 flex flex-col gap-0.5'
+      style={{
+        background: 'var(--bg2)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-btn)',
+      }}
+    >
+      <p className='text-xs m-0 uppercase tracking-wider' style={{ color: 'var(--muted)' }}>{label}</p>
+      <p className='text-xl font-bold m-0' style={{ color: color || 'var(--text)', letterSpacing: '-0.02em' }}>{value}</p>
     </div>
   )
 }

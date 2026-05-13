@@ -158,6 +158,17 @@ body {
   transform: scale(0.97);
 }
 
+/* ─── Leaflet: contain z-index inside the map wrapper ───────────────────────────── */
+/* Leaflet uses z-index: 1000 on controls and 400-800 on panes. Without this
+   isolation the map layers paint over fixed overlays (NavDrawer, modals).
+   `isolation: isolate` creates a new stacking context so every Leaflet
+   z-index is relative to the map container, not the document root. */
+.leaflet-container {
+  isolation: isolate;
+}
+
+/* Leaflet tile theme is handled via JS in GeoFencePicker (CARTO dark_all / light_all URLs). */
+
 .btn-primary {
   background: var(--cta-bg);
   color: var(--cta-text);

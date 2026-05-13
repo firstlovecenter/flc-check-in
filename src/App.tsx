@@ -7,6 +7,7 @@ import EventDashboardScreen from './screens/admin/EventDashboardScreen'
 import EventEditScreen from './screens/admin/EventEditScreen'
 import FullReportScreen from './screens/admin/FullReportScreen'
 import ScopeBreakdownScreen from './screens/admin/ScopeBreakdownScreen'
+import AuditLogScreen from './screens/admin/AuditLogScreen'
 import CreateEventScreen from './screens/admin/CreateEventScreen'
 import ReportsScreen from './screens/admin/ReportsScreen'
 import EventHistoryScreen from './screens/admin/EventHistoryScreen'
@@ -48,6 +49,7 @@ export default function App() {
         <Route path='/events/:eventId/edit' element={<RequireAuth><EventEditScreen /></RequireAuth>} />
         <Route path='/events/:eventId/report' element={<RequireAuth><FullReportScreen /></RequireAuth>} />
         <Route path='/events/:eventId/scopes' element={<RequireAuth><ScopeBreakdownScreen /></RequireAuth>} />
+        <Route path='/events/:eventId/audit'  element={<RequireAuth><AuditLogScreen /></RequireAuth>} />
 
         {/* Old drilldown URLs → report tabs */}
         <Route path='/events/:eventId/checked-in'  element={<RedirectToReportTab tab='checked-in' />} />

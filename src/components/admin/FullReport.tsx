@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { format } from 'date-fns'
+import { format, formatDistanceToNowStrict } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
 import {
   listCheckedIn, adminClearFaceDescriptor,
+  listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
 } from '../../utils/supabaseCheckins'
 import {
   childScopeLevel, adminCoversMember,
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'checked-in', label: 'Checked In' },
   { id: 'defaulted',  label: 'Defaulted' },
   { id: 'checked-out', label: 'Checked Out' },
+  { id: 'timeline',   label: 'Timeline' },
 ]
 
 export default function FullReport({ eventId }) {
@@ -42,8 +44,58 @@ export default function FullReport({ eventId }) {
   // Inline confirmation state for Face ID reset (replaces window.confirm).
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null)
 
+  // Absence notes state
+  const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
+  const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
+  const [absenceInput, setAbsenceInput]   = useState('')
+  const [absenceSaving, setAbsenceSaving] = useState(false)
+
+  // Risk flags — members whose device fingerprint was shared with another member
+  const [riskyIds, setRiskyIds] = useState<Set<string>>(new Set())
+
   // Merge hook error with local errors.
   const displayError = error || eligibilityError
+
+  // Load absence notes whenever the event is known
+  useEffect(() => {
+    if (!eventId) return
+    listAbsenceNotesForEvent(eventId)
+      .then(setAbsenceNotes)
+      .catch(() => {})
+  }, [eventId])
+
+  // Load risk flags whenever records change
+  useEffect(() => {
+    if (!eventId || records.length === 0) return
+    getRiskyCheckIns(eventId)
+      .then(setRiskyIds)
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, records.length])
+
+  async function saveAbsenceNote() {
+    if (!absenceTarget || !absenceInput.trim()) return
+    setAbsenceSaving(true)
+    try {
+      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user.userId)
+      setAbsenceNotes((m) => new Map(m).set(absenceTarget.id, absenceInput.trim()))
+      addAuditLog({
+        action: 'absence.note_set',
+        actorId: user.userId,
+        actorName: `${user.firstName} ${user.lastName}`.trim(),
+        eventId,
+        targetId: absenceTarget.id,
+        targetName: [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id,
+        details: { reason: absenceInput.trim() },
+      }).catch(() => {})
+      setAbsenceTarget(null)
+      setAbsenceInput('')
+    } catch (err: any) {
+      setError(err.message || 'Could not save note')
+    } finally {
+      setAbsenceSaving(false)
+    }
+  }
 
   // Scope filter state (level + child-church selector)
   const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
@@ -103,7 +155,25 @@ export default function FullReport({ eventId }) {
     'checked-in':  buckets.checkedIn.length,
     'defaulted':   buckets.defaulted.length,
     'checked-out': buckets.checkedOut.length,
+    'timeline':    records.length,
   }
+
+  // Timeline: all check-in records in scope, sorted chronologically
+  const timelineRows = useMemo(() => {
+    const eligibleSet = new Set(eligible.map((m) => m.id))
+    return records
+      .filter((r) => eligibleSet.has(r.member_id))
+      .map((r) => ({
+        record: r,
+        member: eligible.find((m) => m.id === r.member_id) || {
+          id: r.member_id,
+          first_name: r.member_name || r.member_id,
+          last_name: '',
+          bacenta_name: r.member_unit_name || '',
+        },
+      }))
+      .sort((a, b) => new Date(a.record.checked_in_at).getTime() - new Date(b.record.checked_in_at).getTime())
+  }, [records, eligible])
   const total = eligible.length
   const pct = total > 0 ? Math.round((counts['checked-in'] / total) * 100) : 0
 
@@ -121,6 +191,15 @@ export default function FullReport({ eventId }) {
     setResetting(memberId)
     try {
       await adminClearFaceDescriptor(memberId)
+      const target = allEligible.find((r) => r.id === memberId)
+      addAuditLog({
+        action: 'face.descriptor_clear',
+        actorId: user.userId,
+        actorName: `${user.firstName} ${user.lastName}`.trim(),
+        eventId,
+        targetId: memberId,
+        targetName: target ? [target.first_name, target.last_name].filter(Boolean).join(' ') : memberId,
+      }).catch(() => {})
     } catch (err: any) {
       setError(err.message || 'Could not reset Face ID')
     } finally {
@@ -129,7 +208,7 @@ export default function FullReport({ eventId }) {
   }
 
   function exportCsv() {
-    if (!event) return
+    if (!event || activeTab === 'timeline') return
     // Export only the currently visible tab + scope filter
     const tabRows = buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
     const statusLabel = activeTab === 'checked-in' ? 'Checked In' : activeTab === 'defaulted' ? 'Defaulted' : 'Checked Out'
@@ -152,8 +231,20 @@ export default function FullReport({ eventId }) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
 
-  const tabRows = buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
+  const tabRows = activeTab === 'timeline'
+    ? []
+    : buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
   const filteredRows = filterRows(tabRows, search)
+
+  const filteredTimeline = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return timelineRows
+    return timelineRows.filter((b) => {
+      const m = b.member
+      return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
+        .some((v) => (v || '').toLowerCase().includes(s))
+    })
+  }, [timelineRows, search])
 
   const scopeLabel = (filterChurchId && filterChurchId !== '__all__' && filterChurchName)
     ? filterChurchName
@@ -273,26 +364,49 @@ export default function FullReport({ eventId }) {
           className='input-field'
         />
 
-        {/* List */}
-        <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
-          {filteredRows.length === 0 && (
-            <p className='text-sm text-center mt-2 md:col-span-2' style={{ color: 'var(--muted)' }}>
-              {tabRows.length === 0 ? 'Nothing here yet.' : 'No matches.'}
-            </p>
-          )}
-          {filteredRows.map((b) => (
-            <ListRow
-              key={b.member.id}
-              entry={b}
-              tab={activeTab}
-              canManage={viewerCaps.canManage}
-              canResetFaceId={adminCoversMember(adminScopes, b.member)}
-              resetting={resetting === b.member.id}
-              onManual={() => setModalMember(b.member)}
-              onResetFaceId={() => handleResetFaceId(b.member)}
-            />
-          ))}
-        </div>
+        {/* List / Timeline */}
+        {activeTab === 'timeline' ? (
+          <div
+            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
+          >
+            {filteredTimeline.length === 0 ? (
+              <p className='text-sm text-center py-8' style={{ color: 'var(--muted)' }}>No check-ins yet.</p>
+            ) : (
+              filteredTimeline.map((b, i) => (
+                <TimelineEntry
+                  key={b.record.id}
+                  entry={b}
+                  isLast={i === filteredTimeline.length - 1}
+                />
+              ))
+            )}
+          </div>
+        ) : (
+          <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
+            {filteredRows.length === 0 && (
+              <p className='text-sm text-center mt-2 md:col-span-2' style={{ color: 'var(--muted)' }}>
+                {tabRows.length === 0 ? 'Nothing here yet.' : 'No matches.'}
+              </p>
+            )}
+            {filteredRows.map((b) => (
+              <ListRow
+                key={b.member.id}
+                entry={b}
+                tab={activeTab}
+                canManage={viewerCaps.canManage}
+                canResetFaceId={adminCoversMember(adminScopes, b.member)}
+                resetting={resetting === b.member.id}
+                isRisky={riskyIds.has(b.member.id)}
+                absenceNote={activeTab === 'defaulted' ? absenceNotes.get(b.member.id) : undefined}
+                onManual={() => setModalMember(b.member)}
+                onResetFaceId={() => handleResetFaceId(b.member)}
+                onAddNote={activeTab === 'defaulted' && viewerCaps.canManage
+                  ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
+                  : undefined}
+              />
+            ))}
+          </div>
+        )}
       </main>
 
       {modalMember && (
@@ -305,8 +419,7 @@ export default function FullReport({ eventId }) {
       )}
 
       {/* Inline Face ID reset confirmation — replaces window.confirm (broken on iOS PWA) */}
-      {confirmResetId && (() => {
-        const m = allEligible.find((r) => r.id === confirmResetId)
+      {confirmResetId && (() => {        const m = allEligible.find((r) => r.id === confirmResetId)
         const name = m ? [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id : confirmResetId
         return (
           <div
@@ -354,6 +467,66 @@ export default function FullReport({ eventId }) {
           </div>
         )
       })()}
+
+      {/* Absence reason modal */}
+      {absenceTarget && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            zIndex: 999, padding: '1rem',
+          }}
+          onClick={() => setAbsenceTarget(null)}
+        >
+          <div
+            style={{
+              background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: '1rem', padding: '1.5rem', width: '100%', maxWidth: '22rem',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ color: 'var(--text)', fontWeight: 600, margin: '0 0 0.25rem' }}>Absence Reason</p>
+            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: '0 0 1rem' }}>
+              {[absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id}
+            </p>
+            <textarea
+              value={absenceInput}
+              onChange={(e) => setAbsenceInput(e.target.value)}
+              placeholder='Enter absence reason…'
+              rows={3}
+              style={{
+                width: '100%', padding: '0.75rem', boxSizing: 'border-box',
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+                borderRadius: '0.5rem', color: 'var(--text)', fontSize: '0.875rem',
+                resize: 'vertical', marginBottom: '1rem',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setAbsenceTarget(null)}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
+                  background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)', cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveAbsenceNote}
+                disabled={absenceSaving || !absenceInput.trim()}
+                style={{
+                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  fontWeight: 600, cursor: 'pointer',
+                  opacity: (absenceSaving || !absenceInput.trim()) ? 0.5 : 1,
+                }}
+              >
+                {absenceSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -371,23 +544,43 @@ function Stat({ value, label, color = 'var(--text)' }) {
   )
 }
 
-function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, onResetFaceId }) {
+function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false }) {
   const { member, record } = entry
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
   const unit = member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
   return (
     <div
       className='p-3 flex items-center justify-between gap-3'
-      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? '#f87060' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
     >
       <div className='min-w-0'>
-        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
+        <div className='flex items-center gap-1.5'>
+          <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
+          {isRisky && (
+            <span
+              title='Device fingerprint shared with another member — possible proxy check-in'
+              className='text-[10px] font-bold px-1.5 py-0.5 leading-none'
+              style={{ background: 'rgba(248,112,96,0.15)', color: 'var(--coral)', border: '1px solid rgba(248,112,96,0.3)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
+            >
+              ⚠ Device shared
+            </span>
+          )}
+        </div>
         <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
       </div>
       <div className='text-right shrink-0 flex flex-col items-end gap-1'>
         {tab === 'defaulted' && (
           <>
             <Tag color='var(--amber)'>Pending</Tag>
+            {absenceNote && (
+              <span
+                className='text-[10px] max-w-[120px] truncate block mt-0.5'
+                style={{ color: 'var(--muted)' }}
+                title={absenceNote}
+              >
+                {absenceNote}
+              </span>
+            )}
             {canManage && (
               <button
                 onClick={onManual}
@@ -395,6 +588,15 @@ function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, o
                 style={{ background: 'transparent', color: 'var(--green)', border: '1.5px solid var(--green)', borderRadius: 'var(--radius-btn)' }}
               >
                 Manually Check In
+              </button>
+            )}
+            {onAddNote && (
+              <button
+                onClick={onAddNote}
+                className='text-xs px-3 py-1 cursor-pointer mt-1'
+                style={{ background: 'transparent', color: 'var(--purple)', border: '1.5px solid var(--purple)', borderRadius: 'var(--radius-btn)' }}
+              >
+                {absenceNote ? 'Edit Note' : 'Add Note'}
               </button>
             )}
           </>
@@ -433,6 +635,35 @@ function Tag({ children, color = 'var(--text)' }) {
     >
       {children}
     </span>
+  )
+}
+
+function TimelineEntry({ entry, isLast }: { entry: { record: any; member: any }; isLast: boolean }) {
+  const { record: r, member: m } = entry
+  const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
+  const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
+  const checkInTime = format(new Date(r.checked_in_at), 'HH:mm')
+  const checkOutTime = r.checked_out_at ? format(new Date(r.checked_out_at), 'HH:mm') : null
+  return (
+    <div
+      className='flex items-start gap-3 px-4 py-3'
+      style={{ borderBottom: isLast ? 'none' : '1px solid var(--border)' }}
+    >
+      <div className='flex flex-col items-end shrink-0' style={{ minWidth: 44 }}>
+        <span className='text-xs font-bold tabular-nums' style={{ color: 'var(--text)' }}>{checkInTime}</span>
+        {checkOutTime && (
+          <span className='text-[10px] tabular-nums mt-0.5' style={{ color: 'var(--muted)' }}>→ {checkOutTime}</span>
+        )}
+      </div>
+      <div className='flex-1 min-w-0'>
+        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
+        <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
+      </div>
+      <div className='flex flex-col items-end gap-1 shrink-0'>
+        <Tag>{r.method}</Tag>
+        {r.is_late && <Tag color='var(--amber)'>Late</Tag>}
+      </div>
+    </div>
   )
 }
 

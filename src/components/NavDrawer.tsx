@@ -114,12 +114,12 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
         <>
           <div
             onClick={() => setOpen(false)}
-            className='fixed inset-0 z-40'
-            style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)' }}
+            className='fixed inset-0'
+            style={{ background: 'rgba(0,0,0,0.55)', zIndex: 1040 }}
           />
           <aside
-            className='fixed top-0 bottom-0 left-0 z-50 w-72 max-w-[85vw] flex flex-col'
-            style={{ background: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: 'var(--shadow-2)' }}
+            className='fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] flex flex-col'
+            style={{ background: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: 'var(--shadow-2)', zIndex: 1050 }}
             role='dialog'
             aria-label='Navigation'
           >

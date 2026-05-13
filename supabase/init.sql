@@ -11,7 +11,7 @@
 --  What this sets up:
 --    • Tables: member_profiles, checkin_events, checkin_records,
 --              event_scope_members, checkin_attempts, checkin_devices,
---              face_match_claims
+--              face_match_claims, absence_notes, audit_log
 --    • Helpers: point_in_polygon, haversine_meters, point_in_event_geofence
 --    • RPCs:    create_checkin_event, reset_event_pin, record_pin_attempt,
 --              claim_device_for_event, claim_face_match,
@@ -203,6 +203,33 @@ create table if not exists public.face_match_claims (
 );
 
 
+-- ─── absence_notes (admin-recorded reasons for member absences) ──────────────
+create table if not exists public.absence_notes (
+  event_id    uuid        not null references public.checkin_events(id) on delete cascade,
+  member_id   text        not null,
+  reason      text        not null,
+  recorded_by text        not null,
+  recorded_at timestamptz not null default now(),
+  primary key (event_id, member_id)
+);
+
+
+-- ─── audit_log (append-only admin action trail) ──────────────────────────────
+create table if not exists public.audit_log (
+  id          bigserial    primary key,
+  action      text         not null,
+  actor_id    text         not null,
+  actor_name  text,
+  event_id    uuid         references public.checkin_events(id) on delete set null,
+  target_id   text,
+  target_name text,
+  details     jsonb,
+  created_at  timestamptz  not null default now()
+);
+
+create index if not exists audit_log_event_idx on public.audit_log(event_id, created_at desc);
+
+
 -- ─── RLS enabled with minimum-required policies ─────────────────────────────
 -- checkin_attempts, checkin_devices, face_match_claims have no policy
 -- (deny-all for direct access) — they are only written via security-definer RPCs.
@@ -214,11 +241,16 @@ alter table public.checkin_attempts  enable row level security;
 alter table public.checkin_devices   enable row level security;
 alter table public.face_match_claims enable row level security;
 alter table public.superadmins       enable row level security;
+alter table public.absence_notes     enable row level security;
+alter table public.audit_log         enable row level security;
 
 create policy "anon_all_member_profiles"       on public.member_profiles       for all to anon using (true) with check (true);
 create policy "anon_all_checkin_events"        on public.checkin_events        for all to anon using (true) with check (true);
 create policy "anon_all_checkin_records"       on public.checkin_records       for all to anon using (true) with check (true);
 create policy "anon_all_event_scope_members"   on public.event_scope_members   for all to anon using (true) with check (true);
+create policy "anon_all_absence_notes"         on public.absence_notes         for all to anon using (true) with check (true);
+create policy "anon_insert_audit_log"          on public.audit_log             for insert to anon with check (true);
+create policy "anon_read_audit_log"            on public.audit_log             for select to anon using (true);
 -- superadmins: no policy → deny-all for direct access (RPC is the only read path).
 
 
@@ -640,14 +672,19 @@ begin
   end if;
 
   -- 2. Status and time window
+  --    Check-in opens 1 hour before starts_at and closes at ends_at.
   if v_event.status = 'PAUSED' then
     return jsonb_build_object('ok', false, 'reason', 'event_paused');
   end if;
   if v_event.status = 'ENDED' then
     return jsonb_build_object('ok', false, 'reason', 'event_ended');
   end if;
-  if v_now < v_event.starts_at then
-    return jsonb_build_object('ok', false, 'reason', 'not_started');
+  if v_now < (v_event.starts_at - interval '1 hour') then
+    return jsonb_build_object(
+      'ok',         false,
+      'reason',     'not_started',
+      'opens_at',   (v_event.starts_at - interval '1 hour')
+    );
   end if;
   if v_now > v_event.ends_at then
     return jsonb_build_object('ok', false, 'reason', 'event_ended');
@@ -759,7 +796,8 @@ begin
     end if;
   end if;
 
-  -- 7. Late detection
+  -- 7. Late detection — relative to starts_at, not the early window.
+  --    Someone checking in before starts_at is never late.
   v_is_late := v_now > (v_event.starts_at + (v_event.grace_period_min * interval '1 minute'));
 
   -- 8. Insert record
@@ -822,12 +860,15 @@ grant select, insert, update, delete on
   public.member_profiles,
   public.checkin_events,
   public.checkin_records,
-  public.event_scope_members
+  public.event_scope_members,
+  public.absence_notes
   to anon;
+grant select, insert on public.audit_log to anon;
 -- checkin_attempts, checkin_devices, face_match_claims: no direct grant
 -- (security-definer RPCs run as postgres and bypass RLS/grants).
 
 grant usage, select on sequence public.checkin_attempts_id_seq to anon;
+grant usage, select on sequence public.audit_log_id_seq to anon;
 
 grant execute on function
   public.point_in_polygon(double precision, double precision, jsonb),

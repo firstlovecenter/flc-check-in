@@ -170,18 +170,24 @@ export default function CheckInFormScreen() {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading event…</p></CenterCard>
   }
 
-  // Time window check (event status + start/end)
+  // Time window check — client only blocks UI for events more than 1 hour
+  // before start. The server is the sole timing enforcer; these checks are
+  // display hints only so the user sees a meaningful message instead of
+  // a cryptic error when they tap 'Check In'.
   const now = Date.now()
-  const startsMs = new Date(event.starts_at).getTime()
-  const endsMs = new Date(event.ends_at).getTime()
+  const startsMs  = new Date(event.starts_at).getTime()
+  const endsMs    = new Date(event.ends_at).getTime()
+  const EARLY_MS  = 60 * 60 * 1000          // 1 hour — mirrors the server rule
   if (event.status === 'PAUSED') {
     return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--amber)' }}>Event paused</h2><p style={{ color: 'var(--muted)' }}>{event.name} is currently paused.</p></CenterCard>
   }
   if (event.status === 'ENDED' || now > endsMs) {
     return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--muted)' }}>Event ended</h2><p style={{ color: 'var(--muted)' }}>{event.name} has ended.</p></CenterCard>
   }
-  if (now < startsMs) {
-    return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--muted)' }}>Not started yet</h2><p style={{ color: 'var(--muted)' }}>{event.name} hasn't started.</p></CenterCard>
+  if (now < startsMs - EARLY_MS) {
+    const opensAt = new Date(startsMs - EARLY_MS)
+    const timeStr = opensAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--muted)' }}>Not open yet</h2><p style={{ color: 'var(--muted)' }}>Check-in for <strong>{event.name}</strong> opens at <strong>{timeStr}</strong> (1 hour before start).</p></CenterCard>
   }
 
   // ── Already checked in or checked out ────────────────────────────────────
@@ -407,7 +413,9 @@ function reasonText(result) {
     case 'pin_not_set':          return 'No PIN configured for this event.'
     case 'event_paused':         return 'This event is currently paused.'
     case 'event_ended':          return 'This event has ended.'
-    case 'not_started':          return "This event hasn't started yet."
+    case 'not_started':          return result.opens_at
+                                   ? `Check-in opens at ${new Date(result.opens_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+                                   : "Check-in hasn't opened yet."
     case 'method_not_allowed':   return 'This check-in method is not enabled for this event.'
     case 'event_not_active':     return `Event is ${result.status?.toLowerCase() || 'not active'}.`
     case 'event_not_found':      return 'Event not found.'

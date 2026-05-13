@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import {
-  pauseEvent, resumeEvent, endEvent, extendEvent, resetPin,
+  pauseEvent, resumeEvent, endEvent, extendEvent, resetPin, addAuditLog,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
+import { getCurrentUser } from '../../utils/auth'
 import type { CheckinEventRow } from '../../types/app'
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export default function CheckInAdminControls({ event, onChange }: Props) {
+  const admin = getCurrentUser()
+  const adminName = admin ? `${admin.firstName} ${admin.lastName}`.trim() : 'Admin'
   const [busy, setBusy]         = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   // Inline confirmation — stores the pending action id ('end' | 'pin').
@@ -18,12 +21,17 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
   // The newly generated PIN to display inline instead of alert().
   const [newPinDisplay, setNewPinDisplay] = useState<string | null>(null)
 
-  async function run(label: string, fn: () => Promise<CheckinEventRow>) {
+  async function run(
+    label: string,
+    fn: () => Promise<CheckinEventRow>,
+    onSuccess?: (updated: CheckinEventRow) => void,
+  ) {
     setBusy(label)
     setActionError(null)
     try {
       const updated = await fn()
       onChange?.(updated)
+      onSuccess?.(updated)
     } catch (err: any) {
       setActionError(err.message || 'Action failed')
     } finally {
@@ -33,7 +41,9 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
 
   async function handleExtend(minutes: number) {
     const newEnds = new Date(new Date(event.ends_at).getTime() + minutes * 60_000)
-    await run(`extend-${minutes}`, () => extendEvent(event.id, newEnds))
+    await run(`extend-${minutes}`, () => extendEvent(event.id, newEnds), () => {
+      addAuditLog({ action: 'event.extend', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { minutes } }).catch(() => {})
+    })
   }
 
   async function doResetPin() {
@@ -44,6 +54,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     try {
       await resetPin(event.id, pin)
       setNewPinDisplay(pin)
+      addAuditLog({ action: 'pin.reset', actorId: admin?.userId, actorName: adminName, eventId: event.id }).catch(() => {})
     } catch (err: any) {
       setActionError(err.message || 'Reset failed')
     } finally {
@@ -53,19 +64,25 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
 
   async function doEnd() {
     setConfirmAction(null)
-    await run('end', () => endEvent(event.id))
+    await run('end', () => endEvent(event.id), (updated) => {
+      addAuditLog({ action: 'event.end', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: updated.status } }).catch(() => {})
+    })
   }
 
   return (
     <div>
       <div className='flex flex-wrap gap-2'>
         {event.status === 'ACTIVE' && (
-          <Btn disabled={busy} onClick={() => run('pause', () => pauseEvent(event.id))}>
+          <Btn disabled={busy} onClick={() => run('pause', () => pauseEvent(event.id), (u) => {
+            addAuditLog({ action: 'event.pause', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: u.status } }).catch(() => {})
+          })}>
             {busy === 'pause' ? '…' : 'Pause'}
           </Btn>
         )}
         {event.status === 'PAUSED' && (
-          <Btn disabled={busy} onClick={() => run('resume', () => resumeEvent(event.id))}>
+          <Btn disabled={busy} onClick={() => run('resume', () => resumeEvent(event.id), (u) => {
+            addAuditLog({ action: 'event.resume', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: u.status } }).catch(() => {})
+          })}>
             {busy === 'resume' ? '…' : 'Resume'}
           </Btn>
         )}

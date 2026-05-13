@@ -5,8 +5,11 @@ import ScreenHeader from '../ScreenHeader'
 import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
+import { supabase } from '../../utils/supabase'
+import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
 
-const POLL_MS = 15_000
+// Records arrive via Realtime; poll only needs to refresh event status.
+const POLL_MS = 60_000
 
 export default function EventDashboard({ eventId }) {
   const navigate = useNavigate()
@@ -18,17 +21,49 @@ export default function EventDashboard({ eventId }) {
   const scopeChurchId   = searchParams.get('scopeChurchId')   || null
   const scopeChurchName = searchParams.get('scopeChurchName') || null
 
-  // Core eligibility data + 15s poll for event status + records.
+  // Core eligibility data + poll for event status.
+  // Records are refreshed instantly via Supabase Realtime (see effect below).
   // The expensive graph pipeline is SWR-cached; navigation back here is instant.
   const {
     event, eligible, eligibleIds, viewerCaps, viewerSlice,
-    childCount, records, error, initialLoading, setEvent,
+    childCount, records, error, initialLoading, setEvent, setRecords,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS })
+
+  // Supabase Realtime: push check-in record changes to the UI without waiting
+  // for the poll tick. Falls back to the 60 s poll if Realtime is unavailable.
+  useEffect(() => {
+    if (!eventId) return
+    const channel = supabase
+      .channel(`dashboard:${eventId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'checkin_records', filter: `event_id=eq.${eventId}` },
+        async () => {
+          try {
+            const recs = await listCheckedIn(eventId)
+            setRecords(recs)
+          } catch { /* swallow; poll covers it */ }
+        },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [eventId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
   const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)
   // Child count for non-admin leaders viewing their own scope (no URL params).
   const [viewerScopeChildCount, setViewerScopeChildCount] = useState<number | null>(null)
+  // Risk flags — count of members whose device fingerprint was shared.
+  const [riskyCount, setRiskyCount] = useState(0)
+
+  // Refresh risk count whenever records change (admin only).
+  useEffect(() => {
+    if (!eventId || !viewerCaps?.canManage || records.length === 0) return
+    getRiskyCheckIns(eventId)
+      .then((s) => setRiskyCount(s.size))
+      .catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, records.length, viewerCaps?.canManage])
 
   useEffect(() => {
     if (!scopeLevel || !scopeChurchId) return
@@ -215,9 +250,24 @@ export default function EventDashboard({ eventId }) {
             <StatCard value={stats.checkedOut} label='Checked Out'    color='var(--amber)' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
             <StatCard value={stats.total}      label='Total Expected' color='var(--text)'  to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
           </div>
+          {viewerCaps.canManage && riskyCount > 0 && (
+            <Link
+              to={`/events/${event.id}/report?tab=checked-in`}
+              className='flex items-center gap-2 mt-3 px-3 py-2 text-sm no-underline'
+              style={{
+                background: 'rgba(248,112,96,0.08)',
+                border: '1px solid rgba(248,112,96,0.25)',
+                borderRadius: 'var(--radius-btn)',
+                color: 'var(--coral)',
+              }}
+            >
+              <span>⚠</span>
+              <span>{riskyCount} member{riskyCount > 1 ? 's' : ''} flagged for shared device — possible proxy check-in</span>
+            </Link>
+          )}
         </div>
 
-        {/* Attendance % + full report */}
+        {/* Attendance % + full report + audit log */}
         <div className='flex items-center gap-3 mt-auto pt-1'>
           <div
             className='flex-1 py-3 text-center'
@@ -239,6 +289,23 @@ export default function EventDashboard({ eventId }) {
           >
             View Full Report
           </Link>
+          {viewerCaps.canManage && (
+            <Link
+              to={`/events/${event.id}/audit`}
+              className='py-3 px-3 text-center text-sm font-semibold'
+              style={{
+                background: 'transparent',
+                color: 'var(--muted)',
+                border: '1.5px solid var(--border)',
+                borderRadius: 'var(--radius-btn)',
+                textDecoration: 'none',
+                letterSpacing: '-0.01em',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Audit Log
+            </Link>
+          )}
         </div>
 
       </main>

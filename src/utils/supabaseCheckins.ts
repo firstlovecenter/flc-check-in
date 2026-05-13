@@ -218,17 +218,21 @@ export async function getEvent(eventId) {
 }
 
 /** Active events (status=ACTIVE, within time window) — all events, no
- *  location filtering. Used for listing on the leader home screen. */
+ *  location filtering. Used for listing on the leader home screen.
+ *  Includes events starting within the next hour so members can check in
+ *  during the pre-event window. */
 export async function listActiveEvents() {
   if (_activeEventsCache && Date.now() - _activeEventsCache.ts < EVENTS_LIST_TTL) {
     return _activeEventsCache.data
   }
-  const nowIso = new Date().toISOString()
+  const nowIso          = new Date().toISOString()
+  // Show events whose check-in window has opened (starts_at ≤ now + 1 hour)
+  const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('checkin_events')
     .select('*')
     .eq('status', 'ACTIVE')
-    .lte('starts_at', nowIso)
+    .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
   if (error) throw error
@@ -258,14 +262,16 @@ export async function listRecentPastEvents({ daysBack = 30 } = {}) {
 }
 
 /** Active events filtered to the caller's GPS position (geofence check).
- *  Used by the QR display screen at the venue. */
+ *  Used by the QR display screen at the venue.
+ *  Includes events starting within the next hour. */
 export async function listActiveEventsAtLocation(lat, lng) {
-  const nowIso = new Date().toISOString()
+  const nowIso          = new Date().toISOString()
+  const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('checkin_events')
     .select('*')
     .eq('status', 'ACTIVE')
-    .lte('starts_at', nowIso)
+    .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
   if (error) throw error
   return (data || [])
@@ -603,7 +609,149 @@ export async function selfCheckOut(recordId) {
   if (error) throw error
 }
 
+// ─── Attendance Stats ─────────────────────────────────────────────────────────
+
+/** Returns aggregate attendance statistics for a member across all events they
+ *  were in scope for.  Pass the graph member ID (same value stored in
+ *  event_scope_members.member_id and member_profiles.id). */
+export async function getAttendanceStats(graphMemberId: string): Promise<{
+  scopedCount: number
+  attendedCount: number
+  lateCount: number
+  onTimeCount: number
+  pct: number | null
+  lastCheckIn: string | null
+} | null> {
+  if (!graphMemberId) return null
+  const [scopeRes, recordRes] = await Promise.all([
+    supabase
+      .from('event_scope_members')
+      .select('event_id')
+      .eq('member_id', graphMemberId),
+    supabase
+      .from('checkin_records')
+      .select('event_id, checked_in_at, is_late')
+      .eq('member_id', graphMemberId)
+      .order('checked_in_at', { ascending: false }),
+  ])
+  if (scopeRes.error) throw scopeRes.error
+  if (recordRes.error) throw recordRes.error
+
+  const scopedCount   = (scopeRes.data  || []).length
+  const records       = (recordRes.data || [])
+  const attendedCount = records.length
+  const lateCount     = records.filter((r) => r.is_late).length
+
+  return {
+    scopedCount,
+    attendedCount,
+    lateCount,
+    onTimeCount: attendedCount - lateCount,
+    pct: scopedCount > 0 ? Math.round((attendedCount / scopedCount) * 100) : null,
+    lastCheckIn: records[0]?.checked_in_at || null,
+  }
+}
+
+// ─── Absence Notes ────────────────────────────────────────────────────────────
+// Admins record reasons for members who defaulted on an event.
+
+/** Upsert an absence note for a (event, member) pair. Overwrites on conflict. */
+export async function upsertAbsenceNote(
+  eventId: string,
+  memberId: string,
+  reason: string,
+  recordedBy: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('absence_notes')
+    .upsert(
+      { event_id: eventId, member_id: memberId, reason, recorded_by: recordedBy, recorded_at: new Date().toISOString() },
+      { onConflict: 'event_id,member_id' },
+    )
+  if (error) throw error
+}
+
+/** Returns a map from member_id → reason for all absence notes on an event. */
+export async function listAbsenceNotesForEvent(eventId: string): Promise<Map<string, string>> {
+  if (!eventId) return new Map()
+  const { data, error } = await supabase
+    .from('absence_notes')
+    .select('member_id, reason')
+    .eq('event_id', eventId)
+  if (error) throw error
+  return new Map((data || []).map((r) => [r.member_id, r.reason]))
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+// Fire-and-forget append-only trail for admin actions. Never throws — a
+// failed audit write must never break the user action that triggered it.
+
+export async function addAuditLog(entry: {
+  action: string
+  actorId: string
+  actorName?: string
+  eventId?: string
+  targetId?: string
+  targetName?: string
+  details?: Record<string, any>
+}): Promise<void> {
+  const { error } = await supabase.from('audit_log').insert({
+    action:      entry.action,
+    actor_id:    entry.actorId,
+    actor_name:  entry.actorName  || null,
+    event_id:    entry.eventId    || null,
+    target_id:   entry.targetId   || null,
+    target_name: entry.targetName || null,
+    details:     entry.details    || null,
+  })
+  if (error) console.warn('[audit_log] write failed:', error.message)
+}
+
+/** Fetch the 100 most-recent audit entries for an event (newest first). */
+export async function listAuditLogForEvent(eventId: string): Promise<any[]> {
+  if (!eventId) return []
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  return data || []
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
+
+// ─── Risk Flags ────────────────────────────────────────────────────────────
+/**
+ * Returns a Set of member_ids whose device_fingerprint was shared with at
+ * least one other member in the same event (excluding MANUAL check-ins since
+ * those all originate from the admin's device by definition).
+ */
+export async function getRiskyCheckIns(eventId: string): Promise<Set<string>> {
+  if (!eventId) return new Set()
+  const { data, error } = await supabase
+    .from('checkin_records')
+    .select('member_id, device_fingerprint, method')
+    .eq('event_id', eventId)
+  if (error) throw error
+  if (!data || data.length === 0) return new Set()
+
+  // Group by fingerprint, ignoring MANUAL and blank fingerprints.
+  const fpMap = new Map<string, string[]>()
+  for (const row of data) {
+    if (!row.device_fingerprint || row.method === 'MANUAL') continue
+    const existing = fpMap.get(row.device_fingerprint) ?? []
+    existing.push(row.member_id)
+    fpMap.set(row.device_fingerprint, existing)
+  }
+
+  const risky = new Set<string>()
+  for (const members of fpMap.values()) {
+    if (members.length > 1) members.forEach((m) => risky.add(m))
+  }
+  return risky
+}
 
 function toIso(v) {
   if (!v) return v
