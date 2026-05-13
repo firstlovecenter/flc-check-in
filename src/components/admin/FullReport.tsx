@@ -5,14 +5,13 @@ import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
 import {
-  getEvent, listCheckedIn, bulkUpsertMemberProfiles, adminClearFaceDescriptor,
+  listCheckedIn, adminClearFaceDescriptor,
 } from '../../utils/supabaseCheckins'
 import {
-  getMembersInScope, memberToProfileRow,
-  resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
-  childScopeLevel, getAdminScopes, adminCoversMember,
+  childScopeLevel, adminCoversMember,
 } from '../../utils/membersApi'
 import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
+import { useEventEligibility } from '../../hooks/useEventEligibility'
 
 const TABS = [
   { id: 'checked-in', label: 'Checked In' },
@@ -30,19 +29,25 @@ export default function FullReport({ eventId }) {
   const urlChurchId   = params.get('churchId')   || null
   const urlChurchName = params.get('churchName') || null
 
-  const [event, setEvent] = useState(null)
-  const [allEligible, setAllEligible] = useState([])  // full event-scope eligible members
-  const [viewerCaps, setViewerCaps] = useState(null)
-  const [adminScopes, setAdminScopes] = useState([])  // viewer's adminFor* scopes
-  const [records, setRecords] = useState([])
-  const [search, setSearch] = useState('')
-  const [error, setError] = useState(null)
-  const [modalMember, setModalMember] = useState(null)
-  const [resetting, setResetting] = useState<string | null>(null)  // memberId currently being reset
+  // Core eligibility + records — SWR-cached so page is instant on revisit.
+  const {
+    event, eligible: allEligible, viewerCaps, adminScopes, records,
+    error: eligibilityError, initialLoading, setRecords,
+  } = useEventEligibility(eventId, user)
+
+  const [search, setSearch]             = useState('')
+  const [error, setError]               = useState<string | null>(null)
+  const [modalMember, setModalMember]   = useState(null)
+  const [resetting, setResetting]       = useState<string | null>(null)
+  // Inline confirmation state for Face ID reset (replaces window.confirm).
+  const [confirmResetId, setConfirmResetId] = useState<string | null>(null)
+
+  // Merge hook error with local errors.
+  const displayError = error || eligibilityError
 
   // Scope filter state (level + child-church selector)
-  const [filterLevel, setFilterLevel]   = useState<string | null>(urlLevel)
-  const [filterChurchId, setFilterChurchId] = useState<string | null>(urlChurchId)
+  const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
+  const [filterChurchId,   setFilterChurchId]   = useState<string | null>(urlChurchId)
   const [filterChurchName, setFilterChurchName] = useState<string | null>(urlChurchName)
 
   // Available child-scope options for the filter dropdown
@@ -65,41 +70,12 @@ export default function FullReport({ eventId }) {
 
   async function refresh() {
     try {
-      const evt = await getEvent(eventId)
-      setEvent(evt)
-
-      const [viewer, ancestors, eventScopeMembers, recs] = await Promise.all([
-        resolveCurrentMember(user),
-        getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }),
-        getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id }),
-        listCheckedIn(eventId),
-      ])
-      const allRows = eventScopeMembers.map(memberToProfileRow)
-      await bulkUpsertMemberProfiles(allRows)
-      const allowed = new Set(evt.allowed_roles || [])
-      const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
-      const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
-
-      const caps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
-      setViewerCaps(caps)
-      setAdminScopes(getAdminScopes(viewer))
-
-      let sliceRows = eligibleRows
-      if (!caps.canManage && caps.viewerScope) {
-        const sliceMembers = await getMembersInScope({
-          level: caps.viewerScope.level, churchId: caps.viewerScope.id,
-        })
-        const sliceIds = new Set(sliceMembers.map((m) => m.id))
-        sliceRows = eligibleRows.filter((r) => sliceIds.has(r.id))
-      }
-      setAllEligible(sliceRows)
+      const recs = await listCheckedIn(eventId)
       setRecords(recs)
     } catch (err: any) {
       setError(err.message)
     }
   }
-
-  useEffect(() => { refresh() }, [eventId])
 
   // Apply scope filter on top of allEligible
   const eligible = useMemo(() => {
@@ -135,12 +111,16 @@ export default function FullReport({ eventId }) {
     setParams((p) => { p.set('tab', id); return p }, { replace: true })
   }
 
-  async function handleResetFaceId(member) {
-    const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
-    if (!window.confirm(`Reset Face ID for ${name}? They will be prompted to re-enrol on their next login.`)) return
-    setResetting(member.id)
+  function handleResetFaceId(member) {
+    // Show inline confirmation instead of window.confirm (broken on iOS PWA).
+    setConfirmResetId(member.id)
+  }
+
+  async function confirmResetFaceId(memberId: string) {
+    setConfirmResetId(null)
+    setResetting(memberId)
     try {
-      await adminClearFaceDescriptor(member.id)
+      await adminClearFaceDescriptor(memberId)
     } catch (err: any) {
       setError(err.message || 'Could not reset Face ID')
     } finally {
@@ -166,8 +146,8 @@ export default function FullReport({ eventId }) {
     URL.revokeObjectURL(url)
   }
 
-  if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
-  if (!event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
+  if (displayError) return <CenterCard><p style={{ color: 'var(--coral)' }}>{displayError}</p></CenterCard>
+  if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
@@ -323,6 +303,57 @@ export default function FullReport({ eventId }) {
           onSuccess={() => { setModalMember(null); refresh() }}
         />
       )}
+
+      {/* Inline Face ID reset confirmation — replaces window.confirm (broken on iOS PWA) */}
+      {confirmResetId && (() => {
+        const m = allEligible.find((r) => r.id === confirmResetId)
+        const name = m ? [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id : confirmResetId
+        return (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+              zIndex: 999, padding: '1rem',
+            }}
+            onClick={() => setConfirmResetId(null)}
+          >
+            <div
+              style={{
+                background: 'var(--card)', border: '1px solid var(--border)',
+                borderRadius: '1rem', padding: '1.5rem', width: '100%', maxWidth: '22rem',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p style={{ color: 'var(--text)', marginBottom: '0.5rem', fontWeight: 600 }}>
+                Reset Face ID for {name}?
+              </p>
+              <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
+                They will be prompted to re-enrol on their next login.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={() => setConfirmResetId(null)}
+                  style={{
+                    flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
+                    background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => confirmResetFaceId(confirmResetId)}
+                  style={{
+                    flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
+                    background: 'var(--coral)', color: '#fff', border: 'none', fontWeight: 600,
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

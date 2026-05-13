@@ -2,15 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { formatDistanceToNowStrict } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
-import {
-  getEvent, listCheckedIn, bulkUpsertMemberProfiles,
-} from '../../utils/supabaseCheckins'
-import {
-  getMembersInScope, memberToProfileRow,
-  resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
-  countChildScopes, childScopeLabel,
-} from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
+import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
+import { useEventEligibility } from '../../hooks/useEventEligibility'
 
 const POLL_MS = 15_000
 
@@ -24,85 +18,18 @@ export default function EventDashboard({ eventId }) {
   const scopeChurchId   = searchParams.get('scopeChurchId')   || null
   const scopeChurchName = searchParams.get('scopeChurchName') || null
 
-  const [event, setEvent] = useState(null)
-  const [eligible, setEligible] = useState([])
-  const [eligibleIds, setEligibleIds] = useState(new Set())
-  const [viewerSlice, setViewerSlice] = useState([])
-  const [viewerCaps, setViewerCaps] = useState(null)
-  const [records, setRecords] = useState([])
-  const [error, setError] = useState(null)
-  const [childCount, setChildCount] = useState(null)
+  // Core eligibility data + 15s poll for event status + records.
+  // The expensive graph pipeline is SWR-cached; navigation back here is instant.
+  const {
+    event, eligible, eligibleIds, viewerCaps, viewerSlice,
+    childCount, records, error, initialLoading, setEvent,
+  } = useEventEligibility(eventId, user, { pollMs: POLL_MS })
+
+  // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
   const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)
+  // Child count for non-admin leaders viewing their own scope (no URL params).
   const [viewerScopeChildCount, setViewerScopeChildCount] = useState<number | null>(null)
 
-  // Initial load
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const evt = await getEvent(eventId)
-        if (cancelled) return
-        setEvent(evt)
-
-        const [viewer, ancestors, eventScopeMembers, childTotal] = await Promise.all([
-          resolveCurrentMember(user),
-          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }),
-          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id }),
-          countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
-        ])
-        if (cancelled) return
-
-        const allRows = eventScopeMembers.map(memberToProfileRow)
-        await bulkUpsertMemberProfiles(allRows)
-        const allowed = new Set(evt.allowed_roles || [])
-        const eligibleRows = allRows.filter((r) => (r.roles || []).some((role) => allowed.has(role)))
-        const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
-        if (cancelled) return
-        setEligible(eligibleRows)
-        setEligibleIds(eligibleIdSet)
-        setChildCount(childTotal)
-
-        const caps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
-        if (cancelled) return
-        setViewerCaps(caps)
-
-        if (caps.canManage) {
-          setViewerSlice(eligibleRows)
-        } else if (caps.viewerScope) {
-          const sliceMembers = await getMembersInScope({
-            level: caps.viewerScope.level, churchId: caps.viewerScope.id,
-          })
-          if (cancelled) return
-          const sliceIds = new Set(sliceMembers.map((m) => m.id))
-          setViewerSlice(eligibleRows.filter((r) => sliceIds.has(r.id)))
-        } else {
-          setViewerSlice([])
-        }
-      } catch (err: any) {
-        if (!cancelled) setError(err.message)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [eventId, user.userId, user.email]) // eslint-disable-line
-
-  // Poll records + event
-  useEffect(() => {
-    if (!event) return
-    let cancelled = false
-    async function tick() {
-      try {
-        const [recs, evt] = await Promise.all([listCheckedIn(eventId), getEvent(eventId)])
-        if (!cancelled) { setRecords(recs); setEvent(evt) }
-      } catch (err: any) {
-        if (!cancelled) setError(err.message)
-      }
-    }
-    tick()
-    const id = setInterval(tick, POLL_MS)
-    return () => { cancelled = true; clearInterval(id) }
-  }, [eventId, event?.id]) // eslint-disable-line
-
-  // Load child count for the scoped church (separate from the event-root child count).
   useEffect(() => {
     if (!scopeLevel || !scopeChurchId) return
     let cancelled = false
@@ -110,9 +37,8 @@ export default function EventDashboard({ eventId }) {
       .then((n) => { if (!cancelled) setScopedChildCount(n) })
       .catch(() => { if (!cancelled) setScopedChildCount(null) })
     return () => { cancelled = true }
-  }, [scopeLevel, scopeChurchId]) // eslint-disable-line
+  }, [scopeLevel, scopeChurchId])
 
-  // For non-admin leaders: load child count for their own scope (no URL scope params).
   useEffect(() => {
     if (!viewerCaps || viewerCaps.canManage || !viewerCaps.viewerScope || scopeLevel) return
     let cancelled = false
@@ -152,7 +78,7 @@ export default function EventDashboard({ eventId }) {
   }, [records, viewerCaps?.canCheckIn, user.userId])
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
-  if (!event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
+  if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
     return (

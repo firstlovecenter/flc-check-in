@@ -10,17 +10,9 @@ export function decodeJWT(token) {
   try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
 }
 
-// FLC scope hierarchy, lowest to highest. Used for picking the highest
-// level when a user holds multiple roles, and for ordering scopes.
-export const SCOPE_LEVELS = [
-  'bacenta',
-  'governorship',
-  'council',
-  'stream',
-  'campus',
-  'oversight',
-  'denomination',
-]
+// FLC scope hierarchy — single source of truth lives in types/app.ts.
+// Re-exported here so existing imports of `{ SCOPE_LEVELS }` from auth keep working.
+export { SCOPE_LEVELS } from '../types/app'
 
 export function getLevelFromRoles(roles = []) {
   const r = roles.map((x) => x.toLowerCase())

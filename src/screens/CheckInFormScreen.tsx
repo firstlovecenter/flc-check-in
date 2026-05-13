@@ -18,6 +18,10 @@ export default function CheckInFormScreen() {
   const { eventId } = useParams()
   const user = getCurrentUser()
 
+  // RequireAuth handles the redirect, but guard here to avoid a crash
+  // during the brief gap when the token has just expired.
+  if (!user) return null
+
   const [event, setEvent] = useState(null)
   const [existingRecord, setExistingRecord] = useState<any>(undefined) // undefined = not yet loaded
   const [error, setError] = useState(null)
@@ -65,6 +69,27 @@ export default function CheckInFormScreen() {
     const updated = await getMyRecord(eventId, user.userId)
     setExistingRecord(updated)
   }, [eventId, user.userId])
+
+  // Stable checkout handler — defined at component level so it always captures
+  // the current success/existingRecord via closure without creating a new
+  // function on every render (preventing the duplicate-RPC race condition).
+  const handleCheckOut = useCallback(async () => {
+    if (submitting) return
+    const recordId = (success as any)?.id || (existingRecord as any)?.id
+    if (!recordId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await selfCheckOut(recordId)
+      const updated = await getMyRecord(eventId, user.userId)
+      setExistingRecord(updated)
+      setSuccess(null)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }, [submitting, success, existingRecord, eventId, user.userId])
 
   const handleQR = useCallback(async (token, position) => {
     if (submitting) return
@@ -167,23 +192,6 @@ export default function CheckInFormScreen() {
 
   if (activeRecord) {
     const checkedOut = !!activeRecord.checked_out_at
-
-    async function handleCheckOut() {
-      if (submitting) return
-      setSubmitting(true)
-      setError(null)
-      try {
-        await selfCheckOut(activeRecord.id)
-        // Refresh record so UI updates
-        const updated = await getMyRecord(eventId, user.userId)
-        setExistingRecord(updated)
-        if (success) setSuccess(null) // clear just-submitted state
-      } catch (err: any) {
-        setError(err.message)
-      } finally {
-        setSubmitting(false)
-      }
-    }
 
     return (
       <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>

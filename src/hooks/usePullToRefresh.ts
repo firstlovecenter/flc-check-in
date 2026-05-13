@@ -14,6 +14,11 @@ export function usePullToRefresh({ onRefresh, scrollRef }: Options) {
   const [refreshing, setRefreshing] = useState(false)
   const startY = useRef<number | null>(null)
   const pulling = useRef(false)
+  // Track pull distance in a ref so event-handler closures always read the
+  // current value without needing to re-register on every setState tick.
+  const pullDistanceRef = useRef(0)
+  const onRefreshRef = useRef(onRefresh)
+  useEffect(() => { onRefreshRef.current = onRefresh }, [onRefresh])
 
   useEffect(() => {
     function getScrollTop() {
@@ -30,9 +35,14 @@ export function usePullToRefresh({ onRefresh, scrollRef }: Options) {
       if (!pulling.current || startY.current === null) return
       if (getScrollTop() > 0) { pulling.current = false; return }
       const delta = e.touches[0].clientY - startY.current
-      if (delta <= 0) { setPullDistance(0); return }
+      if (delta <= 0) {
+        pullDistanceRef.current = 0
+        setPullDistance(0)
+        return
+      }
       // Rubber-band damping
       const clamped = Math.min(MAX_PULL, delta * 0.5)
+      pullDistanceRef.current = clamped
       setPullDistance(clamped)
       if (clamped > 0) e.preventDefault()
     }
@@ -40,11 +50,12 @@ export function usePullToRefresh({ onRefresh, scrollRef }: Options) {
     function onTouchEnd() {
       if (!pulling.current) return
       pulling.current = false
-      if (pullDistance >= TRIGGER_DISTANCE) {
+      if (pullDistanceRef.current >= TRIGGER_DISTANCE) {
         setRefreshing(true)
-        onRefresh()
+        onRefreshRef.current()
         setTimeout(() => setRefreshing(false), 1000)
       }
+      pullDistanceRef.current = 0
       setPullDistance(0)
       startY.current = null
     }
@@ -59,7 +70,9 @@ export function usePullToRefresh({ onRefresh, scrollRef }: Options) {
       target.removeEventListener('touchmove', onTouchMove as EventListener)
       target.removeEventListener('touchend', onTouchEnd as EventListener)
     }
-  }, [onRefresh, pullDistance, scrollRef])
+  // Only re-register listeners when the scroll target changes — NOT on every
+  // pullDistance state update, which was causing stale closures.
+  }, [scrollRef]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return { pullDistance, refreshing }
 }

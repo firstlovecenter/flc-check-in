@@ -26,14 +26,33 @@ function graphqlEndpoint() {
   return '/flc-graphql'
 }
 
-function client() {
-  // Bearer header is optional today — uncomment if the endpoint starts
-  // requiring it.
-  // const token = localStorage.getItem('accessToken')
-  return new GraphQLClient(graphqlEndpoint(), {
-    // headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+// Singleton GraphQL client — avoid creating a new instance on every call.
+let _client: GraphQLClient | null = null
+function client(): GraphQLClient {
+  if (!_client) {
+    _client = new GraphQLClient(graphqlEndpoint(), {
+      // headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+  }
+  return _client
 }
+
+// ─── Module-level caches ──────────────────────────────────────────────────
+// All graph queries are idempotent reads over data that changes at most a
+// few times a day. Caching them here means subsequent page opens are instant
+// (served from memory) and parallel callers (EventDashboard + FullReport
+// opening simultaneously) never fire duplicate network requests.
+
+const SCOPE_MEMBERS_TTL = 5 * 60 * 1000   // 5 min
+const ANCESTORS_TTL     = 10 * 60 * 1000  // 10 min (hierarchy almost never changes)
+
+// getMembersInScope cache
+interface ScopeMembersEntry { data: any[]; ts: number }
+const scopeMembersCache   = new Map<string, ScopeMembersEntry>()
+const scopeMembersPending = new Map<string, Promise<any[]>>()
+
+// resolveCurrentMember in-flight dedup (positive hits stay in memberByUserCache)
+const memberByUserPending = new Map<string, Promise<any>>()
 
 // ─── Convert a Member node into the shape we cache in member_profiles ──────
 // Picks the church the member LEADS or ADMINS at each level, falling back to
@@ -134,41 +153,82 @@ export async function getMemberByEmail(email) {
 // Cached per-session so we don't re-query the graph on every screen.
 // Only positive hits are cached — null results retry on the next call so a
 // transient network failure doesn't poison the session.
+//
+// In-flight dedup: if EventDashboard and FullReport both mount at the same
+// time and both call resolveCurrentMember(user), only one GraphQL round-trip
+// is made; the second caller awaits the same Promise.
 const memberByUserCache = new Map()
 export async function resolveCurrentMember(user) {
   if (!user) return null
   const cacheKey = user.userId || user.email
-  if (cacheKey && memberByUserCache.has(cacheKey)) return memberByUserCache.get(cacheKey)
-  let member = null
-  if (user.userId) {
-    try {
-      member = await getMemberById(user.userId)
-    } catch (err: any) {
-      console.warn('[resolveCurrentMember] getMemberById failed:', err.message)
+  if (!cacheKey) return null
+  if (memberByUserCache.has(cacheKey)) return memberByUserCache.get(cacheKey)
+  // Return the in-flight promise if one already exists for this key.
+  if (memberByUserPending.has(cacheKey)) return memberByUserPending.get(cacheKey)
+
+  const p = (async () => {
+    let member = null
+    if (user.userId) {
+      try {
+        member = await getMemberById(user.userId)
+      } catch (err: any) {
+        console.warn('[resolveCurrentMember] getMemberById failed:', err.message)
+      }
     }
-  }
-  if (!member && user.email) {
-    try {
-      member = await getMemberByEmail(user.email)
-    } catch (err: any) {
-      console.warn('[resolveCurrentMember] getMemberByEmail failed:', err.message)
+    if (!member && user.email) {
+      try {
+        member = await getMemberByEmail(user.email)
+      } catch (err: any) {
+        console.warn('[resolveCurrentMember] getMemberByEmail failed:', err.message)
+      }
     }
-  }
-  if (cacheKey && member) memberByUserCache.set(cacheKey, member)
-  return member
+    return member
+  })().then((member) => {
+    memberByUserPending.delete(cacheKey)
+    if (member) memberByUserCache.set(cacheKey, member)  // only cache hits
+    return member
+  }).catch((err) => {
+    memberByUserPending.delete(cacheKey)
+    throw err
+  })
+
+  memberByUserPending.set(cacheKey, p)
+  return p
 }
 
 // ─── getMembersInScope({ level, churchId }) ─────────────────────────────────
 // Returns every leader/admin within the given scope's hierarchy, including
 // the scope itself.
-export async function getMembersInScope({ level, churchId }) {
+//
+// Results are cached for SCOPE_MEMBERS_TTL and in-flight requests are
+// deduplicated, so opening EventDashboard + FullReport simultaneously (or
+// navigating back to a dashboard you've visited recently) costs zero extra
+// graph round-trips.
+export async function getMembersInScope({ level, churchId }): Promise<any[]> {
   if (!SCOPE_LEVELS.includes(level)) {
     throw new Error(`Unknown scope level: ${level}`)
   }
+  const key = `${level}:${churchId}`
+  const hit = scopeMembersCache.get(key)
+  if (hit && Date.now() - hit.ts < SCOPE_MEMBERS_TTL) return hit.data
+  if (scopeMembersPending.has(key)) return scopeMembersPending.get(key)!
+
   const query = SCOPE_QUERIES[level]
   if (!query) throw new Error(`No scope query for level: ${level}`)
-  const data = await client().request(query, { churchId })
-  return data?.members || []
+
+  const p = client().request(query, { churchId })
+    .then((data: any) => {
+      const result: any[] = data?.members || []
+      scopeMembersCache.set(key, { data: result, ts: Date.now() })
+      scopeMembersPending.delete(key)
+      return result
+    })
+    .catch((err) => {
+      scopeMembersPending.delete(key)
+      throw err
+    })
+  scopeMembersPending.set(key, p)
+  return p
 }
 
 // ─── getAdminScopes(member) ────────────────────────────────────────────────
@@ -257,15 +317,17 @@ export function allowedRolesForScope(scopeLevel) {
 // For a Bacenta you'd get back: [denomination, oversight, campus, stream,
 // council, governorship, bacenta] (whichever exist).
 //
-// Cached in-memory by `${level}:${id}` since hierarchy doesn't change often.
-const ancestorCache = new Map()
+// Cached in-memory by `${level}:${id}` for ANCESTORS_TTL — the church
+// hierarchy almost never changes within a session.
+const ancestorCache = new Map<string, { data: any[]; ts: number }>()
 export async function getChurchAncestors({ level, id }) {
   const key = `${level}:${id}`
-  if (ancestorCache.has(key)) return ancestorCache.get(key)
+  const hit = ancestorCache.get(key)
+  if (hit && Date.now() - hit.ts < ANCESTORS_TTL) return hit.data
 
   if (level === 'denomination') {
     const result = [{ level, id, name: 'Denomination' }]
-    ancestorCache.set(key, result)
+    ancestorCache.set(key, { data: result, ts: Date.now() })
     return result
   }
   const query = ANCESTOR_QUERIES[level]
@@ -277,7 +339,7 @@ export async function getChurchAncestors({ level, id }) {
   const node = data?.[fieldName]?.[0]
   if (!node) {
     const result = [{ level, id, name: '?' }]
-    ancestorCache.set(key, result)
+    ancestorCache.set(key, { data: result, ts: Date.now() })
     return result
   }
 
@@ -295,7 +357,7 @@ export async function getChurchAncestors({ level, id }) {
   }
   // Highest first (denomination → bacenta).
   chain.reverse()
-  ancestorCache.set(key, chain)
+  ancestorCache.set(key, { data: chain, ts: Date.now() })
   return chain
 }
 

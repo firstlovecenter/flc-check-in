@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon-192x192.png', 'icon-512x512.png', 'flc-logo.webp'],
+        includeAssets: ['icon-192x192.png', 'icon-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
         manifest: {
           name: 'FLC Check-In',
           short_name: 'FLC Check-In',
