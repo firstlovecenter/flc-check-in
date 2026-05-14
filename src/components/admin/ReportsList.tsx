@@ -6,7 +6,7 @@ import {
   listEventsForAdminScopes, listCheckedIn, getEvent, bulkUpsertMemberProfiles,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
-import { resolveCurrentMember, getAdminScopes, getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
+import { getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
 
 export default function ReportsList() {
   const user = getCurrentUser()
@@ -18,9 +18,10 @@ export default function ReportsList() {
     let cancelled = false
     ;(async () => {
       try {
-        const member = await resolveCurrentMember(user)
-        if (cancelled) return
-        const scopes = getAdminScopes(member)
+        // Derive scope from user.level — consistent with the home screen filter.
+        const ownLevel = user.level
+        const ownId    = ownLevel ? (user as any)[ownLevel]?.id : null
+        const scopes   = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
         const evs = await listEventsForAdminScopes(scopes)
         if (!cancelled) setEvents(evs)
       } catch (err: any) {

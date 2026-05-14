@@ -14,28 +14,22 @@ const EVENTS_LIST_TTL = 30 * 1000  // 30 s
 const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
 
-// Build a PostgREST compound-OR filter that restricts events to those whose
-// scope church is anywhere in the user's own church hierarchy.
-// e.g. a bacenta leader sees bacenta-scoped events for their bacenta AND
-// governorship-scoped events for their governorship, etc.
-// Returns null for superAdmins (they manage across the whole org).
+// Sentinel returned when a non-superadmin has no resolvable church ID.
+// Listing functions short-circuit to [] when they see this value.
+const _NO_SCOPE = '__no_scope__'
+
+// Build a PostgREST filter that restricts events to those scoped exactly
+// to the calling user's own church unit.
+// SuperAdmins bypass the filter and see all events (returns null).
+// Anyone without a resolvable church ID at their level returns _NO_SCOPE
+// (listing functions return [] early — no DB query made).
 function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
-  const LEVELS = [
-    'bacenta', 'governorship', 'council',
-    'stream', 'campus', 'oversight', 'denomination',
-  ] as const
-  // Only show events whose scope is at or above the user's own level.
-  // This prevents higher-scope admins from seeing lower-scope events
-  // they have no direct responsibility for.
-  const userLevelIdx = user.level ? LEVELS.indexOf(user.level as typeof LEVELS[number]) : 0
-  const conditions: string[] = []
-  for (const level of LEVELS) {
-    if (LEVELS.indexOf(level) < userLevelIdx) continue
-    const id = user[level]?.id
-    if (id) conditions.push(`and(scope_level.eq.${level},scope_church_id.eq.${id})`)
-  }
-  return conditions.length ? conditions.join(',') : null
+  const level = user.level
+  if (!level) return _NO_SCOPE
+  const id = (user as any)[level]?.id
+  if (!id) return _NO_SCOPE
+  return `and(scope_level.eq.${level},scope_church_id.eq.${id})`
 }
 
 // ─── member_profiles ────────────────────────────────────────────────────────
@@ -248,6 +242,7 @@ export async function getEvent(eventId) {
  *  Includes events starting within the next hour (pre-event check-in window). */
 export async function listActiveEvents(user?: AppUser) {
   const scopeFilter = user ? buildScopeOrFilter(user) : null
+  if (scopeFilter === _NO_SCOPE) return []
   const cacheKey    = scopeFilter ?? 'all'
   const cached = _activeEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
@@ -273,6 +268,7 @@ export async function listActiveEvents(user?: AppUser) {
  *  to the calling user's church hierarchy scope. */
 export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
   const scopeFilter = user ? buildScopeOrFilter(user) : null
+  if (scopeFilter === _NO_SCOPE) return []
   const cacheKey    = `past:${scopeFilter ?? 'all'}`
   const cached = _pastEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data

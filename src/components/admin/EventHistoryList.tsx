@@ -6,7 +6,7 @@ import {
   listEventsForAdminScopes, listEventsAttendedByMember, listScopedEventsForMember,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
-import { resolveCurrentMember, getAdminScopes } from '../../utils/membersApi'
+import { resolveCurrentMember } from '../../utils/membersApi'
 
 const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED']
 
@@ -20,11 +20,18 @@ export default function EventHistoryList() {
     let cancelled = false
     ;(async () => {
       try {
-        const member = await resolveCurrentMember(user)
+        // Derive the scope directly from the user's level — consistent with
+        // the home screen filter. Only events scoped to the user's own church
+        // appear; superadmins use the dedicated drill-down admin menu.
+        const ownLevel = user.level
+        const ownId    = ownLevel ? (user as any)[ownLevel]?.id : null
+        const scopes   = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
+        // resolveCurrentMember is still needed for listScopedEventsForMember
+        // (personal scope-snapshot history). Swallow graph errors gracefully.
+        const member = await resolveCurrentMember(user).catch(() => null)
         if (cancelled) return
-        const scopes = getAdminScopes(member)
         // Union three sources:
-        //  1. Admin scopes — events in any scope the user currently admins
+        //  1. Own scope    — events scoped to the user's own church unit
         //  2. Attended     — events the user personally checked into
         //  3. Scoped       — events the user was in scope for at creation time
         //                    (captured by stable graph ID even if they moved)
