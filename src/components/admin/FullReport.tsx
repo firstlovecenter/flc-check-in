@@ -11,7 +11,7 @@ import {
 import {
   childScopeLevel, adminCoversMember,
 } from '../../utils/membersApi'
-import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
+import { getCurrentUser, SCOPE_LEVELS, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 
 const TABS = [
@@ -82,7 +82,7 @@ export default function FullReport({ eventId }) {
       addAuditLog({
         action: 'absence.note_set',
         actorId: user.userId,
-        actorName: `${user.firstName} ${user.lastName}`.trim(),
+        actorName: formatName(user),
         eventId,
         targetId: absenceTarget.id,
         targetName: [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id,
@@ -215,7 +215,7 @@ export default function FullReport({ eventId }) {
       addAuditLog({
         action: 'face.descriptor_clear',
         actorId: user.userId,
-        actorName: `${user.firstName} ${user.lastName}`.trim(),
+        actorName: formatName(user),
         eventId,
         targetId: memberId,
         targetName: target ? [target.first_name, target.last_name].filter(Boolean).join(' ') : memberId,

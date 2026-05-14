@@ -3,7 +3,7 @@ import {
   pauseEvent, resumeEvent, endEvent, extendEvent, resetPin, addAuditLog,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
-import { getCurrentUser } from '../../utils/auth'
+import { getCurrentUser, formatName } from '../../utils/auth'
 import type { CheckinEventRow } from '../../types/app'
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
 
 export default function CheckInAdminControls({ event, onChange }: Props) {
   const admin = getCurrentUser()
-  const adminName = admin ? `${admin.firstName} ${admin.lastName}`.trim() : 'Admin'
+  const adminName = admin ? formatName(admin) : 'Admin'
   const [busy, setBusy]         = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   // Inline confirmation — stores the pending action id ('end' | 'pin').

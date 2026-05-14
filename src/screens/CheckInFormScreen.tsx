@@ -6,7 +6,7 @@ import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
 import FaceCapture from '../components/checkin/FaceCapture'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
-import { getCurrentUser } from '../utils/auth'
+import { getCurrentUser, formatName } from '../utils/auth'
 import {
   getEvent, submitCheckIn, getMyRecord, selfCheckOut,
   getMyFaceDescriptor, claimFaceMatch,
@@ -98,7 +98,7 @@ export default function CheckInFormScreen() {
     try {
       const fingerprint = await getDeviceFingerprint()
       const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        eventId, member: { id: user.userId, name: formatName(user), role: user.level, unitName: user.unitName },
         method: 'QR', lat: position.lat, lng: position.lng, fingerprint, qrToken: token, event,
       })
       if (result.ok) setSuccess(result.record)
@@ -106,7 +106,7 @@ export default function CheckInFormScreen() {
     } finally {
       setSubmitting(false)
     }
-  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
 
   const handlePIN = useCallback(async (pin, position) => {
     if (submitting) return
@@ -115,7 +115,7 @@ export default function CheckInFormScreen() {
     try {
       const fingerprint = await getDeviceFingerprint()
       const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        eventId, member: { id: user.userId, name: formatName(user), role: user.level, unitName: user.unitName },
         method: 'PIN', lat: position.lat, lng: position.lng, fingerprint, pin, event,
       })
       if (result.ok) setSuccess(result.record)
@@ -123,7 +123,7 @@ export default function CheckInFormScreen() {
     } finally {
       setSubmitting(false)
     }
-  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
 
   // Lazy-load the stored face descriptor the first time the user opens the
   // FACE_ID tab. `false` means "checked, none on file → enrollment needed".
@@ -152,7 +152,7 @@ export default function CheckInFormScreen() {
       }
       const fingerprint = await getDeviceFingerprint()
       const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim(), role: user.level, unitName: user.unitName },
+        eventId, member: { id: user.userId, name: formatName(user), role: user.level, unitName: user.unitName },
         method: 'FACE_ID', lat: position.lat, lng: position.lng, fingerprint, event,
       })
       if (result.ok) setSuccess(result.record)
@@ -160,7 +160,7 @@ export default function CheckInFormScreen() {
     } finally {
       setSubmitting(false)
     }
-  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.unitName, user.userId])
+  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
 
   if (error) {
     return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>

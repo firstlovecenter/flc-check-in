@@ -101,6 +101,7 @@ export function memberToProfileRow(m) {
   return {
     id: m.id,
     email: m.email || null,
+    title: m.title || null,
     first_name: m.firstName || null,
     last_name: m.lastName || null,
     phone: m.phoneNumber || m.whatsappNumber || null,

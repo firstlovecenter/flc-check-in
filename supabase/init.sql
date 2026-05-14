@@ -48,6 +48,7 @@ create extension if not exists pgcrypto with schema extensions;
 create table if not exists public.member_profiles (
   id                  text primary key,
   email               text,
+  title               text,
   first_name          text,
   last_name           text,
   phone               text,

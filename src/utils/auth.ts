@@ -249,8 +249,10 @@ export function enrichUser(payload) {
     payload.denomination?.name || '';
   const churchContexts = localFallbackChurchContexts(payload)
   const activeChurch = churchContexts[0] || null
+  const title = payload.title || localStorage.getItem('memberTitle') || undefined
   return {
     ...payload,
+    title,
     level: activeChurch?.level || level,
     unitName: activeChurch?.name || unitName,
     isAdmin: superAdmin || isAdmin(roles),
@@ -258,6 +260,11 @@ export function enrichUser(payload) {
     churchContexts,
     activeChurch,
   }
+}
+
+/** Returns "Title FirstName LastName" — any missing parts are omitted. */
+export function formatName(user: { title?: string; firstName?: string; lastName?: string } | null | undefined): string {
+  return [user?.title, user?.firstName, user?.lastName].filter(Boolean).join(' ')
 }
 
 export async function fetchLeadChurchesByEmail(email, accessToken) {
@@ -369,6 +376,7 @@ export async function loginWithCredentials(email, password) {
       const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
       const member = await resolveCurrentMember(user);
       if (member?.pictureUrl) localStorage.setItem('pictureUrl', member.pictureUrl);
+      if (member?.title) localStorage.setItem('memberTitle', member.title);
       const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
       await upsertMemberProfile(row);
@@ -384,6 +392,7 @@ export function logout() {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('pictureUrl');
+  localStorage.removeItem('memberTitle');
   localStorage.removeItem('superAdminOverride');
   localStorage.removeItem('churchContext');
 }

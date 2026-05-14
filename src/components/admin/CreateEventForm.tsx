@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import GeoFencePicker from './GeoFencePicker'
-import { getCurrentUser } from '../../utils/auth'
+import { getCurrentUser, formatName } from '../../utils/auth'
 import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
@@ -105,7 +105,7 @@ export default function CreateEventForm() {
         allowedRoles: roles,
         geofence,
         pin: methods.includes('PIN') ? pin : null,
-        createdBy: { id: user.userId, name: `${user.firstName} ${user.lastName}`.trim() },
+        createdBy: { id: user.userId, name: formatName(user) },
       })
       // Fire-and-forget: snapshot every member currently in scope by their
       // stable graph ID. Done in the background so navigation is instant.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCurrentPosition, pointInGeofence } from '../../utils/geo'
 import { submitManualCheckIn, addAuditLog } from '../../utils/supabaseCheckins'
-import { getCurrentUser } from '../../utils/auth'
+import { getCurrentUser, formatName } from '../../utils/auth'
 import type { CheckinEventRow, MemberProfileRow, CheckinRecordRow, LatLng } from '../../types/app'
 
 interface Props {
@@ -46,7 +46,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
     try {
       const result = await submitManualCheckIn({
         eventId: event.id,
-        admin: { id: admin.userId, name: `${admin.firstName} ${admin.lastName}`.trim() },
+        admin: { id: admin.userId, name: formatName(admin) },
         member: {
           id: member.id,
           name: [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id,
@@ -61,7 +61,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
         addAuditLog({
           action: 'checkin.manual',
           actorId: admin.userId,
-          actorName: `${admin.firstName} ${admin.lastName}`.trim(),
+          actorName: formatName(admin),
           eventId: event.id,
           targetId: member.id,
           targetName: [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id,

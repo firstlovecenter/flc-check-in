@@ -19,7 +19,9 @@ interface Props {
 }
 
 export default function TopBar({ user, right = null }: Props) {
-  const greeting = user?.firstName ? `Hi ${user.firstName}` : 'Welcome'
+  const greeting = user?.firstName
+    ? `Hi ${[user.title, user.firstName].filter(Boolean).join(' ')}`
+    : 'Welcome'
   const badgeColor = user?.level ? (LEVEL_BADGE[user.level] ?? 'var(--accent)') : undefined
   return (
     <header

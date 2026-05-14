@@ -79,6 +79,7 @@ export async function upsertMemberProfile(user) {
   const row = {
     id: user.userId || user.id,
     email: user.email || null,
+    title: user.title || null,
     first_name: user.firstName || user.first_name || null,
     last_name: user.lastName || user.last_name || null,
     phone: user.phone || user.phoneNumber || null,

@@ -39,6 +39,7 @@ export interface AppUser {
   email?: string
   firstName?: string
   lastName?: string
+  title?: string
   roles: string[]
   level?: ScopeLevel
   unitName?: string
