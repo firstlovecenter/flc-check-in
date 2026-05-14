@@ -177,6 +177,26 @@ export default function FullReport({ eventId }) {
   const total = eligible.length
   const pct = total > 0 ? Math.round((counts['checked-in'] / total) * 100) : 0
 
+  // These must live above the early-return guards to satisfy rules-of-hooks.
+  const tabRows = activeTab === 'timeline'
+    ? []
+    : buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
+  const filteredRows = filterRows(tabRows, search)
+
+  const filteredTimeline = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    if (!s) return timelineRows
+    return timelineRows.filter((b) => {
+      const m = b.member
+      return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
+        .some((v) => (v || '').toLowerCase().includes(s))
+    })
+  }, [timelineRows, search])
+
+  const scopeLabel = (filterChurchId && filterChurchId !== '__all__' && filterChurchName)
+    ? filterChurchName
+    : (event?.scope_church_name || '')
+
   function setTab(id) {
     setParams((p) => { p.set('tab', id); return p }, { replace: true })
   }
@@ -230,25 +250,6 @@ export default function FullReport({ eventId }) {
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
-
-  const tabRows = activeTab === 'timeline'
-    ? []
-    : buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
-  const filteredRows = filterRows(tabRows, search)
-
-  const filteredTimeline = useMemo(() => {
-    const s = search.trim().toLowerCase()
-    if (!s) return timelineRows
-    return timelineRows.filter((b) => {
-      const m = b.member
-      return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
-        .some((v) => (v || '').toLowerCase().includes(s))
-    })
-  }, [timelineRows, search])
-
-  const scopeLabel = (filterChurchId && filterChurchId !== '__all__' && filterChurchName)
-    ? filterChurchName
-    : (event?.scope_church_name || '')
 
   return (
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
