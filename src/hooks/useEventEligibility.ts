@@ -110,9 +110,11 @@ export function useEventEligibility(
 
         // Tier 2: load scope members (snapshot-first) + viewer identity in parallel.
         // listEventScopeMembersWithProfiles hits Supabase (~50ms) vs Neo4j (~1s+).
+        // resolveCurrentMember / getChurchAncestors are graph calls — swallow
+        // their errors so a graph outage degrades gracefully instead of crashing.
         const [viewer, ancestors, snapshotProfiles, childTotal] = await Promise.all([
-          resolveCurrentMember(user),
-          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }),
+          resolveCurrentMember(user).catch(() => null),
+          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
           listEventScopeMembersWithProfiles(eventId),
           countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
         ])
@@ -158,6 +160,8 @@ export function useEventEligibility(
               const isServiceDown = graphError?.message?.includes('503')
                 || graphError?.message?.includes('Service Unavailable')
                 || graphError?.message?.includes('502')
+                || graphError?.message?.includes('Failed to fetch')
+                || graphError?.message?.includes('ERR_NAME_NOT_RESOLVED')
               throw new Error(
                 isServiceDown
                   ? 'The member directory is temporarily unavailable. Please try again in a few minutes.'
@@ -172,11 +176,27 @@ export function useEventEligibility(
           (r.roles || []).some((role: string) => allowed.has(role)),
         )
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
-        // getViewerCapabilities requires a graph viewer node. Superadmins may
-        // not be in the graph (viewer === null), so we compute caps from graph
-        // data when available, then unconditionally force canManage: true for
-        // superadmins — their additional FLC roles are honoured where possible.
-        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+
+        // getViewerCapabilities requires a graph viewer node. When the graph is
+        // unavailable (viewer === null, ancestors === []), fall back to the
+        // AppUser profile. buildScopeOrFilter already guarantees the user only
+        // sees events within their scope, so matching scope_church_id is enough
+        // to grant canManage for admins.
+        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        if (!rawCaps.canManage && viewer === null && user.isAdmin) {
+          const userChurchId = (user as any)[evt.scope_level]?.id
+          if (userChurchId && userChurchId === evt.scope_church_id) {
+            rawCaps = {
+              canManage: true,
+              canCheckIn: false,
+              viewerScope: {
+                level: evt.scope_level,
+                id: evt.scope_church_id,
+                name: evt.scope_church_name,
+              },
+            }
+          }
+        }
         const caps = user.isSuperAdmin
           ? {
               ...rawCaps,
@@ -196,13 +216,17 @@ export function useEventEligibility(
         // Tier 3: viewer slice (only needed for non-admin leaders).
         let slice = eligibleRows
         if (!caps.canManage && caps.viewerScope) {
-          const sliceMembers = await getMembersInScope({
-            level: caps.viewerScope.level,
-            churchId: caps.viewerScope.id,
-          })
-          if (cancelled) return
-          const sliceIds = new Set(sliceMembers.map((m: any) => m.id))
-          slice = eligibleRows.filter((r) => sliceIds.has(r.id))
+          try {
+            const sliceMembers = await getMembersInScope({
+              level: caps.viewerScope.level,
+              churchId: caps.viewerScope.id,
+            })
+            if (cancelled) return
+            const sliceIds = new Set(sliceMembers.map((m: any) => m.id))
+            slice = eligibleRows.filter((r) => sliceIds.has(r.id))
+          } catch {
+            // Graph down — show the full eligible list unfiltered rather than crash.
+          }
         }
 
         if (!cancelled) {

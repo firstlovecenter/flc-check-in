@@ -25,8 +25,13 @@ function buildScopeOrFilter(user: AppUser): string | null {
     'bacenta', 'governorship', 'council',
     'stream', 'campus', 'oversight', 'denomination',
   ] as const
+  // Only show events whose scope is at or above the user's own level.
+  // This prevents higher-scope admins from seeing lower-scope events
+  // they have no direct responsibility for.
+  const userLevelIdx = user.level ? LEVELS.indexOf(user.level as typeof LEVELS[number]) : 0
   const conditions: string[] = []
   for (const level of LEVELS) {
+    if (LEVELS.indexOf(level) < userLevelIdx) continue
     const id = user[level]?.id
     if (id) conditions.push(`and(scope_level.eq.${level},scope_church_id.eq.${id})`)
   }
