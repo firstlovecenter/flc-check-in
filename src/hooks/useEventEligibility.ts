@@ -196,7 +196,9 @@ export function useEventEligibility(
               id: evt.scope_church_id,
               name: evt.scope_church_name,
             }
-            rawCaps = user.isAdmin
+            // Admins exist from governorship level upwards — bacenta has no admin role.
+            const isAdminLevel = user.level !== 'bacenta'
+            rawCaps = (user.isAdmin && isAdminLevel)
               ? { canManage: true,  canCheckIn: false, canView: true, canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')), viewerScope }
               : { canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope }
           } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {

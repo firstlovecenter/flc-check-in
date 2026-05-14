@@ -83,6 +83,16 @@ export default function EventDashboard({ eventId }) {
     return () => { cancelled = true }
   }, [viewerCaps?.viewerScope?.id, viewerCaps?.canManage, scopeLevel]) // eslint-disable-line
 
+  // Bacenta leaders have no sub-scope to manage — skip the dashboard entirely.
+  // Admin roles start from governorship upwards; bacenta viewerScope means pure leader.
+  // Active event → go straight to check-in. Ended event → go home.
+  useEffect(() => {
+    if (!viewerCaps || !event) return
+    if (viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage) {
+      navigate(event.status === 'ACTIVE' ? `/checkin/${eventId}` : '/home', { replace: true })
+    }
+  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status]) // eslint-disable-line
+
   // Members that belong to the active child-scope filter (null = no filter).
   const scopedMembers = useMemo(() => {
     if (!scopeLevel || !scopeChurchId) return null
