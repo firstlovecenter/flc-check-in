@@ -11,7 +11,11 @@ export default defineConfig(({ mode }) => {
   // forwards to the real endpoint server-side.
   const graphqlOrigin = env.VITE_MEMBER_GRAPHQL_URL
     ? new URL(env.VITE_MEMBER_GRAPHQL_URL).origin
-    : 'https://dev-api-synago.firstlovecenter.com'
+    : null
+
+  const authOrigin = env.VITE_AUTH_API_URL
+    ? new URL(env.VITE_AUTH_API_URL).origin
+    : null
 
   return {
     plugins: [
@@ -91,20 +95,22 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       strictPort: true,
       proxy: {
-        '/flc-graphql': {
-          target: graphqlOrigin,
-          changeOrigin: true,
-          rewrite: () => '/graphql',
-        },
+        ...(graphqlOrigin && {
+          '/flc-graphql': {
+            target: graphqlOrigin,
+            changeOrigin: true,
+            rewrite: () => '/graphql',
+          },
+        }),
         // Proxy the auth API to avoid CORS — browser hits /flc-auth/* (same-origin),
         // Vite forwards to the Lambda URL server-side where CORS is not enforced.
-        '/api/flc-auth': {
-          target: env.VITE_AUTH_API_URL
-            ? new URL(env.VITE_AUTH_API_URL).origin
-            : 'https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/flc-auth/, '/auth'),
-        },
+        ...(authOrigin && {
+          '/api/flc-auth': {
+            target: authOrigin,
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/flc-auth/, '/auth'),
+          },
+        }),
       },
     },
   }

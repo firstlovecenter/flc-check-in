@@ -2,9 +2,13 @@
 // JWT decode + role→level mapping for the FLC 7-level hierarchy.
 // Wire real auth by replacing getCurrentUser() body.
 
-const LEAD_CHURCHES_URL =
-  import.meta.env.VITE_LEAD_CHURCHES_API_URL ||
-  'https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws/auth/churches'
+// Always call the same-origin proxy — never the Lambda directly.
+// Dev  → Vite proxy rewrites /api/flc-auth → Lambda (vite.config.js).
+// Prod → Vercel serverless function at api/flc-auth/[...path].js forwards it.
+function leadChurchesUrl() {
+  const base = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${base}/api/flc-auth/churches`
+}
 
 export function decodeJWT(token) {
   try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
@@ -260,7 +264,7 @@ export async function fetchLeadChurchesByEmail(email, accessToken) {
   if (!email) throw new Error('Email is required to load church contexts')
   if (!accessToken) throw new Error('Access token is required to load church contexts')
 
-  const response = await fetch(LEAD_CHURCHES_URL, {
+  const response = await fetch(leadChurchesUrl(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

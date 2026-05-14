@@ -1,4 +1,4 @@
-// All Supabase reads and writes for the FLC Check-In feature.
+// All Supabase reads and writes for the app.
 // Patterns mirror src/legacy/utils/logs.js. Every screen and admin component
 // goes through this file — no direct supabase calls elsewhere.
 

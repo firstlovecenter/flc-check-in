@@ -1,4 +1,4 @@
-const TARGET = 'https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws/auth'
+const TARGET = process.env.AUTH_LAMBDA_URL ?? 'https://rgldisl2bxl3l2upaauxodtrhy0uxkot.lambda-url.eu-west-2.on.aws/auth'
 
 export default async function handler(req, res) {
   const path = req.url.replace(/^\/api\/flc-auth/, '') || '/'
