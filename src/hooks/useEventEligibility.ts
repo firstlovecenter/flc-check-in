@@ -197,8 +197,8 @@ export function useEventEligibility(
               name: evt.scope_church_name,
             }
             rawCaps = user.isAdmin
-              ? { canManage: true,  canCheckIn: false, canView: true,  viewerScope }
-              : { canManage: false, canCheckIn: false, canView: true,  viewerScope }
+              ? { canManage: true,  canCheckIn: false, canView: true, canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')), viewerScope }
+              : { canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope }
           } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {
             // Sub-scope leader: their JWT church hierarchy must include the event scope church,
             // confirming they are structurally within that scope.
@@ -214,7 +214,7 @@ export function useEventEligibility(
                 (user.activeChurch?.level === user.level ? user.activeChurch?.name : undefined)
               if (userOwnChurchId) {
                 const viewerScope = { level: user.level!, id: userOwnChurchId, name: userOwnChurchName ?? '' }
-                rawCaps = { canManage: false, canCheckIn: true, canView: true, viewerScope }
+                rawCaps = { canManage: false, canCheckIn: true, canView: true, canManuallyCheckIn: false, viewerScope }
               }
             }
           }
@@ -225,6 +225,7 @@ export function useEventEligibility(
               canManage: true,
               canCheckIn: true,
               canView: true,
+              canManuallyCheckIn: true,
               // If the graph resolved a viewerScope use it; otherwise fall back
               // to the full event scope so dashboards render correctly.
               viewerScope: rawCaps.viewerScope ?? {

@@ -392,7 +392,7 @@ export async function getChurchAncestors({ level, id }) {
 //                   = null if viewer can neither manage nor check in
 export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, allMemberIds = null) {
   if (!viewer || !event) {
-    return { canManage: false, canCheckIn: false, canView: false, viewerScope: null }
+    return { canManage: false, canCheckIn: false, canView: false, canManuallyCheckIn: false, viewerScope: null }
   }
   const eventScopeIdx = SCOPE_LEVELS.indexOf(event.scope_level)
 
@@ -472,7 +472,21 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
     viewerScope = subScopeViewerScope ?? { level: event.scope_level, id: event.scope_church_id, name: event.scope_church_name }
   }
 
-  return { canManage, canCheckIn, canView, viewerScope }
+  // canManuallyCheckIn — admins who can manage the event AND hold NO leader (leads*) edge.
+  // If they have any leader role, they check themselves in like a regular leader and
+  // cannot manually check in other members.
+  const hasLeaderEdge = [
+    viewer.leadsBacenta,
+    viewer.leadsGovernorship,
+    viewer.leadsCouncil,
+    viewer.leadsStream,
+    viewer.leadsCampus,
+    viewer.leadsOversight,
+    viewer.leadsDenomination,
+  ].some((list) => list?.length > 0)
+  const canManuallyCheckIn = canManage && !hasLeaderEdge
+
+  return { canManage, canCheckIn, canView, canManuallyCheckIn, viewerScope }
 }
 
 // ─── childScopeLabel(level) ────────────────────────────────────────────────

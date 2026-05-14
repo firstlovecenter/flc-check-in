@@ -144,5 +144,7 @@ export interface LatLng { lat: number; lng: number; accuracy?: number }
 export interface ViewerCapabilities {
   canManage: boolean
   canCheckIn: boolean
+  canView: boolean
+  canManuallyCheckIn: boolean
   viewerScope: ChurchRef | null
 }

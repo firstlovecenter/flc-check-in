@@ -6,6 +6,7 @@ import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
 import type { AppUser } from '../types/app'
+import { SCOPE_LEVELS } from '../types/app'
 
 // ─── Module-level SWR cache for event listings ───────────────────────────
 // Keyed by the scope filter string so different users get separate cache
@@ -14,27 +15,58 @@ const EVENTS_LIST_TTL = 30 * 1000  // 30 s
 const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
 
+// Throttle: fire the auto-end RPC at most once per minute client-side.
+let _lastAutoEndTs = 0
+const AUTO_END_INTERVAL = 60 * 1000  // 1 min
+
+/** Fire-and-forget: tell the server to end any events that have passed
+ *  their ends_at time. Safe to call frequently — the RPC is idempotent and
+ *  this function is throttled to at most once per minute. */
+function triggerAutoEnd() {
+  const now = Date.now()
+  if (now - _lastAutoEndTs < AUTO_END_INTERVAL) return
+  _lastAutoEndTs = now
+  supabase.rpc('auto_checkout_expired_events').then(() => {
+    // Invalidate caches so the next read picks up the updated statuses.
+    invalidateEventListCache()
+  }).catch(() => {/* best-effort */})
+}
+
 // Sentinel returned when a non-superadmin has no resolvable church ID.
 // Listing functions short-circuit to [] when they see this value.
 const _NO_SCOPE = '__no_scope__'
 
-// Build a PostgREST filter that restricts events to those scoped exactly
-// to the calling user's own church unit.
+// Build a PostgREST OR filter that covers every church level in the user's
+// ancestry. Sub-scope leaders can discover higher-scope events they are
+// structurally part of (e.g. a bacenta leader can see a stream-level event).
 // SuperAdmins bypass the filter and see all events (returns null).
-// Anyone without a resolvable church ID at their level returns _NO_SCOPE
+// Anyone without any resolvable church IDs returns _NO_SCOPE
 // (listing functions return [] early — no DB query made).
 function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
-  const level = user.level
-  if (!level) return _NO_SCOPE
-  // Try the JWT-embedded church ref first; fall back to activeChurch (set from
-  // the same JWT fields, but also populated by mergeChurchContext after a login
-  // where the API response embeds IDs that the JWT itself doesn't carry).
-  const id =
-    (user as any)[level]?.id ??
-    (user.activeChurch?.level === level ? user.activeChurch?.id : undefined)
-  if (!id) return _NO_SCOPE
-  return `and(scope_level.eq.${level},scope_church_id.eq.${id})`
+  const clauses: string[] = []
+  for (const lvl of SCOPE_LEVELS) {
+    const id =
+      (user as any)[lvl]?.id ??
+      (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined)
+    if (id) clauses.push(`and(scope_level.eq.${lvl},scope_church_id.eq.${id})`)
+  }
+  if (!clauses.length) return _NO_SCOPE
+  return clauses.join(',')
+}
+
+// Client-side relevance gate applied after fetching.
+// An event is relevant to a user when:
+//   1. The user's role is explicitly listed in allowed_roles, OR
+//   2. allowed_roles contains no admin roles (it's a pure leader event visible
+//      to everyone who is structurally in scope).
+function isEventRelevantToUser(evt: any, user: AppUser): boolean {
+  if (user.isSuperAdmin) return true
+  const userRoles = new Set<string>(user.roles || [])
+  const allowed: string[] = evt.allowed_roles || []
+  if (allowed.some((r) => userRoles.has(r))) return true
+  if (!allowed.some((r) => r.startsWith('admin'))) return true
+  return false
 }
 
 // ─── member_profiles ────────────────────────────────────────────────────────
@@ -246,6 +278,9 @@ export async function getEvent(eventId) {
  *  SuperAdmins bypass the filter and see all events.
  *  Includes events starting within the next hour (pre-event check-in window). */
 export async function listActiveEvents(user?: AppUser) {
+  // Best-effort background sync: end expired events so DB stays up-to-date.
+  triggerAutoEnd()
+
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   const cacheKey    = scopeFilter ?? 'all'
@@ -264,13 +299,14 @@ export async function listActiveEvents(user?: AppUser) {
   if (scopeFilter) query = query.or(scopeFilter)
   const { data, error } = await query
   if (error) throw error
-  const result = (data || []).map(mapEventRow)
+  const mapped = (data || []).map(mapEventRow)
+  const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
   _activeEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
 
-/** Recent past events (status=ENDED, ended within `daysBack` days), filtered
- *  to the calling user's church hierarchy scope. */
+/** Recent past events (ENDED or time-expired ACTIVE), within `daysBack` days,
+ *  filtered to the calling user's church hierarchy scope. */
 export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
@@ -278,18 +314,23 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   const cached = _pastEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
+  const nowIso = new Date().toISOString()
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
+  // Include properly ENDED events AND ACTIVE events whose time has already
+  // passed (not yet auto-ended by the server cron).
   let query = supabase
     .from('checkin_events')
     .select('*')
-    .eq('status', 'ENDED')
+    .in('status', ['ENDED', 'ACTIVE'])
+    .lte('ends_at', nowIso)
     .gte('ends_at', cutoff)
     .order('ends_at', { ascending: false })
     .limit(20)
   if (scopeFilter) query = query.or(scopeFilter)
   const { data, error } = await query
   if (error) throw error
-  const result = (data || []).map(mapEventRow)
+  const mapped = (data || []).map(mapEventRow)
+  const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
   _pastEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
@@ -822,5 +863,11 @@ function mapEventRow(row) {
   if (typeof qrSecretHex === 'string' && qrSecretHex.startsWith('\\x')) {
     qrSecretHex = qrSecretHex.slice(2)
   }
-  return { ...row, qr_secret_hex: qrSecretHex }
+  // Normalise status: if an ACTIVE event's time has passed the server cron
+  // hasn't run yet — treat it as ENDED so all UI views stay consistent.
+  const status =
+    row.status === 'ACTIVE' && row.ends_at && new Date(row.ends_at) <= new Date()
+      ? 'ENDED'
+      : row.status
+  return { ...row, status, qr_secret_hex: qrSecretHex }
 }

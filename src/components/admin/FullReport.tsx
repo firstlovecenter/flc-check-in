@@ -394,7 +394,7 @@ export default function FullReport({ eventId }) {
                 key={b.member.id}
                 entry={b}
                 tab={activeTab}
-                canManage={viewerCaps.canManage}
+                canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
                 canResetFaceId={adminCoversMember(adminScopes, b.member)}
                 resetting={resetting === b.member.id}
                 isRisky={riskyIds.has(b.member.id)}
@@ -545,7 +545,7 @@ function Stat({ value, label, color = 'var(--text)' }) {
   )
 }
 
-function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false }) {
+function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false }) {
   const { member, record } = entry
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
   const unit = member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
@@ -582,7 +582,7 @@ function ListRow({ entry, tab, canManage, canResetFaceId, resetting, onManual, o
                 {absenceNote}
               </span>
             )}
-            {canManage && (
+            {canManuallyCheckIn && (
               <button
                 onClick={onManual}
                 className='text-xs px-3 py-1 cursor-pointer mt-1'
