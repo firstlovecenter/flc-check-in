@@ -121,7 +121,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
             animation: 'flcSplashFadeIn 0.6s ease-out 0.3s both',
           }}
         >
-          FLC Check-In
+          FLC Servants Check-In Portal
         </p>
       </div>
     </div>

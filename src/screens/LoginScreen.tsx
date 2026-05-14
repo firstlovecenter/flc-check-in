@@ -76,7 +76,7 @@ export default function LoginScreen() {
               color: 'var(--text)',
             }}
           >
-            Right Here,<br />Right Now
+            Hineni<br />Right Here, Right Now
           </h1>
         </div>
 
@@ -174,7 +174,7 @@ export default function LoginScreen() {
             className='text-sm text-center'
             style={{ color: 'var(--muted)', textDecoration: 'none' }}
           >
-            View public check-in events →
+            View Meetings At This Location
           </Link>
         </form>
       </div>

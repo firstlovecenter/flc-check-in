@@ -21,9 +21,9 @@ export default defineConfig(({ mode }) => {
         registerType: 'prompt',
         includeAssets: ['icon-192x192.png', 'icon-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
         manifest: {
-          name: 'FLC Check-In',
-          short_name: 'FLC Check-In',
-          description: 'First Love Church leader check-in',
+          name: 'FLC Hineni',
+          short_name: 'Hineni',
+          description: 'First Love Church Meeting Attendance Tracker',
           theme_color: '#0C0F1A',
           background_color: '#0C0F1A',
           display: 'standalone',
