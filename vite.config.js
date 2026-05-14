@@ -46,6 +46,8 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
+          // New SW immediately takes control of all open tabs after activation.
+          clientsClaim: true,
           // Cache the app shell and static assets.
           // Include json (model manifests) and jpeg (logo).
           globPatterns: ['**/*.{js,css,html,svg,png,webp,jpeg,jpg,woff2,json}'],
