@@ -45,9 +45,12 @@ export default function EventHistoryList() {
         for (const e of adminEvts)    byId.set(e.id, e)
         for (const e of attendedEvts) if (!byId.has(e.id)) byId.set(e.id, e)
         for (const e of scopedEvts)   if (!byId.has(e.id)) byId.set(e.id, e)
-        const merged = [...byId.values()].sort(
-          (a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
-        )
+        const STATUS_RANK: Record<string, number> = { ACTIVE: 0, PAUSED: 1, ENDED: 2 }
+        const merged = [...byId.values()].sort((a, b) => {
+          const rankDiff = (STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?? 3)
+          if (rankDiff !== 0) return rankDiff
+          return new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
+        })
         if (!cancelled) setEvents(merged)
       } catch (err: any) {
         if (!cancelled) setError(err.message)
