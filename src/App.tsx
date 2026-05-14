@@ -17,6 +17,7 @@ import SplashScreen from './components/SplashScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
 import ProfileScreen from './screens/ProfileScreen'
+import UpdatePrompt from './components/UpdatePrompt'
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
 function RedirectToReportTab({ tab }) {
@@ -73,6 +74,7 @@ export default function App() {
 
         <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
+      <UpdatePrompt />
     </BrowserRouter>
   )
 }
