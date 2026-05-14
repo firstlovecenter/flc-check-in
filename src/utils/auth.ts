@@ -10,6 +10,47 @@ export function decodeJWT(token) {
   try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
 }
 
+// Church levels that may carry an { id, name } ref in the JWT payload or
+// login API response. We persist these to localStorage so getCurrentUser()
+// can fill in IDs that the JWT itself doesn't embed (e.g. denomination for
+// top-level leaders whose JWT only carries roles, not church refs).
+const CHURCH_LEVELS = [
+  'denomination', 'oversight', 'campus',
+  'stream', 'council', 'governorship', 'bacenta',
+] as const
+
+function loadPersistedChurchContext(): Record<string, { id: string; name: string }> | null {
+  try {
+    const raw = localStorage.getItem('churchContext')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/** Merge church-level IDs that are missing from `payload` with whatever was
+ *  persisted from the last login/refresh API response. JWT values always win. */
+function mergeChurchContext(payload: any): any {
+  const saved = loadPersistedChurchContext()
+  if (!saved) return payload
+  const merged = { ...payload }
+  for (const lvl of CHURCH_LEVELS) {
+    if (!merged[lvl]?.id && saved[lvl]?.id) merged[lvl] = saved[lvl]
+  }
+  return merged
+}
+
+/** Extract church refs from an auth API user object and persist to localStorage
+ *  so they survive page refreshes (JWT may not embed all IDs). */
+function persistChurchContext(userFields: any) {
+  if (!userFields) return
+  const ctx: Record<string, { id: string; name: string }> = {}
+  for (const lvl of CHURCH_LEVELS) {
+    if (userFields[lvl]?.id) ctx[lvl] = { id: userFields[lvl].id, name: userFields[lvl].name || lvl }
+  }
+  if (Object.keys(ctx).length) localStorage.setItem('churchContext', JSON.stringify(ctx))
+}
+
 // FLC scope hierarchy — single source of truth lives in types/app.ts.
 // Imported into this module AND re-exported so existing imports of
 // `{ SCOPE_LEVELS }` from auth keep working.
@@ -127,7 +168,7 @@ export function getCurrentUser() {
   const token = localStorage.getItem('accessToken');
   if (token) {
     const payload = decodeJWT(token);
-    if (payload && !isTokenExpired(token)) return enrichUser(payload);
+    if (payload && !isTokenExpired(token)) return enrichUser(mergeChurchContext(payload));
   }
   return null;
 }
@@ -153,7 +194,9 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
     const payload = decodeJWT(data.tokens.accessToken)
     if (!payload) return null
     const { id, ...userFields } = data.user ?? {}
-    return enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id })
+    // Persist church refs from the refresh response so getCurrentUser() can use them.
+    persistChurchContext(userFields)
+    return enrichUser({ ...mergeChurchContext(payload), ...userFields, userId: payload.userId ?? id })
   } catch {
     return null
   }
@@ -285,6 +328,9 @@ export async function loginWithCredentials(email, password) {
   const payload = decodeJWT(data.tokens.accessToken);
   const { id, ...userFields } = data.user;
 
+  // Persist church refs so getCurrentUser() can fill in IDs not in the JWT.
+  persistChurchContext(userFields)
+
   // Await the SA check — likely already resolved (ran concurrently above).
   // Store the result in localStorage so getCurrentUser() picks it up instantly
   // on subsequent page loads without another round-trip.
@@ -320,6 +366,7 @@ export function logout() {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('pictureUrl');
   localStorage.removeItem('superAdminOverride');
+  localStorage.removeItem('churchContext');
 }
 
 export async function requestPasswordReset(email: string) {

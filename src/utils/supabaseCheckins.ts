@@ -27,7 +27,12 @@ function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
   const level = user.level
   if (!level) return _NO_SCOPE
-  const id = (user as any)[level]?.id
+  // Try the JWT-embedded church ref first; fall back to activeChurch (set from
+  // the same JWT fields, but also populated by mergeChurchContext after a login
+  // where the API response embeds IDs that the JWT itself doesn't carry).
+  const id =
+    (user as any)[level]?.id ??
+    (user.activeChurch?.level === level ? user.activeChurch?.id : undefined)
   if (!id) return _NO_SCOPE
   return `and(scope_level.eq.${level},scope_church_id.eq.${id})`
 }
