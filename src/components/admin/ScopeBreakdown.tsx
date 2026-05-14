@@ -163,7 +163,7 @@ export default function ScopeBreakdown({ eventId }) {
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
   if (!event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
-  if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
+  if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
 

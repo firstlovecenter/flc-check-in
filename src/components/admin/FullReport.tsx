@@ -247,7 +247,7 @@ export default function FullReport({ eventId }) {
 
   if (displayError) return <CenterCard><p style={{ color: 'var(--coral)' }}>{displayError}</p></CenterCard>
   if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
-  if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
+  if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
 

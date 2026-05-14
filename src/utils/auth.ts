@@ -40,6 +40,21 @@ function mergeChurchContext(payload: any): any {
   return merged
 }
 
+/** Persist church refs from a Supabase member_profiles row to localStorage.
+ *  The row uses flat columns (denomination_id / denomination_name etc.) rather
+ *  than nested objects. Called from LeaderHomeScreen when the JWT doesn't
+ *  carry church IDs (e.g. denomination-level leaders after a stale login). */
+export function persistChurchContextFromProfileRow(row: any) {
+  if (!row) return
+  const ctx: Record<string, { id: string; name: string }> = {}
+  for (const lvl of CHURCH_LEVELS) {
+    const id   = row[`${lvl}_id`]
+    const name = row[`${lvl}_name`]
+    if (id) ctx[lvl] = { id, name: name || lvl }
+  }
+  if (Object.keys(ctx).length) localStorage.setItem('churchContext', JSON.stringify(ctx))
+}
+
 /** Extract church refs from an auth API user object and persist to localStorage
  *  so they survive page refreshes (JWT may not embed all IDs). */
 function persistChurchContext(userFields: any) {

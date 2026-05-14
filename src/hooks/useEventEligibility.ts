@@ -26,6 +26,7 @@ import {
   resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
   getAdminScopes, countChildScopes,
 } from '../utils/membersApi'
+import { SCOPE_LEVELS } from '../types/app'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
 // ─── Module-level SWR cache ──────────────────────────────────────────────
@@ -172,6 +173,7 @@ export function useEventEligibility(
         }
 
         const allowed = new Set<string>(evt.allowed_roles || [])
+        const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
         const eligibleRows = allRows.filter((r) =>
           (r.roles || []).some((role: string) => allowed.has(role)),
         )
@@ -179,21 +181,41 @@ export function useEventEligibility(
 
         // getViewerCapabilities requires a graph viewer node. When the graph is
         // unavailable (viewer === null, ancestors === []), fall back to the
-        // AppUser profile. buildScopeOrFilter already guarantees the user only
-        // sees events within their scope, so matching scope_church_id is enough
-        // to grant canManage for admins.
-        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
-        if (!rawCaps.canManage && viewer === null && user.isAdmin) {
-          const userChurchId = (user as any)[evt.scope_level]?.id
-          if (userChurchId && userChurchId === evt.scope_church_id) {
-            rawCaps = {
-              canManage: true,
-              canCheckIn: false,
-              viewerScope: {
-                level: evt.scope_level,
-                id: evt.scope_church_id,
-                name: evt.scope_church_name,
-              },
+        // AppUser profile. Only the EXACT scope level is granted access —
+        // ancestors do not see events below their scope (superAdmin handled above).
+        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
+        if (!rawCaps.canManage && viewer === null) {
+          const userLevelIdx = user.level ? SCOPE_LEVELS.indexOf(user.level) : -1
+          const evtScopeIdx  = SCOPE_LEVELS.indexOf(evt.scope_level)
+          const userChurchId =
+            (user as any)[evt.scope_level]?.id ??
+            (user.activeChurch?.level === evt.scope_level ? user.activeChurch?.id : undefined)
+          if (userChurchId && userChurchId === evt.scope_church_id && userLevelIdx === evtScopeIdx) {
+            const viewerScope = {
+              level: evt.scope_level,
+              id: evt.scope_church_id,
+              name: evt.scope_church_name,
+            }
+            rawCaps = user.isAdmin
+              ? { canManage: true,  canCheckIn: false, canView: true,  viewerScope }
+              : { canManage: false, canCheckIn: false, canView: true,  viewerScope }
+          } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {
+            // Sub-scope leader: their JWT church hierarchy must include the event scope church,
+            // confirming they are structurally within that scope.
+            const userChurchAtEvtScope =
+              (user as any)[evt.scope_level]?.id ??
+              (user.activeChurch?.level === evt.scope_level ? user.activeChurch?.id : undefined)
+            if (userChurchAtEvtScope === evt.scope_church_id) {
+              const userOwnChurchId =
+                (user as any)[user.level!]?.id ??
+                (user.activeChurch?.level === user.level ? user.activeChurch?.id : undefined)
+              const userOwnChurchName =
+                (user as any)[user.level!]?.name ??
+                (user.activeChurch?.level === user.level ? user.activeChurch?.name : undefined)
+              if (userOwnChurchId) {
+                const viewerScope = { level: user.level!, id: userOwnChurchId, name: userOwnChurchName ?? '' }
+                rawCaps = { canManage: false, canCheckIn: true, canView: true, viewerScope }
+              }
             }
           }
         }
@@ -202,6 +224,7 @@ export function useEventEligibility(
               ...rawCaps,
               canManage: true,
               canCheckIn: true,
+              canView: true,
               // If the graph resolved a viewerScope use it; otherwise fall back
               // to the full event scope so dashboards render correctly.
               viewerScope: rawCaps.viewerScope ?? {

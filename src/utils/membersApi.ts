@@ -390,14 +390,15 @@ export async function getChurchAncestors({ level, id }) {
 //                   = viewer's narrowest leads* target inside the event scope
 //                       if viewer is leader-only
 //                   = null if viewer can neither manage nor check in
-export function getViewerCapabilities(viewer, event, ancestors, eligibleIds) {
+export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, allMemberIds = null) {
   if (!viewer || !event) {
-    return { canManage: false, canCheckIn: false, viewerScope: null }
+    return { canManage: false, canCheckIn: false, canView: false, viewerScope: null }
   }
-  const ancestorKeys = new Set(ancestors.map((a) => `${a.level}:${a.id}`))
   const eventScopeIdx = SCOPE_LEVELS.indexOf(event.scope_level)
 
-  // canManage — admins of the event scope or any ancestor
+  // canManage — admins of the EXACT event scope church only.
+  // Ancestor admins do NOT have manage access to events below their scope;
+  // superAdmin bypass is applied by the caller (useEventEligibility).
   const adminEdges = [
     ['governorship', viewer.isAdminForGovernorship],
     ['council',      viewer.isAdminForCouncil],
@@ -408,70 +409,70 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds) {
   ]
   let canManage = false
   for (const [lvl, list] of adminEdges) {
+    if (lvl !== event.scope_level) continue // exact scope level only
     for (const node of list || []) {
-      if (ancestorKeys.has(`${lvl}:${node.id}`)) { canManage = true; break }
+      if (node.id === event.scope_church_id) { canManage = true; break }
     }
     if (canManage) break
   }
 
-  // canCheckIn — viewer must:
-  //   (1) have a leads* edge whose role is in event.allowed_roles
-  //   (2) have that leads* level be strictly below the event scope
-  //   (3) appear in the eligible-id set (the authoritative scope-membership check)
-  const allowedRoles = new Set(event.allowed_roles || [])
-  const leadEdges = [
-    ['bacenta',      viewer.leadsBacenta,      'leaderBacenta'],
-    ['governorship', viewer.leadsGovernorship, 'leaderGovernorship'],
-    ['council',      viewer.leadsCouncil,      'leaderCouncil'],
-    ['stream',       viewer.leadsStream,       'leaderStream'],
-    ['campus',       viewer.leadsCampus,       'leaderCampus'],
-    ['oversight',    viewer.leadsOversight,    'leaderOversight'],
-    ['denomination', viewer.leadsDenomination, 'leaderDenomination'],
-  ]
-
+  // canCheckIn — sub-scope leaders inside the event hierarchy may check THEMSELVES
+  // in (self-check-in only). They cannot check in other members manually; that
+  // remains admin-only (canManage → ManualCheckInModal).
+  // SuperAdmin bypass is applied by the caller (useEventEligibility).
   let canCheckIn = false
-  let leaderViewerScope = null
-  if (eligibleIds && eligibleIds.has(viewer.id)) {
-    // Check leads* edges (standard leaders)
-    for (const [lvl, list, roleStr] of leadEdges) {
-      if (!list?.length) continue
-      if (!allowedRoles.has(roleStr)) continue
-      if (SCOPE_LEVELS.indexOf(lvl) >= eventScopeIdx) continue // strictly below
-      canCheckIn = true
-      leaderViewerScope = { level: lvl, id: list[0].id, name: list[0].name }
-      break
+
+  // canView — two cases:
+  //   1. Leaders of the EXACT event scope church: read-only view of the whole event.
+  //   2. Sub-scope leaders whose church is WITHIN the event scope (confirmed by
+  //      allMemberIds — the un-role-filtered set from getMembersInScope). They
+  //      see the event but only per their own church scope.
+  // Leaders at ancestor/parent scopes are still blocked.
+  let canView = false
+  let subScopeViewerScope = null
+  if (!canManage) {
+    const leadsEdges = [
+      ['bacenta',      viewer.leadsBacenta],
+      ['governorship', viewer.leadsGovernorship],
+      ['council',      viewer.leadsCouncil],
+      ['stream',       viewer.leadsStream],
+      ['campus',       viewer.leadsCampus],
+      ['oversight',    viewer.leadsOversight],
+      ['denomination', viewer.leadsDenomination],
+    ]
+    // Case 1: exact-scope leader
+    for (const [lvl, list] of leadsEdges) {
+      if (lvl !== event.scope_level) continue
+      for (const node of list || []) {
+        if (node.id === event.scope_church_id) { canView = true; break }
+      }
+      if (canView) break
     }
-    // Also check isAdminFor* edges — admins at a level strictly below the
-    // event scope can check in when their admin role is in allowed_roles.
-    if (!canCheckIn) {
-      const adminCheckEdges = [
-        ['governorship', viewer.isAdminForGovernorship, 'adminGovernorship'],
-        ['council',      viewer.isAdminForCouncil,      'adminCouncil'],
-        ['stream',       viewer.isAdminForStream,       'adminStream'],
-        ['campus',       viewer.isAdminForCampus,       'adminCampus'],
-        ['oversight',    viewer.isAdminForOversight,    'adminOversight'],
-        ['denomination', viewer.isAdminForDenomination, 'adminDenomination'],
-      ]
-      for (const [lvl, list, roleStr] of adminCheckEdges) {
+    // Case 2: sub-scope leader structurally within the event scope.
+    // allMemberIds is the full (un-role-filtered) membership set for the event scope.
+    if (!canView && allMemberIds?.has(viewer.id)) {
+      for (const [lvl, list] of leadsEdges) {
+        if (SCOPE_LEVELS.indexOf(lvl) >= eventScopeIdx) continue // strictly below event scope
         if (!list?.length) continue
-        if (!allowedRoles.has(roleStr)) continue
-        if (SCOPE_LEVELS.indexOf(lvl) >= eventScopeIdx) continue // strictly below
-        canCheckIn = true
-        leaderViewerScope = { level: lvl, id: list[0].id, name: list[0].name }
+        canView = true
+        subScopeViewerScope = { level: lvl, id: list[0].id, name: list[0].name }
         break
       }
     }
+    // Sub-scope leaders in scope may self-check-in (but not check in others manually).
+    if (canView && subScopeViewerScope) canCheckIn = true
   }
 
   // viewerScope determines the dashboard slice
   let viewerScope = null
   if (canManage) {
     viewerScope = { level: event.scope_level, id: event.scope_church_id, name: event.scope_church_name }
-  } else if (leaderViewerScope) {
-    viewerScope = leaderViewerScope
+  } else if (canView) {
+    // Sub-scope leader sees only their own slice; exact-scope leader sees the full event scope.
+    viewerScope = subScopeViewerScope ?? { level: event.scope_level, id: event.scope_church_id, name: event.scope_church_name }
   }
 
-  return { canManage, canCheckIn, viewerScope }
+  return { canManage, canCheckIn, canView, viewerScope }
 }
 
 // ─── childScopeLabel(level) ────────────────────────────────────────────────

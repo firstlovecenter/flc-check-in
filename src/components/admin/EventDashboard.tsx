@@ -115,7 +115,7 @@ export default function EventDashboard({ eventId }) {
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
   if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
 
-  if (!viewerCaps.canManage && !viewerCaps.canCheckIn) {
+  if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
       <CenterCard>
         <h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--amber)' }}>Not in your scope</h2>
@@ -125,12 +125,6 @@ export default function EventDashboard({ eventId }) {
         <Link to='/home' className='inline-block mt-4 text-sm underline' style={{ color: 'var(--accent)' }}>← Home</Link>
       </CenterCard>
     )
-  }
-
-  // Bacenta leaders bypass the dashboard
-  if (!viewerCaps.canManage && viewerCaps.viewerScope?.level === 'bacenta') {
-    navigate(`/checkin/${event.id}`, { replace: true })
-    return null
   }
 
   // For non-admin leaders with no URL scope params, anchor the child-count card and

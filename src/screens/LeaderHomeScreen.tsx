@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
 import EventCardForLeader from '../components/checkin/EventCardForLeader'
-import { getCurrentUser } from '../utils/auth'
+import { getCurrentUser, persistChurchContextFromProfileRow } from '../utils/auth'
 import {
-  listActiveEvents, listRecentPastEvents,
+  listActiveEvents, listRecentPastEvents, getMemberProfile,
 } from '../utils/supabaseCheckins'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import type { CheckinEventRow } from '../types/app'
@@ -44,9 +44,31 @@ export default function LeaderHomeScreen() {
         setState({ status: 'loading' })
       }
       try {
+        // Re-read inside the effect so we pick up any context persisted during
+        // a previous async step (e.g. a re-login or a profile fetch below).
+        let activeUser = getCurrentUser()
+
+        // If the JWT didn't embed the church ID for this user's level (common
+        // for denomination-level leaders), try to recover it from member_profiles
+        // (written during login sync) and persist it to localStorage so that
+        // subsequent page loads don't need this round-trip.
+        if (
+          activeUser?.userId &&
+          activeUser.level &&
+          !(activeUser as any)[activeUser.level]?.id
+        ) {
+          try {
+            const profile = await getMemberProfile(activeUser.userId)
+            if (profile?.[`${activeUser.level}_id`]) {
+              persistChurchContextFromProfileRow(profile)
+              activeUser = getCurrentUser() // re-read with freshly persisted context
+            }
+          } catch { /* non-critical — proceed with whatever we have */ }
+        }
+
         const [active, past] = await Promise.all([
-          listActiveEvents(user ?? undefined),
-          listRecentPastEvents({ user: user ?? undefined }),
+          listActiveEvents(activeUser ?? undefined),
+          listRecentPastEvents({ user: activeUser ?? undefined }),
         ])
         if (cancelled) return
         setState({ status: 'ok', active, past })
