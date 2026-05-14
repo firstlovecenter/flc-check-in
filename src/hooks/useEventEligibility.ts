@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
   listEventScopeMembersWithProfiles, snapshotEventScopeMembers,
+  listMemberProfilesByScope,
 } from '../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -122,19 +123,48 @@ export function useEventEligibility(
           // Snapshot exists — use it directly. No graph round-trip needed.
           allRows = snapshotProfiles
         } else {
-          // No snapshot yet (legacy event or first load after create).
-          // Hit the live graph, then save snapshot + profiles for next time.
-          const graphMembers = await getMembersInScope({
-            level: evt.scope_level, churchId: evt.scope_church_id,
-          })
+          // No snapshot yet — try the live graph first, fall back to
+          // member_profiles if the graph is unavailable (503 / timeout).
+          let graphMembers: any[] | null = null
+          let graphError: Error | null = null
+          try {
+            graphMembers = await getMembersInScope({
+              level: evt.scope_level, churchId: evt.scope_church_id,
+            })
+          } catch (e: any) {
+            graphError = e
+          }
           if (cancelled) return
-          allRows = graphMembers.map(memberToProfileRow)
-          const ids = graphMembers.map((m: any) => m.id).filter(Boolean)
-          // Fire-and-forget: save snapshot so subsequent loads skip the graph.
-          Promise.all([
-            snapshotEventScopeMembers(eventId, ids),
-            bulkUpsertMemberProfiles(allRows),
-          ]).catch(() => {})
+
+          if (graphMembers !== null) {
+            allRows = graphMembers.map(memberToProfileRow)
+            const ids = graphMembers.map((m: any) => m.id).filter(Boolean)
+            // Fire-and-forget: save snapshot so subsequent loads skip the graph.
+            Promise.all([
+              snapshotEventScopeMembers(eventId, ids),
+              bulkUpsertMemberProfiles(allRows),
+            ]).catch(() => {})
+          } else {
+            // Graph unavailable — query member_profiles directly by scope.
+            // Coverage is best-effort (only members who have logged in at
+            // least once), but avoids a hard error when Neo4j is down.
+            const profileRows = await listMemberProfilesByScope(
+              evt.scope_level, evt.scope_church_id,
+            )
+            if (cancelled) return
+            if (profileRows.length > 0) {
+              allRows = profileRows
+            } else {
+              const isServiceDown = graphError?.message?.includes('503')
+                || graphError?.message?.includes('Service Unavailable')
+                || graphError?.message?.includes('502')
+              throw new Error(
+                isServiceDown
+                  ? 'The member directory is temporarily unavailable. Please try again in a few minutes.'
+                  : (graphError?.message ?? 'Failed to load event members.'),
+              )
+            }
+          }
         }
 
         const allowed = new Set<string>(evt.allowed_roles || [])

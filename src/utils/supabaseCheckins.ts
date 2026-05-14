@@ -424,10 +424,31 @@ export async function listScopedEventsForMember(graphMemberId: string): Promise<
   return (data || []).map(mapEventRow)
 }
 
+/** Fallback scope-member query that reads member_profiles directly when the
+ *  Neo4j graph is unavailable (503 / timeout).
+ *
+ *  Because member_profiles stores every ancestor church ID (bacenta_id,
+ *  governorship_id, council_id, …), filtering on `${scopeLevel}_id` returns
+ *  all members who sit anywhere inside that scope — matching the graph query's
+ *  intent. Coverage is best-effort (only members who have ever logged in), but
+ *  avoids a hard error when the graph is down. */
+export async function listMemberProfilesByScope(
+  scopeLevel: string,
+  scopeChurchId: string,
+): Promise<any[]> {
+  const col = `${scopeLevel}_id`
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select('*')
+    .eq(col, scopeChurchId)
+  if (error) throw error
+  return data || []
+}
+
 // ─── Event lifecycle (admin actions) ────────────────────────────────────────
 function invalidateEventListCache() {
-  _activeEventsCache = null
-  _pastEventsCache   = null
+  _activeEventsCaches.clear()
+  _pastEventsCaches.clear()
 }
 
 export async function pauseEvent(eventId)  { invalidateEventListCache(); return updateEventStatus(eventId, 'PAUSED') }
