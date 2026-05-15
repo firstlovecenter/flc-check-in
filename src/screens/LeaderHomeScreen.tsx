@@ -80,45 +80,6 @@ export default function LeaderHomeScreen() {
           listRecentPastEvents({ user: activeUser ?? undefined }),
         ])
         if (cancelled) return
-
-        // ── DIAGNOSTIC (temporary) — log everything needed to debug why a
-        // leader isn't seeing an event. Remove once the issue is resolved.
-        try {
-          const u: any = activeUser || {}
-          const summary = {
-            email: u.email,
-            level: u.level,
-            roles: u.roles,
-            churchIdsByLevel: {
-              bacenta:      u.bacenta?.id || null,
-              governorship: u.governorship?.id || null,
-              council:      u.council?.id || null,
-              stream:       u.stream?.id || null,
-              campus:       u.campus?.id || null,
-              oversight:    u.oversight?.id || null,
-              denomination: u.denomination?.id || null,
-            },
-            churchScopesJwt: u.churchScopes || null,
-            activeChurch: u.activeChurch || null,
-            activeEventsReturned: active.length,
-            pastEventsReturned: past.length,
-            activeEventScopes: active.map((e: any) => ({ id: e.id, name: e.name, scope_level: e.scope_level, scope_church_id: e.scope_church_id, allowed_roles: e.allowed_roles })),
-          }
-          console.log('[home/diagnostic]', summary)
-          // Also show every event the user could theoretically reach so we can
-          // compare against what was filtered out.
-          const { supabase } = await import('../utils/supabase')
-          const { data: allActiveRows } = await supabase
-            .from('checkin_events')
-            .select('id, name, scope_level, scope_church_id, allowed_roles, status, starts_at, ends_at')
-            .eq('status', 'ACTIVE')
-            .order('starts_at', { ascending: false })
-            .limit(20)
-          console.log('[home/diagnostic] ALL active events in DB (top 20):', allActiveRows)
-        } catch (e) {
-          console.warn('[home/diagnostic] failed:', e)
-        }
-
         setState({ status: 'ok', active, past })
       } catch (err: any) {
         if (!cancelled) setState({ status: 'error', error: err.message })
