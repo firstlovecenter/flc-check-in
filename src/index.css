@@ -211,3 +211,23 @@ body {
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-2);
 }
+
+/* ─── Leaflet layer-switcher: theme to match app surfaces ──────────────── */
+.leaflet-control-layers {
+  background: var(--card) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-btn) !important;
+  box-shadow: var(--shadow-2) !important;
+}
+.leaflet-control-layers-expanded {
+  padding: 8px 12px !important;
+}
+.leaflet-control-layers label {
+  color: var(--text) !important;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.leaflet-control-layers-separator {
+  border-top-color: var(--border) !important;
+}

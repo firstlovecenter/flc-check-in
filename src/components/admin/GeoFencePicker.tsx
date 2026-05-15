@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Circle, Polygon, Marker, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, LayersControl, Circle, Polygon, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getCurrentPosition } from '../../utils/geo'
@@ -220,14 +220,38 @@ export default function GeoFencePicker({ value, onChange }: Props) {
         style={{ height: 320, border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
       >
         <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            attribution='&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url={isDark
-              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-              : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'}
-            subdomains='abcd'
-            maxZoom={19}
-          />
+          <LayersControl position='topright'>
+            <LayersControl.BaseLayer checked name='Street'>
+              <TileLayer
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url={isDark
+                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                  : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'}
+                subdomains='abcd'
+                maxZoom={19}
+              />
+            </LayersControl.BaseLayer>
+            <LayersControl.BaseLayer name='Satellite'>
+              <TileLayer
+                attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+                url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                maxZoom={19}
+              />
+            </LayersControl.BaseLayer>
+            <LayersControl.BaseLayer name='Hybrid'>
+              <TileLayer
+                attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+                url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                maxZoom={19}
+              />
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url='https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png'
+                subdomains='abcd'
+                maxZoom={19}
+              />
+            </LayersControl.BaseLayer>
+          </LayersControl>
           <RecenterOnChange center={center} />
           {mode === 'circle' && (
           <CircleEditor center={center} radius={radius} onMove={(ll) => { setCenter(ll); setSelectedVenueId(null) }} />
