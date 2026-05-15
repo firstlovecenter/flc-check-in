@@ -44,7 +44,7 @@ export default function CreateEventForm() {
       try {
         const member = await resolveCurrentMember(user)
         if (cancelled) return
-        const adminScopes = getAdminScopes(member)
+        const adminScopes = getAdminScopes(member, user)
         setScopes(adminScopes)
         if (adminScopes.length > 0) setScopeId(`${adminScopes[0].level}:${adminScopes[0].id}`)
       } catch (err: any) {

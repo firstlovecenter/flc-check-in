@@ -185,11 +185,27 @@ export function useEventEligibility(
         // ancestors do not see events below their scope (superAdmin handled above).
         let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
         if (!rawCaps.canManage && viewer === null) {
+          // Per-level church-ID resolution that also reads churchScopes.isAdminFor<Level>Of
+          // from the JWT — required for admin accounts whose JWT only carries admin edges,
+          // not the flat denomination/oversight/... refs.
+          const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+          const cs: any = (user as any).churchScopes || {}
+          const churchIdAt = (lvl: string | null | undefined): string | undefined => {
+            if (!lvl) return undefined
+            return (user as any)[lvl]?.id
+              ?? (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined)
+              ?? cs[`isAdminFor${cap(lvl)}Of`]?.id
+          }
+          const churchNameAt = (lvl: string | null | undefined): string | undefined => {
+            if (!lvl) return undefined
+            return (user as any)[lvl]?.name
+              ?? (user.activeChurch?.level === lvl ? user.activeChurch?.name : undefined)
+              ?? cs[`isAdminFor${cap(lvl)}Of`]?.name
+          }
+
           const userLevelIdx = user.level ? SCOPE_LEVELS.indexOf(user.level) : -1
           const evtScopeIdx  = SCOPE_LEVELS.indexOf(evt.scope_level)
-          const userChurchId =
-            (user as any)[evt.scope_level]?.id ??
-            (user.activeChurch?.level === evt.scope_level ? user.activeChurch?.id : undefined)
+          const userChurchId = churchIdAt(evt.scope_level)
           if (userChurchId && userChurchId === evt.scope_church_id && userLevelIdx === evtScopeIdx) {
             const viewerScope = {
               level: evt.scope_level,
@@ -204,16 +220,10 @@ export function useEventEligibility(
           } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {
             // Sub-scope leader: their JWT church hierarchy must include the event scope church,
             // confirming they are structurally within that scope.
-            const userChurchAtEvtScope =
-              (user as any)[evt.scope_level]?.id ??
-              (user.activeChurch?.level === evt.scope_level ? user.activeChurch?.id : undefined)
+            const userChurchAtEvtScope = churchIdAt(evt.scope_level)
             if (userChurchAtEvtScope === evt.scope_church_id) {
-              const userOwnChurchId =
-                (user as any)[user.level!]?.id ??
-                (user.activeChurch?.level === user.level ? user.activeChurch?.id : undefined)
-              const userOwnChurchName =
-                (user as any)[user.level!]?.name ??
-                (user.activeChurch?.level === user.level ? user.activeChurch?.name : undefined)
+              const userOwnChurchId   = churchIdAt(user.level)
+              const userOwnChurchName = churchNameAt(user.level)
               if (userOwnChurchId) {
                 const viewerScope = { level: user.level!, id: userOwnChurchId, name: userOwnChurchName ?? '' }
                 rawCaps = { canManage: false, canCheckIn: true, canView: true, canManuallyCheckIn: false, viewerScope }
@@ -237,7 +247,7 @@ export function useEventEligibility(
               },
             }
           : rawCaps
-        const scopes = getAdminScopes(viewer)
+        const scopes = getAdminScopes(viewer, user)
 
         // Tier 3: viewer slice (only needed for non-admin leaders).
         let slice = eligibleRows

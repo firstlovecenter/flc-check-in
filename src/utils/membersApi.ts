@@ -238,27 +238,47 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
   return p
 }
 
-// ─── getAdminScopes(member) ────────────────────────────────────────────────
+// ─── getAdminScopes(member, user?) ─────────────────────────────────────────
 // Returns the admin scopes this member can create events for. Only counts
 // `isAdminFor*` edges — being a leader (`leads*`) is not enough to create
 // events. Per spec, only Campus/Stream/Council/Governorship/Oversight/
 // Denomination admins create events.
 //
+// If the member-graph result is empty (e.g. test accounts whose JWT carries
+// admin roles but whose graph node hasn't been seeded with isAdminFor* edges),
+// falls back to scopes encoded in the JWT under `user.churchScopes` —
+// the keys are `isAdminFor<Level>Of: { id, name }` (singular Of, not array).
+//
 // Output: [{ level, id, name }] sorted highest-level first.
-export function getAdminScopes(member) {
-  if (!member) return []
+export function getAdminScopes(member, user?: any) {
   const scopes = []
   const push = (lvl, list) => {
     for (const x of list || []) {
       if (x?.id) scopes.push({ level: lvl, id: x.id, name: x.name || lvl })
     }
   }
-  push('governorship', member.isAdminForGovernorship)
-  push('council',      member.isAdminForCouncil)
-  push('stream',       member.isAdminForStream)
-  push('campus',       member.isAdminForCampus)
-  push('oversight',    member.isAdminForOversight)
-  push('denomination', member.isAdminForDenomination)
+  if (member) {
+    push('governorship', member.isAdminForGovernorship)
+    push('council',      member.isAdminForCouncil)
+    push('stream',       member.isAdminForStream)
+    push('campus',       member.isAdminForCampus)
+    push('oversight',    member.isAdminForOversight)
+    push('denomination', member.isAdminForDenomination)
+  }
+
+  // Fallback to JWT churchScopes when the graph yielded nothing.
+  if (scopes.length === 0 && user?.churchScopes) {
+    const cs = user.churchScopes
+    const pushOne = (lvl, ref) => {
+      if (ref?.id) scopes.push({ level: lvl, id: ref.id, name: ref.name || lvl })
+    }
+    pushOne('governorship', cs.isAdminForGovernorshipOf)
+    pushOne('council',      cs.isAdminForCouncilOf)
+    pushOne('stream',       cs.isAdminForStreamOf)
+    pushOne('campus',       cs.isAdminForCampusOf)
+    pushOne('oversight',    cs.isAdminForOversightOf)
+    pushOne('denomination', cs.isAdminForDenominationOf)
+  }
 
   // Dedupe by (level, id) and sort highest-level first.
   const seen = new Set()

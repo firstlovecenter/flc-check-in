@@ -23,8 +23,17 @@ export default function EventHistoryList() {
         // Derive the scope directly from the user's level — consistent with
         // the home screen filter. Only events scoped to the user's own church
         // appear; superadmins use the dedicated drill-down admin menu.
+        //
+        // ID resolution: prefer the flat user[lvl].id, then activeChurch at
+        // that level, then the JWT admin scope (churchScopes.isAdminFor<Lvl>Of)
+        // — needed for accounts whose JWT only carries admin edges.
         const ownLevel = user.level
-        const ownId    = ownLevel ? (user as any)[ownLevel]?.id : null
+        const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+        const ownId = ownLevel
+          ? ((user as any)[ownLevel]?.id
+              ?? (user.activeChurch?.level === ownLevel ? user.activeChurch?.id : undefined)
+              ?? (user as any).churchScopes?.[`isAdminFor${cap(ownLevel)}Of`]?.id)
+          : null
         const scopes   = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
         // resolveCurrentMember is still needed for listScopedEventsForMember
         // (personal scope-snapshot history). Swallow graph errors gracefully.

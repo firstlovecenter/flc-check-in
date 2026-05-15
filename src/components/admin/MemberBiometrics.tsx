@@ -34,7 +34,7 @@ export default function MemberBiometrics() {
     setError(null)
     try {
       const member = await resolveCurrentMember(user)
-      const scopes = getAdminScopes(member)
+      const scopes = getAdminScopes(member, user)
       const data = await listMembersForBiometricsAdmin(scopes)
       setRows(data)
     } catch (err: any) {

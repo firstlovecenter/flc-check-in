@@ -42,13 +42,21 @@ const _NO_SCOPE = '__no_scope__'
 // SuperAdmins bypass the filter and see all events (returns null).
 // Anyone without any resolvable church IDs returns _NO_SCOPE
 // (listing functions return [] early — no DB query made).
+//
+// Per-level resolution order: top-level user[lvl].id, then activeChurch when
+// it matches that level, then churchScopes.isAdminFor<Level>Of (JWT admin
+// scope — required for accounts whose JWT only carries admin edges, not the
+// flat denomination/oversight/... refs).
 function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
+  const cs: any = (user as any).churchScopes || {}
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   const clauses: string[] = []
   for (const lvl of SCOPE_LEVELS) {
     const id =
       (user as any)[lvl]?.id ??
-      (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined)
+      (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined) ??
+      cs[`isAdminFor${cap(lvl)}Of`]?.id
     if (id) clauses.push(`and(scope_level.eq.${lvl},scope_church_id.eq.${id})`)
   }
   if (!clauses.length) return _NO_SCOPE
