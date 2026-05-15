@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
 import EventCardForLeader from '../components/checkin/EventCardForLeader'
-import { getCurrentUser, persistChurchContextFromProfileRow } from '../utils/auth'
+import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listActiveEvents, listRecentPastEvents, getMemberProfile,
 } from '../utils/supabaseCheckins'
@@ -48,22 +48,31 @@ export default function LeaderHomeScreen() {
         // a previous async step (e.g. a re-login or a profile fetch below).
         let activeUser = getCurrentUser()
 
-        // If the JWT didn't embed the church ID for this user's level (common
-        // for denomination-level leaders), try to recover it from member_profiles
-        // (written during login sync) and persist it to localStorage so that
-        // subsequent page loads don't need this round-trip.
-        if (
+        // The JWT only embeds the user's own level (e.g. a bacenta leader gets
+        // user.bacenta but no council/stream/.../denomination refs). Events
+        // are filtered by every level in the user's ancestor chain, so we need
+        // all ancestor IDs in localStorage. Pull them from member_profiles
+        // (written during login sync) whenever any expected ancestor is missing.
+        const LEVEL_ORDER = ['bacenta','governorship','council','stream','campus','oversight','denomination']
+        const ownIdx = activeUser?.level ? LEVEL_ORDER.indexOf(activeUser.level) : -1
+        const needsAncestors =
           activeUser?.userId &&
           activeUser.level &&
-          !(activeUser as any)[activeUser.level]?.id
-        ) {
+          LEVEL_ORDER
+            .slice(ownIdx >= 0 ? ownIdx : 0)
+            .some((lvl) => !(activeUser as any)[lvl]?.id)
+        if (needsAncestors) {
           try {
             const profile = await getMemberProfile(activeUser.userId)
-            if (profile?.[`${activeUser.level}_id`]) {
+            if (profile) {
               persistChurchContextFromProfileRow(profile)
-              activeUser = getCurrentUser() // re-read with freshly persisted context
             }
           } catch { /* non-critical — proceed with whatever we have */ }
+          // Always try the JWT churchScopes as a secondary source — fills any
+          // levels member_profiles didn't have (or covers the case where the
+          // profile row is missing entirely, e.g. test accounts).
+          persistChurchContextFromJwt((activeUser as any).churchScopes)
+          activeUser = getCurrentUser() // re-read with freshly persisted context
         }
 
         const [active, past] = await Promise.all([
@@ -71,6 +80,45 @@ export default function LeaderHomeScreen() {
           listRecentPastEvents({ user: activeUser ?? undefined }),
         ])
         if (cancelled) return
+
+        // ── DIAGNOSTIC (temporary) — log everything needed to debug why a
+        // leader isn't seeing an event. Remove once the issue is resolved.
+        try {
+          const u: any = activeUser || {}
+          const summary = {
+            email: u.email,
+            level: u.level,
+            roles: u.roles,
+            churchIdsByLevel: {
+              bacenta:      u.bacenta?.id || null,
+              governorship: u.governorship?.id || null,
+              council:      u.council?.id || null,
+              stream:       u.stream?.id || null,
+              campus:       u.campus?.id || null,
+              oversight:    u.oversight?.id || null,
+              denomination: u.denomination?.id || null,
+            },
+            churchScopesJwt: u.churchScopes || null,
+            activeChurch: u.activeChurch || null,
+            activeEventsReturned: active.length,
+            pastEventsReturned: past.length,
+            activeEventScopes: active.map((e: any) => ({ id: e.id, name: e.name, scope_level: e.scope_level, scope_church_id: e.scope_church_id, allowed_roles: e.allowed_roles })),
+          }
+          console.log('[home/diagnostic]', summary)
+          // Also show every event the user could theoretically reach so we can
+          // compare against what was filtered out.
+          const { supabase } = await import('../utils/supabase')
+          const { data: allActiveRows } = await supabase
+            .from('checkin_events')
+            .select('id, name, scope_level, scope_church_id, allowed_roles, status, starts_at, ends_at')
+            .eq('status', 'ACTIVE')
+            .order('starts_at', { ascending: false })
+            .limit(20)
+          console.log('[home/diagnostic] ALL active events in DB (top 20):', allActiveRows)
+        } catch (e) {
+          console.warn('[home/diagnostic] failed:', e)
+        }
+
         setState({ status: 'ok', active, past })
       } catch (err: any) {
         if (!cancelled) setState({ status: 'error', error: err.message })

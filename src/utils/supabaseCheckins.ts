@@ -43,10 +43,12 @@ const _NO_SCOPE = '__no_scope__'
 // Anyone without any resolvable church IDs returns _NO_SCOPE
 // (listing functions return [] early — no DB query made).
 //
-// Per-level resolution order: top-level user[lvl].id, then activeChurch when
-// it matches that level, then churchScopes.isAdminFor<Level>Of (JWT admin
-// scope — required for accounts whose JWT only carries admin edges, not the
-// flat denomination/oversight/... refs).
+// Per-level resolution order:
+//   1. flat user[lvl].id (hydrated from member_profiles or JWT top-level refs)
+//   2. activeChurch when it matches that level
+//   3. churchScopes.isAdminFor<Level>Of.id (admin edges in JWT)
+//   4. churchScopes.leads<Level>Of.id (leader edges in JWT — covers leaders
+//      whose JWT only carries leads*Of, e.g. leaderCouncil test accounts)
 function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
   const cs: any = (user as any).churchScopes || {}
@@ -56,7 +58,8 @@ function buildScopeOrFilter(user: AppUser): string | null {
     const id =
       (user as any)[lvl]?.id ??
       (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined) ??
-      cs[`isAdminFor${cap(lvl)}Of`]?.id
+      cs[`isAdminFor${cap(lvl)}Of`]?.id ??
+      cs[`leads${cap(lvl)}Of`]?.id
     if (id) clauses.push(`and(scope_level.eq.${lvl},scope_church_id.eq.${id})`)
   }
   if (!clauses.length) return _NO_SCOPE
@@ -509,7 +512,25 @@ function invalidateEventListCache() {
 
 export async function pauseEvent(eventId)  { invalidateEventListCache(); return updateEventStatus(eventId, 'PAUSED') }
 export async function resumeEvent(eventId) { invalidateEventListCache(); return updateEventStatus(eventId, 'ACTIVE') }
-export async function endEvent(eventId)    { invalidateEventListCache(); return updateEventStatus(eventId, 'ENDED') }
+
+// Manually ending an event:
+//  - Flips status to ENDED.
+//  - Truncates ends_at to now() IF the scheduled end was in the future, so the
+//    event drops out of active lists immediately and shows the actual end time
+//    in history. If ends_at is already past, leave it alone (cron has already
+//    auto-ended this event; we shouldn't rewrite the original schedule).
+export async function endEvent(eventId) {
+  invalidateEventListCache()
+  const current = await getEvent(eventId)
+  const patch: Record<string, any> = { status: 'ENDED' }
+  if (new Date(current.ends_at) > new Date()) {
+    patch.ends_at = new Date().toISOString()
+  }
+  const { data, error } = await supabase
+    .from('checkin_events').update(patch).eq('id', eventId).select().single()
+  if (error) throw error
+  return mapEventRow(data)
+}
 
 async function updateEventStatus(eventId, status) {
   const { data, error } = await supabase

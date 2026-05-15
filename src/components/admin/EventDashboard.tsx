@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
 import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
+import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { supabase } from '../../utils/supabase'
 import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
@@ -48,6 +49,29 @@ export default function EventDashboard({ eventId }) {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [eventId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If the viewer is at the LOWEST level allowed for this event, there are no
+  // sub-scopes for them to oversee — send them straight to check-in instead of
+  // the (empty) dashboard. Applies even to admins whose admin scope happens to
+  // be the lowest level in the event's allowed_roles cascade.
+  useEffect(() => {
+    if (!event || !user?.level) return
+    const allowed: string[] = event.allowed_roles || []
+    if (!allowed.length) return
+    // Extract the level suffix from each role (leaderBacenta -> bacenta,
+    // adminCouncil -> council), then pick the lowest by SCOPE_LEVELS index.
+    let lowestIdx = Infinity
+    for (const r of allowed) {
+      const lvl = r.replace(/^(leader|admin)/, '').toLowerCase()
+      const idx = SCOPE_LEVELS.indexOf(lvl as any)
+      if (idx >= 0 && idx < lowestIdx) lowestIdx = idx
+    }
+    if (lowestIdx === Infinity) return
+    const viewerIdx = SCOPE_LEVELS.indexOf(user.level as any)
+    if (viewerIdx === lowestIdx) {
+      navigate(`/checkin/${eventId}`, { replace: true })
+    }
+  }, [event, eventId, user?.level, navigate])
 
   // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
   const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)

@@ -47,7 +47,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     value?.type === 'polygon' ? value.polygon : []
   )
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([])
+  const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string; address?: Record<string, string> }>>([])
   const [searching, setSearching] = useState(false)
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(
     // Pre-select if the initial value matches a preset
@@ -76,11 +76,26 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
+        // countrycodes=gh biases results toward Ghana (most FLC venues are
+        // there) without excluding others — international hits still rank but
+        // local matches surface first. addressdetails=1 gives us the city/
+        // region so the dropdown can show a useful second line.
         const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5`,
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=gh`,
           { headers: { 'Accept-Language': 'en' } }
         )
-        setSearchResults(await res.json())
+        const data = await res.json()
+        // If country-biased search came back empty, retry worldwide so admins
+        // creating events in other regions aren't stuck.
+        if (Array.isArray(data) && data.length === 0) {
+          const fallback = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`,
+            { headers: { 'Accept-Language': 'en' } }
+          )
+          setSearchResults(await fallback.json())
+        } else {
+          setSearchResults(data)
+        }
       } catch {
         setSearchResults([])
       } finally {
@@ -90,91 +105,91 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
+  const [gpsBusy, setGpsBusy] = useState(false)
+  const [gpsError, setGpsError] = useState<string | null>(null)
+  // Accuracy ring data from the last "My Location" call. Cleared when the user
+  // picks a preset, drags the marker, or searches — those are intentional moves.
+  const [gpsFix, setGpsFix] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
   async function snapToMyLocation() {
+    setGpsError(null)
+    setGpsBusy(true)
     try {
-      const pos = await getCurrentPosition()
+      // Bypass the geo helper cache here — when the user explicitly clicks
+      // "My Location" they want a fresh fix, not a 30s-old one. Call the
+      // browser API directly.
+      const pos = await new Promise<{ lat: number; lng: number; accuracy: number }>((resolve, reject) => {
+        if (!('geolocation' in navigator)) {
+          reject(new Error('Geolocation not supported in this browser'))
+          return
+        }
+        const timer = setTimeout(
+          () => reject(new Error('Location request timed out after 25s. Check that you allowed location access for this site.')),
+          25000,
+        )
+        const onError = (e: GeolocationPositionError) => {
+          clearTimeout(timer)
+          const reason =
+            e.code === 1 ? 'Permission denied — allow location for this site in your browser.' :
+            e.code === 2 ? 'Position unavailable — no GPS signal or network fallback.' :
+            e.code === 3 ? 'Location request timed out.' :
+            (e.message || 'Unknown geolocation error')
+          reject(new Error(reason))
+        }
+        const onSuccess = (p: GeolocationPosition) => {
+          clearTimeout(timer)
+          resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy ?? 0 })
+        }
+        // First try high-accuracy (GPS). If that fails or times out, fall back
+        // to low-accuracy (Wi-Fi/IP) so we at least centre the map roughly right.
+        navigator.geolocation.getCurrentPosition(
+          onSuccess,
+          (e) => {
+            // High-accuracy failed — retry with coarse location before giving up.
+            if (e.code === 3 || e.code === 2) {
+              navigator.geolocation.getCurrentPosition(
+                onSuccess,
+                onError,
+                { enableHighAccuracy: false, maximumAge: 0, timeout: 15000 },
+              )
+            } else {
+              onError(e)
+            }
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 },
+        )
+      })
       setCenter([pos.lat, pos.lng])
+      setGpsFix(pos)
       setSelectedVenueId(null)
     } catch (err: any) {
-      alert('Could not get GPS: ' + err.message)
+      console.error('[GeoFencePicker] location error:', err)
+      setGpsError(err.message || 'Could not get location')
+    } finally {
+      setGpsBusy(false)
     }
   }
 
   function selectResult(r: { lat: string; lon: string }) {
     setCenter([parseFloat(r.lat), parseFloat(r.lon)])
     setSelectedVenueId(null)
+    setGpsFix(null)
     setSearchQuery('')
     setSearchResults([])
   }
 
   return (
     <div className='flex flex-col gap-3'>
-      <div
-        className='flex gap-1 p-1'
-        style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', alignSelf: 'flex-start' }}
-      >
-        <button
-          type='button'
-          onClick={() => setMode('circle')}
-          className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-          style={{
-            background: mode === 'circle' ? 'var(--cta-bg)' : 'transparent',
-            color: mode === 'circle' ? 'var(--cta-text)' : 'var(--muted)',
-            border: 'none',
-            borderRadius: 'var(--radius-pill)',
-          }}
-        >Circle</button>
-        <button
-          type='button'
-          onClick={() => setMode('polygon')}
-          className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-          style={{
-            background: mode === 'polygon' ? 'var(--cta-bg)' : 'transparent',
-            color: mode === 'polygon' ? 'var(--cta-text)' : 'var(--muted)',
-            border: 'none',
-            borderRadius: 'var(--radius-pill)',
-          }}
-        >Polygon</button>
-        <button
-          type='button'
-          onClick={snapToMyLocation}
-          className='ml-auto px-3 py-1.5 text-xs cursor-pointer'
-          style={{ background: 'transparent', color: 'var(--muted)', border: 'none', borderRadius: 'var(--radius-pill)' }}
-        >📍 My Location</button>
-      </div>
-
-      {/* Preset venues */}
-      <div className='flex flex-wrap gap-1.5'>
-        {PRESET_VENUES.map((v) => {
-          const isSelected = selectedVenueId === v.id
-          return (
-            <button
-              key={v.id}
-              type='button'
-              onClick={() => { setCenter([v.lat, v.lng]); setRadius(v.defaultRadiusM); setSelectedVenueId(v.id) }}
-              className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-              style={{
-                background: isSelected ? 'var(--cta-bg)' : 'var(--bg2)',
-                color: isSelected ? 'var(--cta-text)' : 'var(--muted)',
-                border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: 'var(--radius-pill)',
-              }}
-            >
-              {v.name}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Place search — Nominatim / OpenStreetMap, no API key needed */}
+      {/* Primary: place search — most accurate way to set a venue on desktop.
+          Nominatim / OpenStreetMap, no API key needed. */}
       <div style={{ position: 'relative' }}>
         <input
           type='text'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={searching ? 'Searching…' : '🔍 Search for a place…'}
+          placeholder={searching ? 'Searching…' : '🔍 Search for a venue, address, or place name'}
           className='input-field'
           autoComplete='off'
+          style={{ fontSize: 15 }}
         />
         {searchResults.length > 0 && (
           <div
@@ -187,33 +202,119 @@ export default function GeoFencePicker({ value, onChange }: Props) {
               background: 'var(--card)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-btn)',
-              maxHeight: 220,
+              maxHeight: 320,
               overflowY: 'auto',
               boxShadow: 'var(--shadow-2)',
             }}
           >
-            {searchResults.map((r, i) => (
-              <button
-                key={i}
-                type='button'
-                onClick={() => selectResult(r)}
-                className='w-full text-left px-3 py-2.5 text-sm cursor-pointer'
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: i < searchResults.length - 1 ? '1px solid var(--border)' : 'none',
-                  color: 'var(--text)',
-                  fontFamily: 'var(--sans)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                {r.display_name}
-              </button>
-            ))}
+            {searchResults.map((r, i) => {
+              const parts = (r.display_name || '').split(',').map((s) => s.trim())
+              const primary = parts[0] || r.display_name
+              const secondary = parts.slice(1, 4).join(', ')
+              return (
+                <button
+                  key={i}
+                  type='button'
+                  onClick={() => selectResult(r)}
+                  className='w-full text-left px-3 py-2.5 cursor-pointer'
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: i < searchResults.length - 1 ? '1px solid var(--border)' : 'none',
+                    color: 'var(--text)',
+                    fontFamily: 'var(--sans)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div className='text-sm font-semibold truncate'>{primary}</div>
+                  {secondary && (
+                    <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>
+                      {secondary}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>
+
+      {/* Secondary actions: shape toggle + GPS shortcut. Search is the primary
+          way to set a venue; My Location is a desktop fallback that's often
+          inaccurate, so it sits as a small secondary button. */}
+      <div className='flex items-center gap-2 flex-wrap'>
+        <div
+          className='flex gap-1 p-1'
+          style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}
+        >
+          <button
+            type='button'
+            onClick={() => setMode('circle')}
+            className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
+            style={{
+              background: mode === 'circle' ? 'var(--cta-bg)' : 'transparent',
+              color: mode === 'circle' ? 'var(--cta-text)' : 'var(--muted)',
+              border: 'none',
+              borderRadius: 'var(--radius-pill)',
+            }}
+          >Circle</button>
+          <button
+            type='button'
+            onClick={() => setMode('polygon')}
+            className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
+            style={{
+              background: mode === 'polygon' ? 'var(--cta-bg)' : 'transparent',
+              color: mode === 'polygon' ? 'var(--cta-text)' : 'var(--muted)',
+              border: 'none',
+              borderRadius: 'var(--radius-pill)',
+            }}
+          >Polygon</button>
+        </div>
+        <button
+          type='button'
+          onClick={snapToMyLocation}
+          disabled={gpsBusy}
+          className='ml-auto px-3 py-1.5 text-xs cursor-pointer'
+          style={{
+            background: 'transparent',
+            color: 'var(--muted)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-pill)',
+            opacity: gpsBusy ? 0.5 : 1,
+          }}
+          title='Use device location (may be inaccurate on desktop)'
+        >{gpsBusy ? '📍 Locating…' : '📍 Use my location'}</button>
+      </div>
+      {gpsError && (
+        <p className='text-xs' style={{ color: 'var(--coral)', margin: 0 }}>{gpsError}</p>
+      )}
+
+      {/* Preset venues — fastest way to set a known recurring location. */}
+      {PRESET_VENUES.length > 0 && (
+        <div className='flex flex-wrap gap-1.5'>
+          <span className='text-xs self-center mr-1' style={{ color: 'var(--muted)' }}>Quick venues:</span>
+          {PRESET_VENUES.map((v) => {
+            const isSelected = selectedVenueId === v.id
+            return (
+              <button
+                key={v.id}
+                type='button'
+                onClick={() => { setCenter([v.lat, v.lng]); setRadius(v.defaultRadiusM); setSelectedVenueId(v.id); setGpsFix(null) }}
+                className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
+                style={{
+                  background: isSelected ? 'var(--cta-bg)' : 'var(--bg2)',
+                  color: isSelected ? 'var(--cta-text)' : 'var(--muted)',
+                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-pill)',
+                }}
+              >
+                {v.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div
         className='overflow-hidden'
@@ -253,14 +354,27 @@ export default function GeoFencePicker({ value, onChange }: Props) {
             </LayersControl.BaseLayer>
           </LayersControl>
           <RecenterOnChange center={center} />
+          {gpsFix && gpsFix.accuracy > 0 && (
+            <Circle
+              center={[gpsFix.lat, gpsFix.lng]}
+              radius={gpsFix.accuracy}
+              pathOptions={{ color: '#3DBB9A', weight: 1, fillColor: '#3DBB9A', fillOpacity: 0.08, dashArray: '4 4' }}
+            />
+          )}
           {mode === 'circle' && (
-          <CircleEditor center={center} radius={radius} onMove={(ll) => { setCenter(ll); setSelectedVenueId(null) }} />
+          <CircleEditor center={center} radius={radius} onMove={(ll) => { setCenter(ll); setSelectedVenueId(null); setGpsFix(null) }} />
           )}
           {mode === 'polygon' && (
             <PolygonEditor polygon={polygon} onPolygonChange={setPolygon} />
           )}
         </MapContainer>
       </div>
+      {gpsFix && (
+        <p className='text-xs' style={{ color: 'var(--muted)', margin: 0 }}>
+          📡 GPS accuracy: ±{Math.round(gpsFix.accuracy)} m
+          {gpsFix.accuracy > 100 && ' — drag the marker or search to refine.'}
+        </p>
+      )}
 
       {mode === 'circle' && (
         <div className='flex items-center gap-3'>

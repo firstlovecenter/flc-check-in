@@ -59,6 +59,32 @@ export function persistChurchContextFromProfileRow(row: any) {
   if (Object.keys(ctx).length) localStorage.setItem('churchContext', JSON.stringify(ctx))
 }
 
+/** Persist church refs found inside the JWT's `churchScopes` object
+ *  (e.g. leadsCouncilOf, isAdminForDenominationOf) into the flat
+ *  localStorage churchContext. This is a fallback for accounts whose
+ *  member_profiles row is empty/missing but whose JWT does carry their
+ *  own scope under churchScopes.
+ *
+ *  Non-destructive: existing keys are preserved (member_profiles wins). */
+export function persistChurchContextFromJwt(churchScopes: any) {
+  if (!churchScopes || typeof churchScopes !== 'object') return
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const existing = loadPersistedChurchContext() || {}
+  const ctx: Record<string, { id: string; name: string }> = { ...existing }
+  let added = false
+  for (const lvl of CHURCH_LEVELS) {
+    if (ctx[lvl]?.id) continue
+    const ref =
+      churchScopes[`isAdminFor${cap(lvl)}Of`] ??
+      churchScopes[`leads${cap(lvl)}Of`]
+    if (ref?.id) {
+      ctx[lvl] = { id: ref.id, name: ref.name || lvl }
+      added = true
+    }
+  }
+  if (added) localStorage.setItem('churchContext', JSON.stringify(ctx))
+}
+
 /** Extract church refs from an auth API user object and persist to localStorage
  *  so they survive page refreshes (JWT may not embed all IDs). */
 function persistChurchContext(userFields: any) {
