@@ -9,6 +9,7 @@
 
 import { GraphQLClient } from 'graphql-request'
 import { SCOPE_LEVELS } from './auth.js'
+import { getUserAdminScopesFromJwt } from './userScope'
 import {
   GET_MEMBER_BY_ID,
   GET_MEMBER_BY_EMAIL,
@@ -277,18 +278,12 @@ export function getAdminScopes(member, user?: any) {
     push('denomination', member.isAdminForDenomination)
   }
 
-  // Fallback to JWT churchScopes when the graph yielded nothing.
-  if (scopes.length === 0 && user?.churchScopes) {
-    const cs = user.churchScopes
-    const pushOne = (lvl, ref) => {
-      if (ref?.id) scopes.push({ level: lvl, id: ref.id, name: ref.name || lvl })
+  // Fallback: when the graph yields nothing, derive scopes from the JWT.
+  // Single source of truth lives in utils/userScope.ts.
+  if (scopes.length === 0 && user) {
+    for (const ref of getUserAdminScopesFromJwt(user)) {
+      scopes.push({ level: ref.level, id: ref.id, name: ref.name || ref.level })
     }
-    pushOne('governorship', cs.isAdminForGovernorshipOf)
-    pushOne('council',      cs.isAdminForCouncilOf)
-    pushOne('stream',       cs.isAdminForStreamOf)
-    pushOne('campus',       cs.isAdminForCampusOf)
-    pushOne('oversight',    cs.isAdminForOversightOf)
-    pushOne('denomination', cs.isAdminForDenominationOf)
   }
 
   // Dedupe by (level, id) and sort highest-level first.

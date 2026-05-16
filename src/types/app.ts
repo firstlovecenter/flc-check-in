@@ -59,6 +59,24 @@ export interface AppUser {
   campus?: { id?: string; name?: string }
   oversight?: { id?: string; name?: string }
   denomination?: { id?: string; name?: string }
+  /** JWT-embedded single-edge references — populated by the auth lambda when
+   *  the member holds exactly one matching leadership/admin edge per level.
+   *  Read via utils/userScope.ts; do not parse inline. */
+  churchScopes?: {
+    isAdminForDenominationOf?: { id: string; name?: string } | null
+    isAdminForOversightOf?:    { id: string; name?: string } | null
+    isAdminForCampusOf?:       { id: string; name?: string } | null
+    isAdminForStreamOf?:       { id: string; name?: string } | null
+    isAdminForCouncilOf?:      { id: string; name?: string } | null
+    isAdminForGovernorshipOf?: { id: string; name?: string } | null
+    leadsDenominationOf?:      { id: string; name?: string } | null
+    leadsOversightOf?:         { id: string; name?: string } | null
+    leadsCampusOf?:            { id: string; name?: string } | null
+    leadsStreamOf?:            { id: string; name?: string } | null
+    leadsCouncilOf?:           { id: string; name?: string } | null
+    leadsGovernorshipOf?:      { id: string; name?: string } | null
+    leadsBacentaOf?:           { id: string; name?: string } | null
+  }
   [extra: string]: any
 }
 

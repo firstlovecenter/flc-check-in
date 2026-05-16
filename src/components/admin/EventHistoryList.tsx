@@ -7,6 +7,8 @@ import {
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { resolveCurrentMember } from '../../utils/membersApi'
+import { getUserChurchRef } from '../../utils/userScope'
+import type { ScopeLevel } from '../../types/app'
 
 const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED']
 
@@ -23,18 +25,9 @@ export default function EventHistoryList() {
         // Derive the scope directly from the user's level — consistent with
         // the home screen filter. Only events scoped to the user's own church
         // appear; superadmins use the dedicated drill-down admin menu.
-        //
-        // ID resolution: prefer the flat user[lvl].id, then activeChurch at
-        // that level, then the JWT admin scope (churchScopes.isAdminFor<Lvl>Of)
-        // — needed for accounts whose JWT only carries admin edges.
-        const ownLevel = user.level
-        const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-        const ownId = ownLevel
-          ? ((user as any)[ownLevel]?.id
-              ?? (user.activeChurch?.level === ownLevel ? user.activeChurch?.id : undefined)
-              ?? (user as any).churchScopes?.[`isAdminFor${cap(ownLevel)}Of`]?.id)
-          : null
-        const scopes   = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
+        // Resolution rules live in utils/userScope.ts.
+        const ownRef = user.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
+        const scopes = ownRef ? [{ level: ownRef.level, id: ownRef.id }] : []
         // resolveCurrentMember is still needed for listScopedEventsForMember
         // (personal scope-snapshot history). Swallow graph errors gracefully.
         const member = await resolveCurrentMember(user).catch(() => null)

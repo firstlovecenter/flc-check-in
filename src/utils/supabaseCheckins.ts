@@ -5,8 +5,8 @@
 import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
+import { getUserChurchRefs } from './userScope'
 import type { AppUser } from '../types/app'
-import { SCOPE_LEVELS } from '../types/app'
 
 // ─── Module-level SWR cache for event listings ───────────────────────────
 // Keyed by the scope filter string so different users get separate cache
@@ -40,30 +40,18 @@ const _NO_SCOPE = '__no_scope__'
 // ancestry. Sub-scope leaders can discover higher-scope events they are
 // structurally part of (e.g. a bacenta leader can see a stream-level event).
 // SuperAdmins bypass the filter and see all events (returns null).
-// Anyone without any resolvable church IDs returns _NO_SCOPE
-// (listing functions return [] early — no DB query made).
+// Anyone without any resolvable church IDs returns _NO_SCOPE — listing
+// functions return [] early and skip the DB round-trip.
 //
-// Per-level resolution order:
-//   1. flat user[lvl].id (hydrated from member_profiles or JWT top-level refs)
-//   2. activeChurch when it matches that level
-//   3. churchScopes.isAdminFor<Level>Of.id (admin edges in JWT)
-//   4. churchScopes.leads<Level>Of.id (leader edges in JWT — covers leaders
-//      whose JWT only carries leads*Of, e.g. leaderCouncil test accounts)
+// The per-level resolution rules live in utils/userScope.ts; this function
+// only assembles the resulting clauses.
 function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin) return null
-  const cs: any = (user as any).churchScopes || {}
-  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-  const clauses: string[] = []
-  for (const lvl of SCOPE_LEVELS) {
-    const id =
-      (user as any)[lvl]?.id ??
-      (user.activeChurch?.level === lvl ? user.activeChurch?.id : undefined) ??
-      cs[`isAdminFor${cap(lvl)}Of`]?.id ??
-      cs[`leads${cap(lvl)}Of`]?.id
-    if (id) clauses.push(`and(scope_level.eq.${lvl},scope_church_id.eq.${id})`)
-  }
-  if (!clauses.length) return _NO_SCOPE
-  return clauses.join(',')
+  const refs = getUserChurchRefs(user)
+  if (refs.length === 0) return _NO_SCOPE
+  return refs
+    .map((r) => `and(scope_level.eq.${r.level},scope_church_id.eq.${r.id})`)
+    .join(',')
 }
 
 // Client-side relevance gate applied after fetching.
@@ -71,7 +59,8 @@ function buildScopeOrFilter(user: AppUser): string | null {
 //   1. The user's role is explicitly listed in allowed_roles, OR
 //   2. allowed_roles contains no admin roles (it's a pure leader event visible
 //      to everyone who is structurally in scope).
-function isEventRelevantToUser(evt: any, user: AppUser): boolean {
+// Exported for unit testing only — internal callers use it via .filter().
+export function isEventRelevantToUser(evt: any, user: AppUser): boolean {
   if (user.isSuperAdmin) return true
   const userRoles = new Set<string>(user.roles || [])
   const allowed: string[] = evt.allowed_roles || []
