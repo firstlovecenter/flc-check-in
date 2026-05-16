@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, LayersControl, Circle, Polygon, Marker, useMap
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { getCurrentPosition } from '../../utils/geo'
+import { loadGoogleMaps } from '../../utils/googleMaps'
 import { PRESET_VENUES } from '../../data/venues'
 import type { GeofenceInput } from '../../types/app'
 
@@ -47,8 +48,17 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     value?.type === 'polygon' ? value.polygon : []
   )
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string; address?: Record<string, string> }>>([])
+  // Two possible result shapes:
+  //   Google Places: { placeId, primary, secondary } — needs Place Details on click
+  //   Nominatim:     { lat, lon, display_name } — coords already attached
+  // Normalised so the dropdown renderer doesn't care which provider answered.
+  type SearchResult = { placeId?: string; primary: string; secondary?: string; lat?: string; lon?: string }
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
+  // Google billing session token — pair Autocomplete calls with the eventual
+  // Place Details call so Google bills them as one session ($17/1K) rather
+  // than separately. Reset after each pick so the next search is a new session.
+  const placesSessionRef = useRef<any>(null)
   const [selectedVenueId, setSelectedVenueId] = useState<string | null>(
     // Pre-select if the initial value matches a preset
     (() => {
@@ -69,44 +79,132 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, center[0], center[1], radius, polygon])
 
-  // Debounced Nominatim place search (free OSM geocoding, no API key required)
+  // Debounced place search.
+  //   - Google Places Autocomplete when VITE_GOOGLE_MAPS_API_KEY is set
+  //     (much better Ghana coverage, indexes churches/businesses, fuzzy match).
+  //   - Falls back to Nominatim (free OSM geocoder) when no key configured.
   useEffect(() => {
     const q = searchQuery.trim()
     if (q.length < 3) { setSearchResults([]); return }
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
-        // countrycodes=gh biases results toward Ghana (most FLC venues are
-        // there) without excluding others — international hits still rank but
-        // local matches surface first. addressdetails=1 gives us the city/
-        // region so the dropdown can show a useful second line.
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=gh`,
-          { headers: { 'Accept-Language': 'en' } }
-        )
-        const data = await res.json()
-        // If country-biased search came back empty, retry worldwide so admins
-        // creating events in other regions aren't stuck.
-        if (Array.isArray(data) && data.length === 0) {
-          const fallback = await fetch(
-            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`,
-            { headers: { 'Accept-Language': 'en' } }
+        const hasGoogleKey = !!(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+        if (hasGoogleKey) {
+          const g = await loadGoogleMaps()
+          // Reuse a session token across keystrokes — billed as one session
+          // when paired with the eventual Place Details call.
+          if (!placesSessionRef.current) {
+            placesSessionRef.current = new g.maps.places.AutocompleteSessionToken()
+          }
+          const service = new g.maps.places.AutocompleteService()
+          const predictions: any[] = await new Promise((resolve) => {
+            service.getPlacePredictions(
+              {
+                input: q,
+                sessionToken: placesSessionRef.current,
+                // Bias toward Ghana but don't hard-restrict — admins running
+                // events elsewhere still get results, just deprioritised.
+                componentRestrictions: undefined,
+                language: 'en',
+                region: 'gh',
+              },
+              (preds: any[] | null, status: string) => {
+                if (status !== 'OK' || !preds) resolve([])
+                else resolve(preds)
+              },
+            )
+          })
+          setSearchResults(
+            predictions.slice(0, 8).map((p) => ({
+              placeId: p.place_id,
+              primary: p.structured_formatting?.main_text || p.description,
+              secondary: p.structured_formatting?.secondary_text || '',
+            })),
           )
-          setSearchResults(await fallback.json())
         } else {
-          setSearchResults(data)
+          // No key — fall back to Nominatim (free, but weaker Ghana coverage).
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=gh`,
+            { headers: { 'Accept-Language': 'en' } },
+          )
+          const data = await res.json()
+          const list = Array.isArray(data) && data.length > 0
+            ? data
+            : await fetch(
+                `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`,
+                { headers: { 'Accept-Language': 'en' } },
+              ).then((r) => r.json())
+          setSearchResults(
+            (Array.isArray(list) ? list : []).map((r: any) => {
+              const parts = (r.display_name || '').split(',').map((s: string) => s.trim())
+              return {
+                primary: parts[0] || r.display_name,
+                secondary: parts.slice(1, 4).join(', '),
+                lat: String(r.lat),
+                lon: String(r.lon),
+              }
+            }),
+          )
         }
-      } catch {
+      } catch (err) {
+        console.error('[GeoFencePicker] search error:', err)
         setSearchResults([])
       } finally {
         setSearching(false)
       }
-    }, 500)
+    }, 400)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
   const [gpsBusy, setGpsBusy] = useState(false)
   const [gpsError, setGpsError] = useState<string | null>(null)
+  // Feedback for the "paste coordinates from Google Maps" flow.
+  const [pasteStatus, setPasteStatus] = useState<{ kind: 'ok' | 'error'; msg: string } | null>(null)
+
+  /** Parse "5.6037, -0.1870" or "5.6037,-0.1870" or a Google Maps URL with
+   *  embedded coords like ".../@5.6037,-0.1870,17z" into [lat, lng].
+   *  Returns null if no plausible pair is found. */
+  function parsePastedCoords(text: string): [number, number] | null {
+    if (!text) return null
+    const cleaned = text.trim()
+    // Plain "lat,lng" or "lat, lng"
+    const pair = cleaned.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/)
+    if (pair) {
+      const lat = parseFloat(pair[1])
+      const lng = parseFloat(pair[2])
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return [lat, lng]
+    }
+    // Google Maps URL: "@<lat>,<lng>,<zoom>z"
+    const urlAt = cleaned.match(/[@?!&](-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/)
+    if (urlAt) {
+      const lat = parseFloat(urlAt[1])
+      const lng = parseFloat(urlAt[2])
+      if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return [lat, lng]
+    }
+    return null
+  }
+
+  function applyPastedCoords(text: string): boolean {
+    const parsed = parsePastedCoords(text)
+    if (!parsed) {
+      setPasteStatus({ kind: 'error', msg: "Couldn't read coordinates from that — copy from Google Maps as 'lat, lng' or paste a maps URL." })
+      return false
+    }
+    setCenter(parsed)
+    setSelectedVenueId(null)
+    setGpsFix(null)
+    setPasteStatus({ kind: 'ok', msg: `Pinned at ${parsed[0].toFixed(5)}, ${parsed[1].toFixed(5)}` })
+    return true
+  }
+
+  /** Open Google Maps in a new tab so the admin can find the exact venue.
+   *  Pre-seeds the query with the current center so they don't start from null. */
+  function openInGoogleMaps() {
+    setPasteStatus(null)
+    const url = `https://www.google.com/maps/search/?api=1&query=${center[0]},${center[1]}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
   // Accuracy ring data from the last "My Location" call. Cleared when the user
   // picks a preset, drags the marker, or searches — those are intentional moves.
   const [gpsFix, setGpsFix] = useState<{ lat: number; lng: number; accuracy: number } | null>(null)
@@ -169,12 +267,41 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     }
   }
 
-  function selectResult(r: { lat: string; lon: string }) {
-    setCenter([parseFloat(r.lat), parseFloat(r.lon)])
+  async function selectResult(r: SearchResult) {
+    setSearchResults([])
+    setSearchQuery('')
     setSelectedVenueId(null)
     setGpsFix(null)
-    setSearchQuery('')
-    setSearchResults([])
+    // Nominatim branch — coords already attached.
+    if (r.lat && r.lon) {
+      setCenter([parseFloat(r.lat), parseFloat(r.lon)])
+      return
+    }
+    // Google branch — fetch Place Details for the lat/lng. Reuses the session
+    // token so Autocomplete + Details are billed as one session.
+    if (!r.placeId) return
+    try {
+      const g = await loadGoogleMaps()
+      // PlacesService needs an attached DOM node — invisible div is fine.
+      const host = document.createElement('div')
+      const service = new g.maps.places.PlacesService(host)
+      service.getDetails(
+        {
+          placeId: r.placeId,
+          fields: ['geometry'],
+          sessionToken: placesSessionRef.current,
+        },
+        (place: any, status: string) => {
+          if (status === 'OK' && place?.geometry?.location) {
+            setCenter([place.geometry.location.lat(), place.geometry.location.lng()])
+          }
+          // Reset the session — next search starts a new billing session.
+          placesSessionRef.current = null
+        },
+      )
+    } catch (err) {
+      console.error('[GeoFencePicker] place details error:', err)
+    }
   }
 
   return (
@@ -207,35 +334,30 @@ export default function GeoFencePicker({ value, onChange }: Props) {
               boxShadow: 'var(--shadow-2)',
             }}
           >
-            {searchResults.map((r, i) => {
-              const parts = (r.display_name || '').split(',').map((s) => s.trim())
-              const primary = parts[0] || r.display_name
-              const secondary = parts.slice(1, 4).join(', ')
-              return (
-                <button
-                  key={i}
-                  type='button'
-                  onClick={() => selectResult(r)}
-                  className='w-full text-left px-3 py-2.5 cursor-pointer'
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    borderBottom: i < searchResults.length - 1 ? '1px solid var(--border)' : 'none',
-                    color: 'var(--text)',
-                    fontFamily: 'var(--sans)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <div className='text-sm font-semibold truncate'>{primary}</div>
-                  {secondary && (
-                    <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>
-                      {secondary}
-                    </div>
-                  )}
-                </button>
-              )
-            })}
+            {searchResults.map((r, i) => (
+              <button
+                key={r.placeId || `${r.lat},${r.lon}` || i}
+                type='button'
+                onClick={() => selectResult(r)}
+                className='w-full text-left px-3 py-2.5 cursor-pointer'
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: i < searchResults.length - 1 ? '1px solid var(--border)' : 'none',
+                  color: 'var(--text)',
+                  fontFamily: 'var(--sans)',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div className='text-sm font-semibold truncate'>{r.primary}</div>
+                {r.secondary && (
+                  <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>
+                    {r.secondary}
+                  </div>
+                )}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -273,9 +395,21 @@ export default function GeoFencePicker({ value, onChange }: Props) {
         </div>
         <button
           type='button'
+          onClick={openInGoogleMaps}
+          className='ml-auto px-3 py-1.5 text-xs cursor-pointer'
+          style={{
+            background: 'transparent',
+            color: 'var(--muted)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-pill)',
+          }}
+          title='Open Google Maps in a new tab to find the venue, then paste coordinates back here'
+        >🌐 Find on Google Maps</button>
+        <button
+          type='button'
           onClick={snapToMyLocation}
           disabled={gpsBusy}
-          className='ml-auto px-3 py-1.5 text-xs cursor-pointer'
+          className='px-3 py-1.5 text-xs cursor-pointer'
           style={{
             background: 'transparent',
             color: 'var(--muted)',
@@ -288,6 +422,41 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       </div>
       {gpsError && (
         <p className='text-xs' style={{ color: 'var(--coral)', margin: 0 }}>{gpsError}</p>
+      )}
+      {/* Paste-coordinates field — pairs with the "Find on Google Maps" button.
+          Right-click a pin in Google Maps → Copy coordinates → paste here. */}
+      <div className='flex items-center gap-2'>
+        <input
+          type='text'
+          placeholder='Paste coordinates from Google Maps (e.g. 5.6037, -0.1870)'
+          onPaste={(e) => {
+            const text = e.clipboardData.getData('text')
+            if (applyPastedCoords(text)) {
+              e.preventDefault()
+              ;(e.target as HTMLInputElement).value = ''
+            }
+          }}
+          onChange={(e) => {
+            // Allow typing too — apply on Enter
+            if (!e.target.value) setPasteStatus(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (applyPastedCoords((e.target as HTMLInputElement).value)) {
+                ;(e.target as HTMLInputElement).value = ''
+              }
+            }
+          }}
+          className='input-field'
+          style={{ fontSize: 13, padding: '8px 14px' }}
+          autoComplete='off'
+        />
+      </div>
+      {pasteStatus && (
+        <p className='text-xs' style={{ color: pasteStatus.kind === 'ok' ? 'var(--green)' : 'var(--coral)', margin: 0 }}>
+          {pasteStatus.msg}
+        </p>
       )}
 
       {/* Preset venues — fastest way to set a known recurring location. */}

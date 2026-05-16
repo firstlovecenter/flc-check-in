@@ -26,13 +26,24 @@ function graphqlEndpoint() {
   return '/flc-graphql'
 }
 
-// Singleton GraphQL client — avoid creating a new instance on every call.
+// GraphQL client factory. The endpoint is authenticated — without a bearer
+// token Neo4j-GraphQL applies a denomination-only filter that hides every
+// child node, which silently breaks every leader-visibility flow.
+//
+// The token can rotate during a session (refresh flow), so we read it on
+// each call and rebuild only when it changes. GraphQLClient is cheap to
+// construct (it doesn't open a connection up front) so this is fine.
 let _client: GraphQLClient | null = null
+let _clientToken: string | null = null
 function client(): GraphQLClient {
-  if (!_client) {
+  const token = typeof window !== 'undefined'
+    ? (window.localStorage?.getItem('accessToken') ?? null)
+    : null
+  if (!_client || _clientToken !== token) {
     _client = new GraphQLClient(graphqlEndpoint(), {
-      // headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
+    _clientToken = token
   }
   return _client
 }
@@ -101,7 +112,7 @@ export function memberToProfileRow(m) {
   return {
     id: m.id,
     email: m.email || null,
-    title: m.title || null,
+    title: (Array.isArray(m.title) ? m.title[0]?.name : m.title) || null,
     first_name: m.firstName || null,
     last_name: m.lastName || null,
     phone: m.phoneNumber || m.whatsappNumber || null,

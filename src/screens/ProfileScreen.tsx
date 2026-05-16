@@ -81,8 +81,9 @@ export default function ProfileScreen() {
   }, [member?.id, user?.userId])
 
   const hierarchy = buildHierarchy(member)
+  const memberTitle = Array.isArray(member?.title) ? member.title[0]?.name : member?.title
   const displayName = member
-    ? [member.title, member.firstName, member.middleName, member.lastName].filter(Boolean).join(' ')
+    ? [memberTitle, member.firstName, member.middleName, member.lastName].filter(Boolean).join(' ')
     : [user?.title, user?.firstName, user?.lastName].filter(Boolean).join(' ')
   const pictureUrl = member?.pictureUrl || null
 

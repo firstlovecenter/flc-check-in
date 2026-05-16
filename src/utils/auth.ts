@@ -402,7 +402,8 @@ export async function loginWithCredentials(email, password) {
       const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
       const member = await resolveCurrentMember(user);
       if (member?.pictureUrl) localStorage.setItem('pictureUrl', member.pictureUrl);
-      if (member?.title) localStorage.setItem('memberTitle', member.title);
+      const memberTitle = Array.isArray(member?.title) ? member.title[0]?.name : member?.title;
+      if (memberTitle) localStorage.setItem('memberTitle', memberTitle);
       const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
       await upsertMemberProfile(row);

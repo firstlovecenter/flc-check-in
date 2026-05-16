@@ -19,7 +19,7 @@ import { gql } from 'graphql-request'
 export const MEMBER_FIELDS = gql`
   fragment MemberFields on Member {
     id
-    title
+    title { name }
     firstName
     middleName
     lastName
