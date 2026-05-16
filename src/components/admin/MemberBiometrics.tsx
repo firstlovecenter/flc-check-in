@@ -28,6 +28,8 @@ export default function MemberBiometrics() {
   const [resetting, setResetting] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(25)
 
   async function refresh() {
     setLoading(true)
@@ -76,6 +78,29 @@ export default function MemberBiometrics() {
     const enrolled = rows.filter((r) => r.has_face_id).length
     return { total: rows.length, enrolled, notEnrolled: rows.length - enrolled }
   }, [rows])
+
+  // Reset to page 1 whenever the filter, search, or page size changes —
+  // otherwise the admin can be left on a page that no longer exists.
+  useEffect(() => { setPage(1) }, [filter, search, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const pageStart = (safePage - 1) * pageSize
+  const pageRows = filtered.slice(pageStart, pageStart + pageSize)
+
+  // Build a compact page-number list with ellipses for large totals.
+  // Always show first, last, current ±1, and use '…' to bridge gaps.
+  const pageItems: Array<number | 'gap'> = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const set = new Set<number>([1, totalPages, safePage, safePage - 1, safePage + 1])
+    const sorted = [...set].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b)
+    const out: Array<number | 'gap'> = []
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push('gap')
+      out.push(sorted[i])
+    }
+    return out
+  }, [totalPages, safePage])
 
   return (
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
@@ -137,7 +162,7 @@ export default function MemberBiometrics() {
         )}
 
         <div className='flex flex-col gap-2'>
-          {filtered.map((r) => {
+          {pageRows.map((r) => {
             const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.id
             const unit = r.bacenta_name || r.governorship_name || r.council_name || r.stream_name || '—'
             return (
@@ -177,8 +202,81 @@ export default function MemberBiometrics() {
             )
           })}
         </div>
+
+        {/* Pagination controls — only render if there's more than one page or
+            the admin might want to change the page size. */}
+        {filtered.length > 0 && (
+          <div
+            className='flex items-center justify-between gap-3 flex-wrap text-xs'
+            style={{ color: 'var(--muted)' }}
+          >
+            <div className='flex items-center gap-2'>
+              <span>
+                {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
+              </span>
+              <label className='flex items-center gap-1'>
+                <span>per page</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className='cursor-pointer'
+                  style={{
+                    background: 'var(--bg2)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-btn)',
+                    padding: '4px 8px',
+                  }}
+                >
+                  {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+
+            {totalPages > 1 && (
+              <div className='flex items-center gap-1 flex-wrap'>
+                <PageBtn disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</PageBtn>
+                {pageItems.map((p, i) =>
+                  p === 'gap' ? (
+                    <span key={`gap-${i}`} style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>
+                  ) : (
+                    <PageBtn key={p} active={p === safePage} onClick={() => setPage(p)}>{p}</PageBtn>
+                  ),
+                )}
+                <PageBtn disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</PageBtn>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
+  )
+}
+
+function PageBtn({ children, active, disabled, onClick }: {
+  children: React.ReactNode
+  active?: boolean
+  disabled?: boolean
+  onClick?: () => void
+}) {
+  return (
+    <button
+      type='button'
+      disabled={disabled}
+      onClick={onClick}
+      className='cursor-pointer disabled:cursor-not-allowed disabled:opacity-40'
+      style={{
+        minWidth: 28,
+        padding: '4px 8px',
+        background: active ? 'var(--accent)' : 'var(--bg2)',
+        color: active ? 'var(--bg)' : 'var(--text)',
+        border: '1px solid ' + (active ? 'var(--accent)' : 'var(--border)'),
+        borderRadius: 'var(--radius-btn)',
+        fontWeight: active ? 700 : 500,
+      }}
+    >
+      {children}
+    </button>
   )
 }
 

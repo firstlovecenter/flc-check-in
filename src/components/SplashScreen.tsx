@@ -50,17 +50,17 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   return (
     <div
       className='fixed inset-0 flex items-center justify-center'
-      style={{ background: 'var(--bg)', zIndex: 100 }}
+      style={{ background: '#C8141C', zIndex: 100 }}
     >
       <style>{`
         @keyframes flcSplashPulse {
           0%, 100% {
             transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(123,164,248,0.0), 0 0 40px 4px rgba(123,164,248,0.18);
+            box-shadow: 0 0 0 0 rgba(255,255,255,0.0), 0 0 40px 4px rgba(255,255,255,0.20);
           }
           50% {
             transform: scale(1.06);
-            box-shadow: 0 0 0 18px rgba(123,164,248,0.0), 0 0 60px 12px rgba(123,164,248,0.35);
+            box-shadow: 0 0 0 18px rgba(255,255,255,0.0), 0 0 60px 12px rgba(255,255,255,0.35);
           }
         }
         @keyframes flcSplashHaloA {
@@ -85,7 +85,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
           className='absolute pointer-events-none'
           style={{
             width: 180, height: 180, borderRadius: '50%',
-            border: '2px solid var(--accent)',
+            border: '2px solid rgba(255,255,255,0.6)',
             animation: 'flcSplashHaloA 2.4s ease-out infinite',
           }}
         />
@@ -93,7 +93,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
           className='absolute pointer-events-none'
           style={{
             width: 180, height: 180, borderRadius: '50%',
-            border: '2px solid var(--accent)',
+            border: '2px solid rgba(255,255,255,0.6)',
             animation: 'flcSplashHaloB 2.4s ease-out 1.2s infinite',
           }}
         />
@@ -115,7 +115,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
         <p
           className='text-sm m-0'
           style={{
-            color: 'var(--muted)',
+            color: 'rgba(255,255,255,0.92)',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
             animation: 'flcSplashFadeIn 0.6s ease-out 0.3s both',
