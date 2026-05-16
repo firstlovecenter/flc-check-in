@@ -5,7 +5,7 @@ import TopBar from '../components/TopBar'
 import EventCardForLeader from '../components/checkin/EventCardForLeader'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
-  listActiveEvents, listRecentPastEvents, getMemberProfile,
+  listActiveEvents, listRecentPastEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import type { CheckinEventRow } from '../types/app'
@@ -66,6 +66,19 @@ export default function LeaderHomeScreen() {
             const profile = await getMemberProfile(activeUser.userId)
             if (profile) {
               persistChurchContextFromProfileRow(profile)
+            } else {
+              // Profile not in Supabase yet — the login fire-and-forget may still
+              // be running, or this is a first login on this device. Fall back to
+              // the member graph directly so we get the full ancestor chain now.
+              const { resolveCurrentMember, memberToProfileRow } = await import('../utils/membersApi')
+              const member = await resolveCurrentMember(activeUser)
+              if (member) {
+                const row = memberToProfileRow(member)
+                persistChurchContextFromProfileRow(row)
+                // Async-write to Supabase so future sessions skip this fallback.
+                const authUserId = activeUser.userId
+                upsertMemberProfile({ ...row, id: authUserId }).catch(() => {})
+              }
             }
           } catch { /* non-critical — proceed with whatever we have */ }
           // Always try the JWT churchScopes as a secondary source — fills any

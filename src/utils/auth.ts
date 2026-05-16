@@ -406,7 +406,16 @@ export async function loginWithCredentials(email, password) {
       if (memberTitle) localStorage.setItem('memberTitle', memberTitle);
       const { upsertMemberProfile } = await import('./supabaseCheckins');
       const row = member ? memberToProfileRow(member) : user;
-      await upsertMemberProfile(row);
+      // Persist the full ancestor chain to localStorage for the CURRENT session.
+      // The home screen may have already rendered with an incomplete JWT — this
+      // ensures the next data refresh (pull-to-refresh / tab re-focus) picks up
+      // the correct hierarchy without requiring the user to log out and back in.
+      if (member) persistChurchContextFromProfileRow(row);
+      // Always key the Supabase row by the auth-system userId, not the FLC graph
+      // node id. The graph may use a different UUID/ObjectId format, so if we
+      // store under member.id the getMemberProfile(user.userId) lookup in
+      // LeaderHomeScreen will never find it.
+      await upsertMemberProfile({ ...row, id: user.userId });
     } catch (err: any) {
       console.warn('[auth] post-login sync failed:', err.message);
     }
