@@ -1,8 +1,8 @@
-// Lazy loader for the Google Maps JavaScript API.
+// Lazy loader for the Google Maps JavaScript API (places library only).
 //
-// We only need the `places` library — Autocomplete + Place Details — to power
-// the venue search in GeoFencePicker. The map itself stays Leaflet (Google's
-// JS map widget would conflict and double the bundle).
+// We use Google for the venue search (Places Autocomplete + Place Details)
+// because its Ghana POI data is far better than OSM. The map widget itself
+// stays Leaflet — free CARTO/Esri tiles, no per-load cost.
 //
 // Usage:
 //   const google = await loadGoogleMaps()
@@ -11,10 +11,7 @@
 // The script is loaded at most once per page. Concurrent callers share the
 // same Promise so we never inject duplicate <script> tags.
 
-// We don't pull in @types/google.maps because the only Places-API surface
-// we use (AutocompleteService, AutocompleteSessionToken, PlacesService,
-// getPlacePredictions, getDetails) is small and stable. Loose typing keeps
-// the dependency surface minimal.
+// Loose typing — we only touch a small, stable slice of the SDK.
 let _loadPromise: Promise<any> | null = null
 
 export function loadGoogleMaps(): Promise<any> {
@@ -27,7 +24,11 @@ export function loadGoogleMaps(): Promise<any> {
   }
   if (_loadPromise) return _loadPromise
 
-  const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+  const rawKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+  // Strip stray quotes if .env was written as VITE_X="value" — Vite preserves
+  // them literally and the SDK URL-encodes them to %22, producing an
+  // InvalidKeyMapError from Google.
+  const key = typeof rawKey === 'string' ? rawKey.replace(/^["']|["']$/g, '').trim() : ''
   if (!key) {
     return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY is not set'))
   }
