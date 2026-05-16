@@ -17,6 +17,7 @@ export default function EventHistoryList() {
   const [events, setEvents] = useState([])
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState('ALL')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -62,9 +63,20 @@ export default function EventHistoryList() {
   }, [user.userId])
 
   const filtered = useMemo(() => {
-    if (filter === 'ALL') return events
-    return events.filter((e) => e.status === filter)
-  }, [events, filter])
+    const base = filter === 'ALL' ? events : events.filter((e) => e.status === filter)
+    const q = search.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((e) => {
+      const haystack = [
+        e.name,
+        e.scope_church_name,
+        e.venue_name,
+        e.scope_level,
+        e.status,
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [events, filter, search])
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
 
@@ -97,6 +109,36 @@ export default function EventHistoryList() {
               {f}
             </button>
           ))}
+        </div>
+        <div
+          className='px-3 py-2 flex items-center gap-2'
+          style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+        >
+          <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' style={{ color: 'var(--muted)', flexShrink: 0 }}>
+            <path d='M15.5 14h-.79l-.28-.27a6 6 0 1 0-.71.71l.27.28v.79L20 21.5 21.5 20l-6-6zm-5.5 0a4 4 0 1 1 0-8 4 4 0 0 1 0 8z' />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search events, venue, church...'
+            className='w-full text-sm'
+            style={{
+              background: 'transparent',
+              color: 'var(--text)',
+              border: 'none',
+              outline: 'none',
+            }}
+            aria-label='Search events'
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className='text-xs font-semibold px-2 py-1 cursor-pointer'
+              style={{ background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)' }}
+            >
+              Clear
+            </button>
+          )}
         </div>
         {filtered.length === 0 && (
           <p className='text-sm text-center mt-6' style={{ color: 'var(--muted)' }}>No events.</p>

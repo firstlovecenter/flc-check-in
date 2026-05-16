@@ -3,7 +3,7 @@
 // Authenticated viewers (coming from the hamburger menu) get a ScreenHeader
 // with the menu and a back link so they don't feel trapped.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
 import { listActiveEvents } from '../utils/supabaseCheckins'
@@ -42,6 +42,7 @@ function useTheme() {
 export default function QRDisplayScreen() {
   const [state, setState] = useState<QRState>({ status: 'loading' })
   const [selected, setSelected] = useState<CheckinEventRow | null>(null)
+  const [search, setSearch] = useState('')
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
@@ -67,6 +68,18 @@ export default function QRDisplayScreen() {
 
   const signedIn = isSignedIn()
   const { theme, toggle: toggleTheme } = useTheme()
+  const filteredEvents = useMemo(() => {
+    if (state.status !== 'ok') return [] as CheckinEventRow[]
+    const q = search.trim().toLowerCase()
+    if (!q) return state.events
+    return state.events.filter((evt) => {
+      const haystack = [evt.name, evt.scope_church_name, evt.venue_name]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [state, search])
 
   // Header shared across all views
   const header = signedIn ? (
@@ -152,8 +165,36 @@ export default function QRDisplayScreen() {
         {state.status === 'ok' && state.events.length > 1 && (
           <>
             <p className='eyebrow mb-4'>Select an event</p>
+            <div
+              className='mb-3 px-3 py-2 flex items-center gap-2'
+              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+            >
+              <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' style={{ color: 'var(--muted)', flexShrink: 0 }}>
+                <path d='M15.5 14h-.79l-.28-.27a6 6 0 1 0-.71.71l.27.28v.79L20 21.5 21.5 20l-6-6zm-5.5 0a4 4 0 1 1 0-8 4 4 0 0 1 0 8z' />
+              </svg>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder='Search events, venue, church...'
+                className='w-full text-sm'
+                style={{ background: 'transparent', color: 'var(--text)', border: 'none', outline: 'none' }}
+                aria-label='Search active events'
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className='text-xs font-semibold px-2 py-1 cursor-pointer'
+                  style={{ background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {filteredEvents.length === 0 && (
+              <p className='text-sm mb-3' style={{ color: 'var(--muted)' }}>No matching events.</p>
+            )}
             <div className='flex flex-col gap-3'>
-              {state.events.map((evt) => (
+              {filteredEvents.map((evt) => (
                 <button
                   key={evt.id}
                   onClick={() => setSelected(evt)}
