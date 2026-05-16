@@ -101,40 +101,67 @@ export default function EventHistoryList() {
         {filtered.length === 0 && (
           <p className='text-sm text-center mt-6' style={{ color: 'var(--muted)' }}>No events.</p>
         )}
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-          {filtered.map((evt) => (
-            <Link
-              key={evt.id}
-              to={`/events/${evt.id}`}
-              className='block p-4'
-              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
-            >
-              <div className='flex items-start justify-between gap-3'>
-                <div className='min-w-0'>
-                  <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{evt.name}</p>
-                  <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-                    {evt.scope_level} · {evt.scope_church_name}
-                  </p>
-                  <p className='text-xs m-0 mt-1' style={{ color: 'var(--muted)' }}>
-                    {format(new Date(evt.starts_at), 'PP HH:mm')}
-                  </p>
+        <div className='flex flex-col gap-2'>
+          {filtered.map((evt) => {
+            const sColor = { ACTIVE: 'var(--green)', PAUSED: 'var(--amber)', ENDED: 'var(--muted)' }[evt.status] || 'var(--muted)'
+            const isLive = evt.status === 'ACTIVE' || evt.status === 'PAUSED'
+            const timeLabel = evt.status === 'ENDED'
+              ? `ended ${formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: true })}`
+              : `ends ${formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: true })}`
+            return (
+              <Link
+                key={evt.id}
+                to={`/events/${evt.id}`}
+                className='flex transition-all hover:brightness-105 active:scale-[0.99]'
+                style={{
+                  background: 'var(--card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-card)',
+                  textDecoration: 'none',
+                  overflow: 'hidden',
+                  boxShadow: isLive ? 'var(--shadow-2)' : 'var(--shadow-1)',
+                }}
+              >
+                {/* Status accent stripe */}
+                <div style={{ width: 4, background: sColor, flexShrink: 0 }} />
+
+                <div className='px-4 py-3.5 flex-1 min-w-0 flex items-center justify-between gap-3'>
+                  <div className='min-w-0 flex-1'>
+                    <p
+                      className='text-sm font-bold m-0 truncate'
+                      style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}
+                    >
+                      {evt.name}
+                    </p>
+                    <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                      <span style={{ color: sColor, fontWeight: 700, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.04em' }}>
+                        {evt.scope_level}
+                      </span>
+                      {' · '}{evt.scope_church_name}
+                      {evt.venue_name ? ` · ${evt.venue_name}` : ''}
+                    </p>
+                  </div>
+
+                  <div className='shrink-0 text-right' style={{ minWidth: 72 }}>
+                    <span
+                      className='text-[10px] font-bold px-2 py-0.5 uppercase'
+                      style={{ ...statusStyle(evt.status), borderRadius: 'var(--radius-pill)', letterSpacing: '0.06em' }}
+                    >
+                      {evt.status}
+                    </span>
+                    <p className='text-[11px] m-0 mt-1.5' style={{ color: 'var(--muted)' }}>
+                      {isLive
+                        ? formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: false })
+                        : format(new Date(evt.starts_at), 'd MMM yy')}
+                    </p>
+                    {isLive && (
+                      <p className='text-[10px] m-0' style={{ color: 'var(--muted)', opacity: 0.6 }}>remaining</p>
+                    )}
+                  </div>
                 </div>
-                <div className='text-right shrink-0'>
-                  <span
-                    className='text-[10px] px-2 py-0.5 font-bold uppercase'
-                    style={{ ...statusStyle(evt.status), borderRadius: 'var(--radius-pill)', letterSpacing: '0.06em' }}
-                  >
-                    {evt.status}
-                  </span>
-                  <p className='text-xs m-0 mt-2' style={{ color: 'var(--muted)' }}>
-                    {evt.status === 'ENDED'
-                      ? `ended ${formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: true })}`
-                      : `ends ${formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: true })}`}
-                  </p>
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       </main>
     </div>

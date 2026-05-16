@@ -109,8 +109,8 @@ export default function ScopeBreakdown({ eventId }) {
     if (!childLevel) return { groups: [], unassignedCount: 0 }
     const idCol   = `${childLevel}_id`
     const nameCol = `${childLevel}_name`
-    const checkedInIds = new Set(records.filter((r) => r.checked_out_at == null).map((r) => r.member_id))
-    const allRecordIds = new Set(records.map((r) => r.member_id))
+    const allRecordIds  = new Set(records.map((r) => r.member_id))
+    const checkedOutIds = new Set(records.filter((r) => r.checked_out_at != null).map((r) => r.member_id))
 
     // Seed map from graph child list (authoritative) so every child church
     // has a card, even if it has 0 eligible members.
@@ -129,9 +129,12 @@ export default function ScopeBreakdown({ eventId }) {
       if (!map.has(key)) map.set(key, { id: key, name, total: 0, checkedIn: 0, checkedOut: 0, defaulted: 0 })
       const g = map.get(key)!
       g.total++
-      if (checkedInIds.has(m.id)) g.checkedIn++
-      else if (allRecordIds.has(m.id)) g.checkedOut++
-      else g.defaulted++
+      if (allRecordIds.has(m.id)) {
+        g.checkedIn++ // attended (includes those who later checked out)
+        if (checkedOutIds.has(m.id)) g.checkedOut++
+      } else {
+        g.defaulted++
+      }
     }
     return {
       groups: [...map.values()].sort((a, b) => b.total - a.total),
@@ -225,8 +228,8 @@ export default function ScopeBreakdown({ eventId }) {
                     <div className='h-full' style={{ width: `${pct}%`, background: pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--coral)', borderRadius: 'var(--radius-pill)' }} />
                   </div>
                   <div className='flex gap-4'>
-                    <SmallStat value={g.checkedIn} label='In' color='var(--green)' />
-                    <SmallStat value={g.checkedOut} label='Out' color='var(--amber)' />
+                    <SmallStat value={g.checkedIn} label='Attended' color='var(--green)' />
+                    <SmallStat value={g.checkedOut} label='Left' color='var(--amber)' />
                     <SmallStat value={g.defaulted} label='Absent' color='var(--coral)' />
                     <SmallStat value={g.total} label='Total' />
                   </div>

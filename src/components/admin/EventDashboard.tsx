@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { formatDistanceToNowStrict } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
@@ -130,20 +130,20 @@ export default function EventDashboard({ eventId }) {
   const stats = useMemo(() => {
     const sliceIds = new Set(displaySlice.map((m) => m.id))
     const sliceRecords = records.filter((r) => sliceIds.has(r.member_id))
-    const checkedInRecords = sliceRecords.filter((r) => r.checked_out_at == null)
     const checkedOutRecords = sliceRecords.filter((r) => r.checked_out_at != null)
-    const checkedInIds = new Set(checkedInRecords.map((r) => r.member_id))
-    const allRecordIds = new Set(sliceRecords.map((r) => r.member_id))
+    // Anyone with a record counts as attended — checkout does not remove them from the tally.
+    const attendedIds = new Set(sliceRecords.map((r) => r.member_id))
     const total = sliceIds.size
-    const defaulted = displaySlice.filter((m) => !allRecordIds.has(m.id)).length
-    const pct = total > 0 ? Math.round((checkedInIds.size / total) * 100) : 0
-    return { total, checkedIn: checkedInIds.size, checkedOut: checkedOutRecords.length, defaulted, pct }
+    const defaulted = displaySlice.filter((m) => !attendedIds.has(m.id)).length
+    const pct = total > 0 ? Math.round((attendedIds.size / total) * 100) : 0
+    return { total, checkedIn: attendedIds.size, checkedOut: checkedOutRecords.length, defaulted, pct }
   }, [records, displaySlice])
 
+  // A member who has checked in — even if they later checked out — is still
+  // considered "checked in" for button / banner purposes.
   const isCheckedIn = useMemo(() => {
     if (!viewerCaps?.canCheckIn) return false
-    const myRecord = records.find((r) => r.member_id === user.userId)
-    return myRecord && !myRecord.checked_out_at
+    return records.some((r) => r.member_id === user.userId)
   }, [records, viewerCaps?.canCheckIn, user.userId])
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
@@ -218,11 +218,18 @@ export default function EventDashboard({ eventId }) {
             </>
           ) : (
             <>
-              <p className='eyebrow m-0 justify-center'>Check-In Admin</p>
-              <h2 className='m-0 mt-1 text-lg font-semibold' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>
-                {event.created_by_name || '—'}
+              <h2 className='m-0 text-xl font-bold' style={{ color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+                {event.name}
               </h2>
-              <p className='text-xs mt-1.5 m-0' style={{ color: 'var(--muted)' }}>
+              {event.venue_name && (
+                <p className='text-sm mt-2 m-0 flex items-center justify-center gap-1' style={{ color: 'var(--muted)' }}>
+                  <svg viewBox='0 0 24 24' width='13' height='13' fill='currentColor' style={{ flexShrink: 0, opacity: 0.7 }}>
+                    <path d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z' />
+                  </svg>
+                  {event.venue_name}
+                </p>
+              )}
+              <p className='text-xs mt-2 m-0' style={{ color: 'var(--muted)' }}>
                 <span className='uppercase tracking-wider'>{event.scope_level}</span>
                 {' · '}{event.scope_church_name}{' · '}ends {endsRel}
               </p>
@@ -273,9 +280,9 @@ export default function EventDashboard({ eventId }) {
         <div>
           <p className='eyebrow mb-3 justify-start'>Check-In Monitoring</p>
           <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-            <StatCard value={stats.checkedIn}  label='Checked In'     color='var(--green)' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.checkedIn}  label='Attended'       color='var(--green)' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
             <StatCard value={stats.defaulted}  label='Defaulted'      color='var(--coral)' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.checkedOut} label='Checked Out'    color='var(--amber)' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.checkedOut} label='Left Early'     color='var(--amber)' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
             <StatCard value={stats.total}      label='Total Expected' color='var(--text)'  to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
           </div>
           {viewerCaps.canManage && riskyCount > 0 && (
@@ -348,19 +355,51 @@ interface StatCardProps {
   to?: string
 }
 function StatCard({ value, label, color, to }: StatCardProps) {
-  const style = { background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', textDecoration: 'none', boxShadow: 'var(--shadow-1)' }
+  const style: React.CSSProperties = {
+    background: 'var(--card)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-card)',
+    textDecoration: 'none',
+    boxShadow: 'var(--shadow-1)',
+    overflow: 'hidden',
+  }
   const body = (
-    <div className='p-4 flex flex-col items-start gap-1'>
-      <span className='text-4xl font-bold' style={{ color, letterSpacing: '-0.03em', lineHeight: 1 }}>{value}</span>
-      <span className='text-xs font-semibold mt-1' style={{ color: 'var(--muted)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>{label}</span>
-      {to && (
-        <svg viewBox='0 0 24 24' width='14' height='14' className='mt-1' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' style={{ color: 'var(--muted)', opacity: 0.6 }}>
-          <path d='M9 6l6 6-6 6' />
-        </svg>
-      )}
+    <div>
+      {/* Colored accent stripe at top */}
+      <div style={{ height: 3, background: color }} />
+      <div className='px-4 pt-3 pb-4 flex flex-col items-start'>
+        <span
+          className='font-bold leading-none'
+          style={{ color, fontSize: '2.4rem', letterSpacing: '-0.04em', lineHeight: 1 }}
+        >
+          {value}
+        </span>
+        <span
+          className='mt-2'
+          style={{
+            color: 'var(--muted)',
+            fontSize: '10px',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {label}
+        </span>
+        {to && (
+          <svg
+            viewBox='0 0 24 24' width='12' height='12' className='mt-1.5'
+            fill='none' stroke='currentColor' strokeWidth='2.5'
+            strokeLinecap='round' strokeLinejoin='round'
+            style={{ color, opacity: 0.5 }}
+          >
+            <path d='M9 6l6 6-6 6' />
+          </svg>
+        )}
+      </div>
     </div>
   )
-  if (to) return <Link to={to} className='block transition-opacity hover:opacity-90 active:scale-[0.98]' style={style}>{body}</Link>
+  if (to) return <Link to={to} className='block transition-all hover:brightness-110 active:scale-[0.97]' style={style}>{body}</Link>
   return <div style={style}>{body}</div>
 }
 

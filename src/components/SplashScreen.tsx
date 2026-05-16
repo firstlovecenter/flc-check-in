@@ -50,7 +50,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   return (
     <div
       className='fixed inset-0 flex items-center justify-center'
-      style={{ background: '#C8141C', zIndex: 100 }}
+      style={{ background: '#CC0000', zIndex: 100 }}
     >
       <style>{`
         @keyframes flcSplashPulse {

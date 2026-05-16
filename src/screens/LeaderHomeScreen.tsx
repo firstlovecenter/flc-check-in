@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
-import EventCardForLeader from '../components/checkin/EventCardForLeader'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listActiveEvents, listRecentPastEvents, getMemberProfile, upsertMemberProfile,
@@ -193,8 +192,56 @@ export default function LeaderHomeScreen() {
         )}
 
         {state.status === 'ok' && state.active.length > 0 && (
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
-            {state.active.map((evt) => <EventCardForLeader key={evt.id} event={evt} />)}
+          <div className='flex flex-col gap-2.5'>
+            {state.active.map((evt) => {
+              const levelColor = `var(--badge-${evt.scope_level}, var(--accent))`
+              const isLive = evt.status === 'ACTIVE'
+              return (
+                <Link
+                  key={evt.id}
+                  to={`/events/${evt.id}`}
+                  className='flex transition-all hover:brightness-105 active:scale-[0.99]'
+                  style={{
+                    background: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-card)',
+                    textDecoration: 'none',
+                    overflow: 'hidden',
+                    boxShadow: 'var(--shadow-2)',
+                  }}
+                >
+                  <div style={{ width: 4, background: levelColor, flexShrink: 0 }} />
+                  <div className='px-4 py-3 flex-1 min-w-0 flex items-center justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <div className='flex items-center gap-1.5 min-w-0'>
+                        {isLive && (
+                          <span className='relative flex h-2 w-2 shrink-0'>
+                            <span className='animate-ping absolute inline-flex h-full w-full rounded-full opacity-75' style={{ background: 'var(--green)' }} />
+                            <span className='relative inline-flex rounded-full h-2 w-2' style={{ background: 'var(--green)' }} />
+                          </span>
+                        )}
+                        <p className='text-sm font-bold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{evt.name}</p>
+                      </div>
+                      <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                        {evt.scope_church_name}
+                        {evt.venue_name ? ` · ${evt.venue_name}` : ''}
+                      </p>
+                    </div>
+                    <div className='shrink-0 text-right'>
+                      <p className='text-xs font-bold m-0' style={{ color: 'var(--muted)' }}>
+                        {format(new Date(evt.starts_at), 'd MMM')}
+                      </p>
+                      <span
+                        className='text-[10px] font-bold uppercase tracking-wider'
+                        style={{ color: isLive ? 'var(--green)' : levelColor, letterSpacing: '0.06em' }}
+                      >
+                        {isLive ? 'Live' : evt.status}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
           </div>
         )}
 
@@ -202,35 +249,42 @@ export default function LeaderHomeScreen() {
           <>
             <div className='my-6' style={{ borderTop: '1px solid var(--border)' }} />
             <p className='eyebrow mb-3'>Past Events</p>
-            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2'>
+            <div className='flex flex-col gap-2'>
               {state.past.map((evt) => (
                 <Link
                   key={evt.id}
                   to={`/events/${evt.id}`}
-                  className='block p-4 transition-opacity'
+                  className='flex transition-opacity hover:opacity-70 active:scale-[0.99]'
                   style={{
                     background: 'var(--card)',
                     border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-btn)',
+                    borderRadius: 'var(--radius-card)',
                     textDecoration: 'none',
-                    opacity: 0.6,
+                    overflow: 'hidden',
+                    opacity: 0.5,
                   }}
                 >
-                  <div className='flex items-start justify-between gap-3'>
+                  {/* Left muted stripe */}
+                  <div style={{ width: 3, background: 'var(--border)', flexShrink: 0 }} />
+                  <div className='px-4 py-3 flex-1 min-w-0 flex items-center justify-between gap-3'>
                     <div className='min-w-0'>
-                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{evt.name}</p>
+                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)', opacity: 0.75 }}>{evt.name}</p>
                       <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
                         {evt.scope_church_name}
                         {evt.venue_name ? ` · ${evt.venue_name}` : ''}
-                        {' · '}{format(new Date(evt.starts_at), 'PP')}
                       </p>
                     </div>
-                    <span
-                      className='text-[10px] px-2.5 py-1 uppercase font-bold tracking-wider shrink-0'
-                      style={{ background: 'var(--bg2)', color: 'var(--muted)', borderRadius: 'var(--radius-pill)', letterSpacing: '0.06em' }}
-                    >
-                      Ended
-                    </span>
+                    <div className='shrink-0 text-right'>
+                      <p className='text-xs font-bold m-0' style={{ color: 'var(--muted)' }}>
+                        {format(new Date(evt.starts_at), 'd MMM')}
+                      </p>
+                      <span
+                        className='text-[10px] font-bold uppercase tracking-wider'
+                        style={{ color: 'var(--muted)', letterSpacing: '0.06em', opacity: 0.6 }}
+                      >
+                        Ended
+                      </span>
+                    </div>
                   </div>
                 </Link>
               ))}
