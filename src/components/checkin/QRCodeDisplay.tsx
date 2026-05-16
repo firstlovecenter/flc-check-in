@@ -12,8 +12,8 @@ export default function QRCodeDisplay({ value, size = 280 }) {
     })
   }, [value, size])
   return (
-    <div className='inline-block rounded-2xl p-3' style={{ background: '#fff' }}>
-      <canvas ref={canvasRef} />
+    <div className='inline-block max-w-full rounded-2xl p-3' style={{ background: '#fff' }}>
+      <canvas ref={canvasRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />
     </div>
   )
 }

@@ -4,6 +4,7 @@
 // with the menu and a back link so they don't feel trapped.
 
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
 import { listActiveEvents } from '../utils/supabaseCheckins'
@@ -85,24 +86,40 @@ export default function QRDisplayScreen() {
   const header = signedIn ? (
     <ScreenHeader title='Active Events' back={{ to: '/home', label: 'Home' }} />
   ) : (
-    <header className='px-4 py-3 relative flex items-center justify-center' style={{ borderBottom: '1px solid var(--border)' }}>
-      <div className='text-center'>
+    <header className='px-3 sm:px-4 py-3' style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className='flex items-center justify-between'>
+        <Link
+          to='/'
+          className='px-2.5 py-1.5 text-xs font-semibold'
+          style={{
+            background: 'var(--bg2)',
+            color: 'var(--text)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-pill)',
+            textDecoration: 'none',
+            letterSpacing: '0.01em',
+          }}
+        >
+          Sign In
+        </Link>
+        <button
+          onClick={toggleTheme}
+          className='p-1.5'
+          aria-label='Toggle theme'
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}
+        >
+          <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor'>
+            {theme === 'dark'
+              ? <path d='M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.02 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.02 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.02 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.02 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.03.39 1.41 0l1.06-1.06z' />
+              : <path d='M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z' />
+            }
+          </svg>
+        </button>
+      </div>
+      <div className='text-center mt-2'>
         <h1 className='text-base font-semibold m-0' style={{ color: 'var(--text)' }}>Active Events</h1>
         <p className='text-xs mt-1 m-0' style={{ color: 'var(--muted)' }}>Scan to check in</p>
       </div>
-      <button
-        onClick={toggleTheme}
-        className='absolute right-4 top-1/2 -translate-y-1/2 p-1.5'
-        aria-label='Toggle theme'
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}
-      >
-        <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor'>
-          {theme === 'dark'
-            ? <path d='M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.02 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.02 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.02 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.02 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.02 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.02 0 1.41s1.03.39 1.41 0l1.06-1.06z' />
-            : <path d='M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z' />
-          }
-        </svg>
-      </button>
     </header>
   )
 
@@ -111,7 +128,7 @@ export default function QRDisplayScreen() {
     return (
       <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
         {header}
-        <main className='max-w-md mx-auto px-4 py-6'>
+        <main className='w-full max-w-lg mx-auto px-3 sm:px-4 py-5 sm:py-6'>
           {/* Back to picker if multiple events */}
           {state.status === 'ok' && state.events.length > 1 && (
             <button
@@ -132,7 +149,7 @@ export default function QRDisplayScreen() {
   return (
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
       {header}
-      <main className='max-w-md mx-auto px-4 py-6'>
+      <main className='w-full max-w-6xl mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-6'>
         {state.status === 'loading' && (
           <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
         )}
@@ -193,12 +210,12 @@ export default function QRDisplayScreen() {
             {filteredEvents.length === 0 && (
               <p className='text-sm mb-3' style={{ color: 'var(--muted)' }}>No matching events.</p>
             )}
-            <div className='flex flex-col gap-3'>
+            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
               {filteredEvents.map((evt) => (
                 <button
                   key={evt.id}
                   onClick={() => setSelected(evt)}
-                  className='w-full p-4 text-left'
+                  className='w-full h-full px-4 py-4 text-left'
                   style={{
                     background: 'var(--card)',
                     border: '1.5px solid var(--border)',
@@ -207,8 +224,8 @@ export default function QRDisplayScreen() {
                     cursor: 'pointer',
                   }}
                 >
-                  <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)', letterSpacing: '-0.01em' }}>{evt.name}</p>
-                  <p className='text-xs m-0 mt-1' style={{ color: 'var(--muted)' }}>
+                  <p className='text-sm sm:text-base font-semibold m-0' style={{ color: 'var(--text)', letterSpacing: '-0.01em' }}>{evt.name}</p>
+                  <p className='text-xs sm:text-sm m-0 mt-1' style={{ color: 'var(--muted)' }}>
                     {evt.scope_church_name} · ends in {formatDistanceToNowStrict(new Date(evt.ends_at))}
                   </p>
                 </button>
@@ -226,7 +243,19 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
   const [pin, setPin] = useState<string | null>(null)
   const [secsLeft, setSecsLeft] = useState(() => 15 - (Math.floor(Date.now() / 1000) % 15))
   const [pinTick, setPinTick] = useState(0)
+  const [qrSize, setQrSize] = useState(260)
   const showPin = event.allowed_check_in_methods.includes('PIN')
+
+  useEffect(() => {
+    const updateSize = () => {
+      // Keep QR large on desktop but fit safely on small screens.
+      const next = Math.max(180, Math.min(300, window.innerWidth - 64))
+      setQrSize(next)
+    }
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [])
 
   // QR token — regenerates on parent tick (every 30 s covers the 60-second QR bucket)
   useEffect(() => {
@@ -262,14 +291,14 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
 
   return (
     <div
-      className='p-5 text-center'
+      className='p-4 sm:p-5 text-center'
       style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
     >
       <p className='eyebrow m-0 mb-2 justify-center'>
         {event.scope_level} · {event.scope_church_name}
       </p>
       <h3 className='text-base font-semibold mb-4 m-0' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{event.name}</h3>
-      {token ? <QRCodeDisplay value={token} size={260} /> : <p style={{ color: 'var(--muted)' }}>Loading QR…</p>}
+      {token ? <QRCodeDisplay value={token} size={qrSize} /> : <p style={{ color: 'var(--muted)' }}>Loading QR…</p>}
       {showPin && pin && (
         <div className='mt-5' style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
           <p className='eyebrow m-0 mb-2 justify-center'>PIN</p>
