@@ -118,21 +118,12 @@ export default function LoginScreen() {
           </div>
 
           <div className='flex flex-col gap-2'>
-            <div className='flex items-center justify-between'>
-              <label
-                className='eyebrow'
-                style={{ color: 'var(--muted)' }}
-              >
-                Password
-              </label>
-              <Link
-                to='/forgot-password'
-                className='text-xs'
-                style={{ color: 'var(--accent)', textDecoration: 'none' }}
-              >
-                Forgot password?
-              </Link>
-            </div>
+            <label
+              className='eyebrow'
+              style={{ color: 'var(--muted)' }}
+            >
+              Password
+            </label>
             <input
               type='password'
               autoComplete='current-password'
@@ -144,6 +135,13 @@ export default function LoginScreen() {
               onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
               onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
             />
+            <Link
+              to='/forgot-password'
+              className='text-xs self-end'
+              style={{ color: 'var(--accent)', textDecoration: 'none' }}
+            >
+              Forgot password?
+            </Link>
           </div>
 
           {error && (
