@@ -123,9 +123,20 @@ export async function bulkUpsertMemberProfiles(rows) {
   return data || []
 }
 
+/** Read a member's flat profile row.
+ *  Excludes face_descriptor (128-float array, ~1KB) — that column is only
+ *  needed by face-enrolment and biometrics admin screens, which fetch it
+ *  via dedicated helpers (getMyFaceDescriptor / listMembersForBiometricsAdmin). */
 export async function getMemberProfile(memberId) {
   const { data, error } = await supabase
-    .from('member_profiles').select('*').eq('id', memberId).maybeSingle()
+    .from('member_profiles')
+    .select('id, email, title, first_name, last_name, phone, roles, ' +
+            'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+            'council_id, council_name, stream_id, stream_name, ' +
+            'campus_id, campus_name, oversight_id, oversight_name, ' +
+            'denomination_id, denomination_name, updated_at')
+    .eq('id', memberId)
+    .maybeSingle()
   if (error) throw error
   return data
 }
@@ -187,6 +198,10 @@ export async function adminClearFaceDescriptor(memberId: string): Promise<void> 
 // with a boolean `has_face_id` derived from face_descriptor presence.
 //
 // scopes: [{ level, id }] — typically getAdminScopes(member).
+//
+// Uses the `has_face_id` generated column (migration 009) instead of pulling
+// the 128-float face_descriptor over the wire. For large scopes this turns a
+// multi-MB payload into a few KB.
 export async function listMembersForBiometricsAdmin(
   scopes: Array<{ level: string; id: string }>
 ): Promise<Array<any>> {
@@ -195,17 +210,14 @@ export async function listMembersForBiometricsAdmin(
   const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, first_name, last_name, email, roles, bacenta_id, bacenta_name, governorship_id, governorship_name, council_id, council_name, stream_id, stream_name, campus_id, campus_name, oversight_id, oversight_name, denomination_id, denomination_name, face_descriptor')
+    .select('id, first_name, last_name, email, roles, ' +
+            'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+            'council_id, council_name, stream_id, stream_name, ' +
+            'campus_id, campus_name, oversight_id, oversight_name, ' +
+            'denomination_id, denomination_name, has_face_id')
     .or(orFilter)
   if (error) throw error
-  return (data || []).map((r) => {
-    const arr = r.face_descriptor
-    const has_face_id = Array.isArray(arr) && arr.length > 0
-    // Drop the descriptor bytes from the row — UI just needs the boolean.
-    const { face_descriptor, ...rest } = r
-    void face_descriptor
-    return { ...rest, has_face_id }
-  })
+  return data || []
 }
 
 // Records a server-side claim that the client just matched the user's face

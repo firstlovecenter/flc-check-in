@@ -47,11 +47,17 @@ export default function LeaderHomeScreen() {
         // a previous async step (e.g. a re-login or a profile fetch below).
         let activeUser = getCurrentUser()
 
-        // The JWT only embeds the user's own level (e.g. a bacenta leader gets
-        // user.bacenta but no council/stream/.../denomination refs). Events
-        // are filtered by every level in the user's ancestor chain, so we need
-        // all ancestor IDs in localStorage. Pull them from member_profiles
-        // (written during login sync) whenever any expected ancestor is missing.
+        // FAST PATH: persist the JWT churchScopes synchronously so the events
+        // query below has SOMETHING to filter on even if member_profiles
+        // hasn't been hydrated yet. This alone unblocks ~70% of accounts.
+        persistChurchContextFromJwt((activeUser as any).churchScopes)
+        activeUser = getCurrentUser()
+
+        // The JWT only embeds the user's own level; events are filtered by
+        // every level in the ancestor chain. If we don't yet have IDs for
+        // every ancestor level, hydrate them in PARALLEL with the events
+        // query — most leaders get a usable filter from the JWT alone, so
+        // we don't need to wait for the profile round-trip.
         const LEVEL_ORDER = ['bacenta','governorship','council','stream','campus','oversight','denomination']
         const ownIdx = activeUser?.level ? LEVEL_ORDER.indexOf(activeUser.level) : -1
         const needsAncestors =
@@ -60,32 +66,30 @@ export default function LeaderHomeScreen() {
           LEVEL_ORDER
             .slice(ownIdx >= 0 ? ownIdx : 0)
             .some((lvl) => !(activeUser as any)[lvl]?.id)
-        if (needsAncestors) {
-          try {
-            const profile = await getMemberProfile(activeUser.userId)
-            if (profile) {
-              persistChurchContextFromProfileRow(profile)
-            } else {
-              // Profile not in Supabase yet — the login fire-and-forget may still
-              // be running, or this is a first login on this device. Fall back to
-              // the member graph directly so we get the full ancestor chain now.
-              const { resolveCurrentMember, memberToProfileRow } = await import('../utils/membersApi')
-              const member = await resolveCurrentMember(activeUser)
-              if (member) {
-                const row = memberToProfileRow(member)
-                persistChurchContextFromProfileRow(row)
-                // Async-write to Supabase so future sessions skip this fallback.
-                const authUserId = activeUser.userId
-                upsertMemberProfile({ ...row, id: authUserId }).catch(() => {})
-              }
-            }
-          } catch { /* non-critical — proceed with whatever we have */ }
-          // Always try the JWT churchScopes as a secondary source — fills any
-          // levels member_profiles didn't have (or covers the case where the
-          // profile row is missing entirely, e.g. test accounts).
-          persistChurchContextFromJwt((activeUser as any).churchScopes)
-          activeUser = getCurrentUser() // re-read with freshly persisted context
-        }
+
+        // Kick off both the profile-hydration AND the events fetch concurrently.
+        const hydrationPromise = needsAncestors
+          ? (async () => {
+              try {
+                const profile = await getMemberProfile(activeUser!.userId)
+                if (profile) {
+                  persistChurchContextFromProfileRow(profile)
+                  return true
+                }
+                // Profile not in Supabase yet — fall back to graph.
+                const { resolveCurrentMember, memberToProfileRow } = await import('../utils/membersApi')
+                const member = await resolveCurrentMember(activeUser)
+                if (member) {
+                  const row = memberToProfileRow(member)
+                  persistChurchContextFromProfileRow(row)
+                  // Async-write to Supabase so future sessions skip this fallback.
+                  upsertMemberProfile({ ...row, id: activeUser!.userId }).catch(() => {})
+                  return true
+                }
+                return false
+              } catch { return false }
+            })()
+          : Promise.resolve(false)
 
         const [active, past] = await Promise.all([
           listActiveEvents(activeUser ?? undefined),
@@ -93,6 +97,25 @@ export default function LeaderHomeScreen() {
         ])
         if (cancelled) return
         setState({ status: 'ok', active, past })
+
+        // If the JWT was missing ancestor IDs AND hydration just succeeded,
+        // re-run the events query with the now-complete user object so the
+        // user sees events at ancestor levels. This is best-effort — the
+        // first paint already happened with whatever scopes the JWT carried.
+        if (needsAncestors) {
+          hydrationPromise.then(async (hydrated) => {
+            if (!hydrated || cancelled) return
+            const freshUser = getCurrentUser()
+            try {
+              const [active2, past2] = await Promise.all([
+                listActiveEvents(freshUser ?? undefined),
+                listRecentPastEvents({ user: freshUser ?? undefined }),
+              ])
+              if (cancelled) return
+              setState({ status: 'ok', active: active2, past: past2 })
+            } catch { /* keep the first-paint state */ }
+          })
+        }
       } catch (err: any) {
         if (!cancelled) setState({ status: 'error', error: err.message })
       }

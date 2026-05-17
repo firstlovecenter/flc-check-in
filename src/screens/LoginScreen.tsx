@@ -7,6 +7,7 @@ export default function LoginScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const resetSuccess = params.get('reset') === 'success'
+  const notLeader = params.get('notLeader') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,24 +19,26 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       const user = await loginWithCredentials(email, password)
-      // Superadmins bypass the FLC member graph entirely.
-      if (!user.isSuperAdmin) {
-        // Confirm the user is a leader/admin via the FLC member graph.
-        // 4-second timeout so a slow/unreachable graph doesn't block login.
-        try {
-          const memberPromise = resolveCurrentMember(user)
-          const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 2000))
-          const member = await Promise.race([memberPromise, timeoutPromise])
-          if (member && !isLeaderOrAdmin(member)) {
-            logout()
-            setError('This app is for leaders and admins only.')
-            return
-          }
-        } catch {
-          // GraphQL unreachable — proceed.
-        }
-      }
+      // Navigate immediately — the graph leader/admin check runs in the
+      // background. If it comes back negative, we log the user out and
+      // bounce them back here with an error. This makes the typical (valid
+      // leader) login feel instant on slow networks.
       navigate('/home')
+      if (!user.isSuperAdmin) {
+        // Fire-and-forget — no `await`. Errors swallowed; a graph outage
+        // means we can't verify, so we trust the JWT roles.
+        resolveCurrentMember(user)
+          .then((member) => {
+            if (member && !isLeaderOrAdmin(member)) {
+              logout()
+              // Hard reload back to login with an error flag in the URL —
+              // we've already navigated away from this component, so
+              // setError() wouldn't render anywhere visible.
+              window.location.assign('/?notLeader=1')
+            }
+          })
+          .catch(() => { /* graph unreachable — trust the JWT */ })
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed. Check your credentials.')
     } finally {
@@ -92,6 +95,21 @@ export default function LoginScreen() {
             }}
           >
             Password updated — sign in with your new password.
+          </div>
+        )}
+
+        {/* Background leader/admin check rejected the user */}
+        {notLeader && (
+          <div
+            className='px-4 py-3 text-sm text-center'
+            style={{
+              background: 'rgba(232,96,74,0.08)',
+              color: 'var(--coral)',
+              border: '1px solid rgba(232,96,74,0.25)',
+              borderRadius: 'var(--radius-btn)',
+            }}
+          >
+            This app is for leaders and admins only.
           </div>
         )}
 

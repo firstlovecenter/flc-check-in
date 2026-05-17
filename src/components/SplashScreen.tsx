@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 
-const MIN_DURATION_MS = 5000
+// Minimum splash duration. Long enough for the halo to play roughly one
+// cycle (halo animation is 2.4s, but we don't need to hold the user that
+// long — we just want it to not feel "flashy"). Was 5s, which felt slow on
+// repeat visits where auth resolves in <50ms.
+const MIN_DURATION_MS = 1200
 const SPLASH_FLAG = 'flc.splashShown'
 
 type State = 'pending' | 'skip' | 'authed' | 'guest'
