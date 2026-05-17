@@ -1057,6 +1057,56 @@ end;
 $$;
 
 
+-- ─── delete_event(p_event_id, p_admin_email) ────────────────────────────────
+-- Hard-delete an event. Restricted to super-admins (checked against the
+-- superadmins table). Cascades via the FKs on checkin_records etc., so all
+-- dependent rows go with the event. See migration 014.
+create or replace function public.delete_event(
+  p_event_id uuid,
+  p_admin_email text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_is_super   boolean;
+  v_existed    integer;
+  v_event_name text;
+begin
+  if p_admin_email is null or length(trim(p_admin_email)) = 0 then
+    return jsonb_build_object('ok', false, 'reason', 'admin_email_required');
+  end if;
+
+  select exists (
+    select 1 from public.superadmins
+     where lower(email) = lower(trim(p_admin_email))
+  ) into v_is_super;
+
+  if not v_is_super then
+    return jsonb_build_object('ok', false, 'reason', 'forbidden');
+  end if;
+
+  select name into v_event_name
+    from public.checkin_events
+   where id = p_event_id;
+
+  if v_event_name is null then
+    return jsonb_build_object('ok', false, 'reason', 'event_not_found');
+  end if;
+
+  delete from public.checkin_events where id = p_event_id;
+  get diagnostics v_existed = row_count;
+
+  return jsonb_build_object(
+    'ok', v_existed > 0,
+    'event_id', p_event_id,
+    'event_name', v_event_name
+  );
+end;
+$$;
+
+
 -- ════════════════════════════════════════════════════════════════════════════
 --  GRANTS
 --  RLS is ON with permissive policies for tables the client accesses directly.
@@ -1101,7 +1151,8 @@ grant execute on function
     double precision, double precision, text,
     text, text
   ),
-  public.is_super_admin(text)
+  public.is_super_admin(text),
+  public.delete_event(uuid, text)
   to anon;
 
 -- ════════════════════════════════════════════════════════════════════════════
