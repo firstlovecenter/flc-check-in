@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test *)",
+      "Bash(curl -sS -i -X POST https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/rpc/delete_event -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Content-Type: application/json' -d '{\"p_event_id\":\"00000000-0000-0000-0000-000000000000\",\"p_admin_email\":\"x@x\"}' --max-time 15)",
+      "Bash(curl -sS -X POST https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/rpc/delete_event -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Content-Type: application/json' -d '{\"p_event_id\":\"00000000-0000-0000-0000-000000000000\",\"p_admin_email\":\"skaduteye@gmail.com\"}' --max-time 15)",
+      "Bash(curl -sS -X POST https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/rpc/delete_event -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Content-Type: application/json' -d '{\"p_event_id\":\"00000000-0000-0000-0000-000000000000\",\"p_admin_email\":\"nobody@example.com\"}' --max-time 15)",
+      "Bash(curl -sS https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/ -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' --max-time 15)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
