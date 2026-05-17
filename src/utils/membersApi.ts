@@ -17,6 +17,7 @@ import {
   ANCESTOR_QUERIES,
   CHILD_COUNT_QUERIES,
   CHILD_LIST_QUERIES,
+  GET_ALL_MEMBERS_PAGE,
 } from './membersApi.queries.js'
 
 function graphqlEndpoint() {
@@ -248,6 +249,40 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
     })
   scopeMembersPending.set(key, p)
   return p
+}
+
+// ─── getAllLeadersAndAdmins(onProgress?) ────────────────────────────────────
+// Pages through every Member in the FLC graph (no scope filter) and returns
+// just the leaders/admins. Used by the super-admin "Sync Members" tool to
+// pre-populate Supabase with everyone who could log in or appear in a
+// dashboard — independent of any single denomination/stream/etc.
+//
+// `onProgress` is called after each page with the running totals so the UI
+// can show "Fetched N so far…". Bypasses caching — this is an explicit
+// admin action that should always read the graph fresh.
+export async function getAllLeadersAndAdmins(
+  onProgress?: (fetched: number, kept: number) => void,
+): Promise<any[]> {
+  const PAGE_SIZE = 500
+  const kept: any[] = []
+  let offset = 0
+  let fetched = 0
+  // Hard cap to avoid runaway loops if the server ignores offset.
+  const MAX_PAGES = 200
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data: any = await client().request(GET_ALL_MEMBERS_PAGE, {
+      limit: PAGE_SIZE, offset,
+    })
+    const batch: any[] = data?.members || []
+    fetched += batch.length
+    for (const m of batch) {
+      if (isLeaderOrAdmin(m)) kept.push(m)
+    }
+    onProgress?.(fetched, kept.length)
+    if (batch.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return kept
 }
 
 // ─── getAdminScopes(member, user?) ─────────────────────────────────────────

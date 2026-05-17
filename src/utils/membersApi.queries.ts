@@ -266,6 +266,19 @@ export const SCOPE_QUERIES = {
   denomination: GET_MEMBERS_FOR_DENOMINATION,
 }
 
+// ─── GET_ALL_MEMBERS_PAGE ───────────────────────────────────────────────────
+// Unscoped, paginated dump of every Member in the graph. Used by the super-
+// admin "Sync Members" tool to pre-populate Supabase before users log in.
+// The client filters down to leaders/admins via isLeaderOrAdmin().
+export const GET_ALL_MEMBERS_PAGE = gql`
+  ${MEMBER_FIELDS}
+  query GetAllMembersPage($limit: Int!, $offset: Int!) {
+    members(limit: $limit, offset: $offset) {
+      ...MemberFields
+    }
+  }
+`
+
 // ─── Hierarchy walks ────────────────────────────────────────────────────────
 // One query per starting level; each walks up to denomination so we can
 // build the full ancestor chain for any church node.
