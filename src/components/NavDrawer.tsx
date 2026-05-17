@@ -6,7 +6,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { logout } from '../utils/auth'
+import { getUserAdminScopesFromJwt, getUserLeaderScopesFromJwt } from '../utils/userScope'
 import type { AppUser } from '../types/app'
+
+const LEADER_CREATOR_LEVELS = new Set(['council', 'stream', 'campus', 'oversight', 'denomination'])
 
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -84,6 +87,13 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   }, [open])
 
   const isAdmin = !!user?.isAdmin
+  // Council-and-above leaders can create events too — see RequireEventCreator.
+  const canCreateEvents = !!user && (
+    user.isSuperAdmin ||
+    user.isAdmin ||
+    getUserAdminScopesFromJwt(user).length > 0 ||
+    getUserLeaderScopesFromJwt(user).some((s) => LEADER_CREATOR_LEVELS.has(s.level))
+  )
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'
   const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
   const initials = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
@@ -156,9 +166,11 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             <nav className='flex-1 overflow-y-auto p-2 flex flex-col gap-1'>
               <NavItem to='/home'    icon={ICONS.home}    label='Home'          onClick={() => setOpen(false)} />
               <NavItem to='/events'  icon={ICONS.qr}      label='Events'        onClick={() => setOpen(false)} />
+              {canCreateEvents && (
+                <NavItem to='/admin/events/new'  icon={ICONS.plus}    label='Create Event'      onClick={() => setOpen(false)} />
+              )}
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/events/new'  icon={ICONS.plus}    label='Create Event'      onClick={() => setOpen(false)} />
                   <NavItem to='/admin/reports'     icon={ICONS.report}  label='Reports'           onClick={() => setOpen(false)} />
                   <NavItem to='/admin/biometrics'  icon={ICONS.faceId}  label='Member Biometrics' onClick={() => setOpen(false)} />
                 </>

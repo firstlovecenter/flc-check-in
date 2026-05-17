@@ -165,3 +165,24 @@ export function getUserAdminScopesFromJwt(user: AppUser | null | undefined): Use
   // Sort highest level first — denomination → governorship.
   return out.sort((a, b) => ADMIN_SCOPE_LEVELS.indexOf(b.level) - ADMIN_SCOPE_LEVELS.indexOf(a.level))
 }
+
+/** Levels at which a LEADER (not admin) can create events. Per policy:
+ *  bacenta and governorship leaders cannot — only council leaders upward. */
+const LEADER_CREATOR_LEVELS: ScopeLevel[] = [
+  'council', 'stream', 'campus', 'oversight', 'denomination',
+]
+
+/** Leader scopes resolved from the JWT's `churchScopes.leads<L>Of` edges.
+ *  Restricted to council-and-above per policy. */
+export function getUserLeaderScopesFromJwt(user: AppUser | null | undefined): UserScopeRef[] {
+  if (!user?.churchScopes) return []
+  const cs = user.churchScopes
+  const out: UserScopeRef[] = []
+  for (const level of LEADER_CREATOR_LEVELS) {
+    const ref = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`leads${cap(level)}Of`]
+    if (ref && typeof ref.id === 'string') {
+      out.push({ level, id: ref.id, name: ref.name, source: 'leader' })
+    }
+  }
+  return out.sort((a, b) => LEADER_CREATOR_LEVELS.indexOf(b.level) - LEADER_CREATOR_LEVELS.indexOf(a.level))
+}

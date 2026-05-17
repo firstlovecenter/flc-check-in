@@ -9,7 +9,7 @@
 
 import { GraphQLClient } from 'graphql-request'
 import { SCOPE_LEVELS } from './auth.js'
-import { getUserAdminScopesFromJwt } from './userScope'
+import { getUserAdminScopesFromJwt, getUserLeaderScopesFromJwt } from './userScope'
 import {
   GET_MEMBER_BY_ID,
   GET_MEMBER_BY_EMAIL,
@@ -296,6 +296,67 @@ export function getAdminScopes(member, user?: any) {
   })
   unique.sort((a, b) => SCOPE_LEVELS.indexOf(b.level) - SCOPE_LEVELS.indexOf(a.level))
   return unique
+}
+
+// ─── getCreatorScopes(member, user?) ──────────────────────────────────────
+// Scopes the user can create events at. Union of:
+//   • Admin scopes (isAdminFor<L>) — full admin authority at level L.
+//   • Leader scopes (leads<L>) — but ONLY at council and above, per policy.
+//     Bacenta and governorship leaders cannot create events.
+//
+// Falls back to JWT-only resolution when the graph yields nothing.
+// Output: [{ level, id, name }] sorted highest-level first, deduped by (level, id).
+const LEADER_CREATOR_LEVELS = new Set(['council', 'stream', 'campus', 'oversight', 'denomination'])
+
+export function getCreatorScopes(member, user?: any) {
+  const scopes = []
+  const push = (lvl, list) => {
+    for (const x of list || []) {
+      if (x?.id) scopes.push({ level: lvl, id: x.id, name: x.name || lvl })
+    }
+  }
+  if (member) {
+    // Admin edges — same as getAdminScopes.
+    push('governorship', member.isAdminForGovernorship)
+    push('council',      member.isAdminForCouncil)
+    push('stream',       member.isAdminForStream)
+    push('campus',       member.isAdminForCampus)
+    push('oversight',    member.isAdminForOversight)
+    push('denomination', member.isAdminForDenomination)
+    // Leader edges — but filtered to council-and-above only.
+    push('council',      member.leadsCouncil)
+    push('stream',       member.leadsStream)
+    push('campus',       member.leadsCampus)
+    push('oversight',    member.leadsOversight)
+    push('denomination', member.leadsDenomination)
+  }
+
+  // Fallback: derive scopes from the JWT.
+  if (scopes.length === 0 && user) {
+    for (const ref of getUserAdminScopesFromJwt(user)) {
+      scopes.push({ level: ref.level, id: ref.id, name: ref.name || ref.level })
+    }
+    for (const ref of getUserLeaderScopesFromJwt(user)) {
+      if (!LEADER_CREATOR_LEVELS.has(ref.level)) continue
+      scopes.push({ level: ref.level, id: ref.id, name: ref.name || ref.level })
+    }
+  }
+
+  // Dedupe by (level, id), highest level first.
+  const seen = new Set()
+  const unique = scopes.filter((s) => {
+    const k = `${s.level}:${s.id}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+  unique.sort((a, b) => SCOPE_LEVELS.indexOf(b.level) - SCOPE_LEVELS.indexOf(a.level))
+  return unique
+}
+
+/** True when the user has at least one scope they can create events at. */
+export function canCreateEvents(member, user?: any): boolean {
+  return getCreatorScopes(member, user).length > 0
 }
 
 // ─── adminCoversMember(adminScopes, memberRow) ─────────────────────────────

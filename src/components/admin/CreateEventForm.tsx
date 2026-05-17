@@ -5,11 +5,11 @@ import { getCurrentUser, formatName } from '../../utils/auth'
 import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
-  resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
+  resolveCurrentMember, getCreatorScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 
-interface AdminScope { level: string; id: string; name: string }
+interface CreatorScope { level: string; id: string; name: string }
 
 const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 
@@ -17,7 +17,7 @@ export default function CreateEventForm() {
   const navigate = useNavigate()
   const user = getCurrentUser()
 
-  const [scopes, setScopes] = useState<AdminScope[]>([])
+  const [scopes, setScopes] = useState<CreatorScope[]>([])
   const [scopesLoading, setScopesLoading] = useState(true)
   const [scopesError, setScopesError] = useState<string | null>(null)
 
@@ -44,9 +44,9 @@ export default function CreateEventForm() {
       try {
         const member = await resolveCurrentMember(user)
         if (cancelled) return
-        const adminScopes = getAdminScopes(member, user)
-        setScopes(adminScopes)
-        if (adminScopes.length > 0) setScopeId(`${adminScopes[0].level}:${adminScopes[0].id}`)
+        const creatorScopes = getCreatorScopes(member, user)
+        setScopes(creatorScopes)
+        if (creatorScopes.length > 0) setScopeId(`${creatorScopes[0].level}:${creatorScopes[0].id}`)
       } catch (err: any) {
         if (!cancelled) setScopesError(err.message)
       } finally {
@@ -81,7 +81,7 @@ export default function CreateEventForm() {
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    if (!selectedScope) { setError('No admin scope.'); return }
+    if (!selectedScope) { setError('No scope available to create events for.'); return }
     if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
     if (roles.length === 0) { setError('Pick at least one allowed role.'); return }
     if (geofence.type === 'polygon') {
@@ -144,8 +144,8 @@ export default function CreateEventForm() {
         className='p-5 text-sm text-center'
         style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--muted)' }}
       >
-        <p className='mb-2' style={{ color: 'var(--coral)' }}>No admin scope found.</p>
-        <p>You don't appear in the FLC member graph as an admin of any church. Ask your stream lead to update your relationships.</p>
+        <p className='mb-2' style={{ color: 'var(--coral)' }}>You can't create events.</p>
+        <p>Event creation is available to admins and to council-level leaders and above. Your member-graph relationships don't currently include any of those.</p>
       </div>
     )
   }
