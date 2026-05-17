@@ -6,7 +6,7 @@ import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
 import FaceCapture from '../components/checkin/FaceCapture'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
-import { getCurrentUser, formatName } from '../utils/auth'
+import { getCurrentUser, formatName, logout } from '../utils/auth'
 import {
   getEvent, submitCheckIn, getMyRecord,
   getMyFaceDescriptor, claimFaceMatch,
@@ -144,8 +144,8 @@ export default function CheckInFormScreen() {
 
   if (error) {
     return (
-      <CenterCard showRetry>
-        <h2 className='text-lg font-semibold mb-1' style={{ color: 'var(--coral)' }}>Couldn't load this event</h2>
+      <CenterCard showLogout>
+        <h2 className='text-lg font-semibold mb-1' style={{ color: 'var(--coral)' }}>Cannot check-in with device</h2>
         <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>{error}</p>
       </CenterCard>
     )
@@ -408,12 +408,24 @@ function reasonText(result) {
 }
 
 /**
- * Centred status card. Always renders a "Back to Home" link so users never
- * land in a dead-end state (e.g. invalid event id, paused event, expired
- * QR/PIN). Pass `showRetry` when the failure might be transient — adds a
- * "Try again" button that reloads the screen.
+ * Centred status card. By default renders a "Back to Home" link so users
+ * never land in a dead-end state (e.g. paused event, expired QR/PIN).
+ *
+ * Pass `showLogout` for hard failures where Home isn't the right exit —
+ * e.g. "device blocked by another user" needs the current user to sign out
+ * so a different account (or a freshly cleared device) can check in.
  */
-function CenterCard({ children, showRetry = false }: { children: React.ReactNode; showRetry?: boolean }) {
+function CenterCard({
+  children,
+  showLogout = false,
+}: {
+  children: React.ReactNode
+  showLogout?: boolean
+}) {
+  function handleLogout() {
+    logout()
+    window.location.assign('/')
+  }
   return (
     <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
       <div
@@ -422,23 +434,30 @@ function CenterCard({ children, showRetry = false }: { children: React.ReactNode
       >
         {children}
         <div className='flex flex-col gap-2 mt-2'>
-          {showRetry && (
+          {showLogout ? (
             <button
               type='button'
-              onClick={() => window.location.reload()}
+              onClick={handleLogout}
               className='btn-pill w-full'
-              style={{ background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 14, padding: '11px 20px' }}
+              style={{
+                background: 'transparent',
+                color: 'var(--coral)',
+                border: '1.5px solid var(--coral)',
+                fontSize: 14,
+                padding: '11px 20px',
+              }}
             >
-              Try again
+              Logout
             </button>
+          ) : (
+            <Link
+              to='/home'
+              className='btn-pill btn-secondary w-full text-center'
+              style={{ fontSize: 14, padding: '11px 20px' }}
+            >
+              Back to Home
+            </Link>
           )}
-          <Link
-            to='/home'
-            className='btn-pill btn-secondary w-full text-center'
-            style={{ fontSize: 14, padding: '11px 20px' }}
-          >
-            Back to Home
-          </Link>
         </div>
       </div>
     </div>
