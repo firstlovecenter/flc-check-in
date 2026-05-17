@@ -6,6 +6,7 @@ import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
 import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { supabase } from '../../utils/supabase'
 import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
 
@@ -22,13 +23,19 @@ export default function EventDashboard({ eventId }) {
   const scopeChurchId   = searchParams.get('scopeChurchId')   || null
   const scopeChurchName = searchParams.get('scopeChurchName') || null
 
+  // Bumped by the global refresh signal (TopBar / ScreenHeader refresh button).
+  // Passing it to useEventEligibility busts the SWR cache so the user gets
+  // freshly-fetched data, not stale cached entries.
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
+
   // Core eligibility data + poll for event status.
   // Records are refreshed instantly via Supabase Realtime (see effect below).
   // The expensive graph pipeline is SWR-cached; navigation back here is instant.
   const {
     event, eligible, eligibleIds, viewerCaps, viewerSlice,
     childCount, records, error, initialLoading, setEvent, setRecords,
-  } = useEventEligibility(eventId, user, { pollMs: POLL_MS })
+  } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey })
 
   // Supabase Realtime: push check-in record changes to the UI without waiting
   // for the poll tick. Falls back to the 60 s poll if Realtime is unavailable.

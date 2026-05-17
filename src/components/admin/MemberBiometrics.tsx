@@ -5,6 +5,7 @@ import {
 } from '../../utils/supabaseCheckins'
 import { resolveCurrentMember, getAdminScopes } from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 type Row = {
   id: string
@@ -47,6 +48,7 @@ export default function MemberBiometrics() {
   }
 
   useEffect(() => { refresh() }, [user.userId])
+  useRefreshSignal(() => { refresh() })
 
   async function handleReset(row: Row) {
     const name = [row.first_name, row.last_name].filter(Boolean).join(' ') || row.id

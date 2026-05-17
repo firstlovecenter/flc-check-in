@@ -8,6 +8,7 @@ import {
 import { getCurrentUser } from '../../utils/auth'
 import { resolveCurrentMember } from '../../utils/membersApi'
 import { getUserChurchRef } from '../../utils/userScope'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import type { ScopeLevel } from '../../types/app'
 
 const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED']
@@ -18,6 +19,8 @@ export default function EventHistoryList() {
   const [error, setError] = useState(null)
   const [filter, setFilter] = useState('ALL')
   const [search, setSearch] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   useEffect(() => {
     let cancelled = false
@@ -60,7 +63,7 @@ export default function EventHistoryList() {
       }
     })()
     return () => { cancelled = true }
-  }, [user.userId])
+  }, [user.userId, refreshKey])
 
   const filtered = useMemo(() => {
     const base = filter === 'ALL' ? events : events.filter((e) => e.status === filter)

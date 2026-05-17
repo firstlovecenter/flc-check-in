@@ -6,6 +6,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import NavDrawer from './NavDrawer'
+import RefreshButton from './RefreshButton'
+import PullToRefreshIndicator from './PullToRefreshIndicator'
 import { getCurrentUser } from '../utils/auth'
 
 interface Props {
@@ -18,6 +20,8 @@ interface Props {
 export default function ScreenHeader({ title, back, onBack, right }: Props) {
   const user = getCurrentUser()
   return (
+    <>
+    <PullToRefreshIndicator />
     <header
       className='sticky top-0 z-10 px-4 py-3 grid grid-cols-[auto_1fr_auto] items-center gap-3'
       style={{
@@ -47,9 +51,11 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           </button>
         )}
       </div>
-      <div className='justify-self-end flex items-center gap-2 text-xs'>
+      <div className='justify-self-end flex items-center gap-1 text-xs'>
+        <RefreshButton />
         {right}
       </div>
     </header>
+    </>
   )
 }

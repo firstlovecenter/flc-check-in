@@ -13,6 +13,7 @@ import {
 } from '../../utils/membersApi'
 import { getCurrentUser, SCOPE_LEVELS, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 const TABS = [
   { id: 'checked-in', label: 'Checked In' },
@@ -31,11 +32,15 @@ export default function FullReport({ eventId }) {
   const urlChurchId   = params.get('churchId')   || null
   const urlChurchName = params.get('churchName') || null
 
+  // Bumped by the global refresh signal (TopBar / ScreenHeader refresh button).
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
+
   // Core eligibility + records — SWR-cached so page is instant on revisit.
   const {
     event, eligible: allEligible, viewerCaps, adminScopes, records,
     error: eligibilityError, initialLoading, setRecords,
-  } = useEventEligibility(eventId, user)
+  } = useEventEligibility(eventId, user, { refreshKey })
 
   const [search, setSearch]             = useState('')
   const [error, setError]               = useState<string | null>(null)
@@ -56,13 +61,13 @@ export default function FullReport({ eventId }) {
   // Merge hook error with local errors.
   const displayError = error || eligibilityError
 
-  // Load absence notes whenever the event is known
+  // Load absence notes whenever the event is known (also refetch on refresh).
   useEffect(() => {
     if (!eventId) return
     listAbsenceNotesForEvent(eventId)
       .then(setAbsenceNotes)
       .catch(() => {})
-  }, [eventId])
+  }, [eventId, refreshKey])
 
   // Load risk flags whenever records change
   useEffect(() => {

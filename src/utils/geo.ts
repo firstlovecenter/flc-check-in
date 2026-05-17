@@ -64,6 +64,21 @@ const POSITION_CACHE_MAX_AGE_MS = 30_000
 let cachedPosition: { position: LatLng; timestamp: number } | null = null
 let pendingPosition: Promise<LatLng> | null = null
 
+/** Feed an externally-obtained position into the module cache so subsequent
+ *  getCurrentPosition() calls return it instantly. Used by the app-shell
+ *  pre-warmer to keep getCurrentPosition snappy throughout the session. */
+export function primePositionCache(pos: LatLng): void {
+  cachedPosition = { position: pos, timestamp: Date.now() }
+}
+
+/** Read the current cached position without triggering a new request.
+ *  Returns null if the cache is empty or stale. */
+export function peekCachedPosition(): LatLng | null {
+  if (!cachedPosition) return null
+  if (Date.now() - cachedPosition.timestamp > POSITION_CACHE_MAX_AGE_MS) return null
+  return cachedPosition.position
+}
+
 export function getCurrentPosition(opts: GpsOpts = {}): Promise<LatLng> {
   const { timeout = 15000, enableHighAccuracy = true } = opts
   const now = Date.now()

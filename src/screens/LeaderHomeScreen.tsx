@@ -6,7 +6,7 @@ import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContex
 import {
   listActiveEvents, listRecentPastEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
-import { usePullToRefresh } from '../hooks/usePullToRefresh'
+import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import type { CheckinEventRow } from '../types/app'
 
 type HomeState =
@@ -20,7 +20,9 @@ export default function LeaderHomeScreen() {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
-  const { pullDistance, refreshing } = usePullToRefresh({ onRefresh: triggerRefresh })
+  // Pull-to-refresh AND the TopBar refresh button both publish to the global
+  // refresh signal — see PullToRefreshIndicator / RefreshButton.
+  useRefreshSignal(triggerRefresh)
 
   // Re-fetch whenever the tab becomes visible again (user returns from event edit)
   useEffect(() => {
@@ -125,36 +127,8 @@ export default function LeaderHomeScreen() {
 
   return (
     <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
-      {/* Pull-to-refresh indicator */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: `${pullDistance}px`,
-          overflow: 'hidden',
-          zIndex: 50,
-          pointerEvents: 'none',
-          transition: pullDistance === 0 ? 'height 0.2s ease' : 'none',
-        }}
-      >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: '50%',
-            border: '2.5px solid var(--accent)',
-            borderTopColor: 'transparent',
-            opacity: refreshing ? 1 : pullDistance / (72),
-            animation: refreshing ? 'spin 0.7s linear infinite' : 'none',
-            transform: refreshing ? 'none' : `rotate(${pullDistance * 3}deg)`,
-          }}
-        />
-      </div>
+      {/* Pull-to-refresh indicator now lives inside <TopBar /> so every
+          screen gets the gesture by default — see PullToRefreshIndicator. */}
       <TopBar
         user={user}
         right={(

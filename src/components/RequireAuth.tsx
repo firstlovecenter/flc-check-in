@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 import BiometricEnrolGate from './BiometricEnrolGate'
+import LocationPreWarmer from './LocationPreWarmer'
+import LocationPermissionBanner from './LocationPermissionBanner'
 
 type State = 'checking' | 'ok' | 'redirect'
 
@@ -29,5 +31,11 @@ export default function RequireAuth({ children }) {
   if (state === 'redirect') return <Navigate to='/' replace />
   if (state === 'checking') return null  // brief blank while refreshing
   if (!getCurrentUser()) return <Navigate to='/' replace />
-  return <BiometricEnrolGate>{children}</BiometricEnrolGate>
+  return (
+    <>
+      <LocationPreWarmer />
+      <LocationPermissionBanner />
+      <BiometricEnrolGate>{children}</BiometricEnrolGate>
+    </>
+  )
 }

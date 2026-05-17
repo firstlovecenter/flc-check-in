@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import NavDrawer from './NavDrawer'
+import RefreshButton from './RefreshButton'
+import PullToRefreshIndicator from './PullToRefreshIndicator'
 import type { AppUser } from '../types/app'
 
 // Maps level strings to badge background tokens
@@ -29,6 +31,8 @@ export default function TopBar({ user, right = null }: Props) {
   const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
   const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
   return (
+    <>
+    <PullToRefreshIndicator />
     <header
       className='sticky top-0 z-10 px-4 py-3 flex items-center gap-3'
       style={{
@@ -63,12 +67,12 @@ export default function TopBar({ user, right = null }: Props) {
           {user.level}
         </span>
       )}
-      {right && (
-        <div className='flex items-center gap-2 text-xs shrink-0'>
-          {right}
-        </div>
-      )}
+      <div className='flex items-center gap-1 text-xs shrink-0'>
+        <RefreshButton />
+        {right}
+      </div>
     </header>
+    </>
   )
 }
 

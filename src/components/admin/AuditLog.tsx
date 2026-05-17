@@ -3,6 +3,7 @@ import { formatDistanceToNowStrict, format } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
 import { listAuditLogForEvent } from '../../utils/supabaseCheckins'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { getCurrentUser } from '../../utils/auth'
 
 const ACTION_META: Record<string, { label: string; color: string }> = {
@@ -19,7 +20,9 @@ const ACTION_META: Record<string, { label: string; color: string }> = {
 
 export default function AuditLog({ eventId }: { eventId: string }) {
   const user = getCurrentUser()
-  const { event, viewerCaps, initialLoading } = useEventEligibility(eventId, user)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
+  const { event, viewerCaps, initialLoading } = useEventEligibility(eventId, user, { refreshKey })
   const [entries, setEntries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +34,7 @@ export default function AuditLog({ eventId }: { eventId: string }) {
       .then(setEntries)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [eventId])
+  }, [eventId, refreshKey])
 
   if (initialLoading || !event) {
     return (

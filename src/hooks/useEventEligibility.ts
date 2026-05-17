@@ -66,7 +66,7 @@ export interface EventEligibilityResult {
 export function useEventEligibility(
   eventId: string | undefined,
   user: AppUser | null,
-  { pollMs }: { pollMs?: number } = {},
+  { pollMs, refreshKey = 0 }: { pollMs?: number; refreshKey?: number } = {},
 ): EventEligibilityResult {
   const [event, setEvent]         = useState<CheckinEventRow | null>(null)
   const [eligible, setEligible]   = useState<any[]>([])
@@ -84,6 +84,10 @@ export function useEventEligibility(
     if (!eventId || !user) return
     let cancelled = false
     const cacheKey = `${eventId}:${user.userId || user.email}`
+
+    // When refreshKey increases, drop the cached entry so the load below
+    // hits the network even if the previous entry is still fresh.
+    if (refreshKey > 0) eligibilityCache.delete(cacheKey)
 
     // Stale-while-revalidate: serve cached result immediately so the UI
     // renders with real data before any network request completes.
@@ -277,7 +281,7 @@ export function useEventEligibility(
     })()
 
     return () => { cancelled = true }
-  }, [eventId, user?.userId, user?.email]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId, user?.userId, user?.email, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Optional poll: cheaply refresh records + event status only ────────
   // The expensive eligibility pipeline above is NOT re-run on every tick.

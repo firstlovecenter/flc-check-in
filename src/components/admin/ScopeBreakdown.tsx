@@ -11,6 +11,7 @@ import {
   childScopeLevel, getChildChurches,
 } from '../../utils/membersApi'
 import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 // ─── ScopeBreakdown ──────────────────────────────────────────────────────────
 // Drills down from the event scope all the way to individual member lists.
@@ -37,6 +38,8 @@ export default function ScopeBreakdown({ eventId }) {
   const [records, setRecords] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [viewerCaps, setViewerCaps] = useState<any>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   useEffect(() => {
     let cancelled = false
@@ -69,7 +72,7 @@ export default function ScopeBreakdown({ eventId }) {
       }
     })()
     return () => { cancelled = true }
-  }, [eventId, user.userId]) // eslint-disable-line
+  }, [eventId, user.userId, refreshKey]) // eslint-disable-line
 
   // The current scope we're showing.
   // For non-admin leaders, clamp to their own scope if the URL/default points above it.

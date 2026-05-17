@@ -7,12 +7,15 @@ import {
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
+import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 export default function ReportsList() {
   const user = getCurrentUser()
   const [events, setEvents] = useState([])
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   useEffect(() => {
     let cancelled = false
@@ -29,7 +32,7 @@ export default function ReportsList() {
       }
     })()
     return () => { cancelled = true }
-  }, [user.userId])
+  }, [user.userId, refreshKey])
 
   async function handleDownload(eventId) {
     try {
