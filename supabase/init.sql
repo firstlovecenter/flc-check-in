@@ -445,18 +445,43 @@ $$;
 
 
 -- ─── claim_device_for_event: one device per member per event ────────────────
+-- Returns jsonb so failures can attribute the conflict to a specific user
+-- (the UI surfaces "Device already used by {name}"). Mirrors migration 013.
+--   ok:                    true | false
+--   claimed_by_member_id?: text   — only present when ok=false
+--   claimed_by_name?:      text   — best-effort name for the message
+--
+-- Idempotency: if the calling member already has a checkin_records row on
+-- this event, the claim is treated as satisfied regardless of which
+-- fingerprint is presented. Prevents "device used by another user" on a
+-- legitimate same-user retry whose fingerprint flipped between calls.
+drop function if exists public.claim_device_for_event(uuid, text, text);
 create or replace function public.claim_device_for_event(
   p_event_id     uuid,
   p_fingerprint  text,
   p_member_id    text
-) returns boolean
+) returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions
 as $$
 declare
-  v_existing text;
+  v_existing        text;
+  v_self_checked_in boolean;
+  v_name            text;
 begin
+  select exists (
+    select 1 from public.checkin_records
+     where event_id = p_event_id and member_id = p_member_id
+  ) into v_self_checked_in;
+
+  if v_self_checked_in then
+    insert into public.checkin_devices (event_id, device_fingerprint, member_id)
+      values (p_event_id, p_fingerprint, p_member_id)
+      on conflict (event_id, device_fingerprint) do nothing;
+    return jsonb_build_object('ok', true);
+  end if;
+
   insert into public.checkin_devices (event_id, device_fingerprint, member_id)
     values (p_event_id, p_fingerprint, p_member_id)
     on conflict (event_id, device_fingerprint) do nothing;
@@ -465,7 +490,31 @@ begin
     from public.checkin_devices
    where event_id = p_event_id and device_fingerprint = p_fingerprint;
 
-  return v_existing = p_member_id;
+  if v_existing = p_member_id then
+    return jsonb_build_object('ok', true);
+  end if;
+
+  -- Best-effort name lookup for the user-facing error.
+  select member_name into v_name
+    from public.checkin_records
+   where event_id = p_event_id and member_id = v_existing
+   limit 1;
+
+  if v_name is null then
+    select coalesce(
+      nullif(trim(coalesce(title, '') || ' ' || coalesce(first_name, '') || ' ' || coalesce(last_name, '')), ''),
+      email
+    )
+      into v_name
+      from public.member_profiles
+     where id = v_existing;
+  end if;
+
+  return jsonb_build_object(
+    'ok',                    false,
+    'claimed_by_member_id',  v_existing,
+    'claimed_by_name',       v_name
+  );
 end;
 $$;
 
@@ -776,10 +825,11 @@ declare
   v_otp_cur        text;
   v_otp_prev       text;
   v_in_fence       boolean;
-  v_device_ok      boolean;
+  v_device_claim   jsonb;
   v_is_late        boolean;
   v_record_id      uuid;
   v_claim_age      interval;
+  v_existing       public.checkin_records%rowtype;
 begin
   -- 1. Fetch event
   select * into v_event from public.checkin_events where id = p_event_id;
@@ -804,6 +854,25 @@ begin
   end if;
   if v_now > v_event.ends_at then
     return jsonb_build_object('ok', false, 'reason', 'event_ended');
+  end if;
+
+  -- 2b. Idempotent early-return: same member already has a record on this
+  -- event. Prevents "already_checked_in"/"device_already_used" confusion
+  -- on a retry after a successful first attempt whose response was lost.
+  -- See migration 012.
+  select * into v_existing
+    from public.checkin_records
+   where event_id = p_event_id and member_id = p_member_id;
+  if found then
+    return jsonb_build_object(
+      'ok',     true,
+      'reason', 'already_checked_in',
+      'record', jsonb_build_object(
+        'id',      v_existing.id,
+        'is_late', v_existing.is_late,
+        'method',  v_existing.method
+      )
+    );
   end if;
 
   -- 3. Method allowed
@@ -905,10 +974,17 @@ begin
   end if;
 
   -- 6. Device fingerprint claim — skipped for MANUAL (admin shared kiosk).
+  --    Returns the conflicting user's name when the claim fails so the
+  --    client can surface "Device already used by {name}".
   if p_method <> 'MANUAL' then
-    v_device_ok := public.claim_device_for_event(p_event_id, p_fingerprint, p_member_id);
-    if not v_device_ok then
-      return jsonb_build_object('ok', false, 'reason', 'device_already_used');
+    v_device_claim := public.claim_device_for_event(p_event_id, p_fingerprint, p_member_id);
+    if not coalesce((v_device_claim->>'ok')::boolean, false) then
+      return jsonb_build_object(
+        'ok',                   false,
+        'reason',               'device_already_used',
+        'claimed_by_member_id', v_device_claim->>'claimed_by_member_id',
+        'claimed_by_name',      v_device_claim->>'claimed_by_name'
+      );
     end if;
   end if;
 
@@ -938,6 +1014,23 @@ begin
 
 exception
   when unique_violation then
+    -- Race: another connection inserted the same (event_id, member_id) row
+    -- between our early-return check and this insert. Treat as idempotent
+    -- success rather than failure.
+    select * into v_existing
+      from public.checkin_records
+     where event_id = p_event_id and member_id = p_member_id;
+    if found then
+      return jsonb_build_object(
+        'ok',     true,
+        'reason', 'already_checked_in',
+        'record', jsonb_build_object(
+          'id',      v_existing.id,
+          'is_late', v_existing.is_late,
+          'method',  v_existing.method
+        )
+      );
+    end if;
     return jsonb_build_object('ok', false, 'reason', 'already_checked_in');
   when others then
     return jsonb_build_object('ok', false, 'reason', 'server_error', 'detail', sqlerrm);

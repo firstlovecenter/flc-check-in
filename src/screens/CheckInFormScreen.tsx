@@ -143,7 +143,12 @@ export default function CheckInFormScreen() {
   }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
 
   if (error) {
-    return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
+    return (
+      <CenterCard showRetry>
+        <h2 className='text-lg font-semibold mb-1' style={{ color: 'var(--coral)' }}>Couldn't load this event</h2>
+        <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>{error}</p>
+      </CenterCard>
+    )
   }
   // Still loading event or existing-record lookup
   if (!event || existingRecord === undefined) {
@@ -387,7 +392,10 @@ function reasonText(result) {
     case 'method_not_allowed':   return 'This check-in method is not enabled for this event.'
     case 'event_not_active':     return `Event is ${result.status?.toLowerCase() || 'not active'}.`
     case 'event_not_found':      return 'Event not found.'
-    case 'device_already_used':  return 'This device has already been used by another leader for this event.'
+    case 'device_already_used':
+      return result.claimed_by_name
+        ? `Device already used by ${result.claimed_by_name}.`
+        : 'This device has already been used by another leader for this event.'
     case 'already_checked_in':   return 'You are already checked in.'
     case 'unsupported_method':   return 'This check-in method is not supported.'
     case 'face_match_required':  return 'Face check did not complete. Try again.'
@@ -399,14 +407,39 @@ function reasonText(result) {
   }
 }
 
-function CenterCard({ children }) {
+/**
+ * Centred status card. Always renders a "Back to Home" link so users never
+ * land in a dead-end state (e.g. invalid event id, paused event, expired
+ * QR/PIN). Pass `showRetry` when the failure might be transient — adds a
+ * "Try again" button that reloads the screen.
+ */
+function CenterCard({ children, showRetry = false }: { children: React.ReactNode; showRetry?: boolean }) {
   return (
     <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
       <div
-        className='w-full max-w-md p-6 text-center'
+        className='w-full max-w-md p-6 text-center flex flex-col gap-4'
         style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
       >
         {children}
+        <div className='flex flex-col gap-2 mt-2'>
+          {showRetry && (
+            <button
+              type='button'
+              onClick={() => window.location.reload()}
+              className='btn-pill w-full'
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 14, padding: '11px 20px' }}
+            >
+              Try again
+            </button>
+          )}
+          <Link
+            to='/home'
+            className='btn-pill btn-secondary w-full text-center'
+            style={{ fontSize: 14, padding: '11px 20px' }}
+          >
+            Back to Home
+          </Link>
+        </div>
       </div>
     </div>
   )

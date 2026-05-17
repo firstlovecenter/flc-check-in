@@ -112,6 +112,21 @@ export async function getDeviceFingerprint(): Promise<string> {
   // Deduplicate concurrent callers (e.g. QR + PIN handlers racing on mount).
   if (pending) return pending
 
+  // Use the previously-persisted fingerprint if available so every call
+  // within this session returns IDENTICAL bytes. Recomputing in-session is
+  // both wasteful and dangerous — it can flip the bytes (e.g. when camera
+  // permission is granted between calls), breaking the server's per-event
+  // device claim (which key on the exact fingerprint string).
+  //
+  // The persisted value is refreshed only when nothing was stored before
+  // (genuine first run) or when explicitly invalidated by the caller via
+  // resetDeviceFingerprint().
+  const persisted = localStorage.getItem(LOCAL_KEY)
+  if (persisted) {
+    sessionStorage.setItem(SESSION_KEY, persisted)
+    return persisted
+  }
+
   pending = (async () => {
     const agent = await FingerprintJS.load()
     const { visitorId } = await agent.get()
@@ -121,13 +136,13 @@ export async function getDeviceFingerprint(): Promise<string> {
     return fp
   })().finally(() => { pending = null })
 
-  // Return the persisted value immediately while recomputing so callers
-  // aren't blocked on media-device enumeration on first page load.
-  const persisted = localStorage.getItem(LOCAL_KEY)
-  if (persisted) {
-    void pending  // let it update in the background
-    return persisted
-  }
-
   return pending
+}
+
+/** Invalidate the persisted fingerprint. Useful after a clear-data action
+ *  or when an admin wants to free a stuck (event, fingerprint) claim for
+ *  testing. Not exposed to end users. */
+export function resetDeviceFingerprint(): void {
+  sessionStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(LOCAL_KEY)
 }
