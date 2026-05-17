@@ -12,6 +12,7 @@ import CreateEventScreen from './screens/admin/CreateEventScreen'
 import ReportsScreen from './screens/admin/ReportsScreen'
 import EventHistoryScreen from './screens/admin/EventHistoryScreen'
 import MemberBiometricsScreen from './screens/admin/MemberBiometricsScreen'
+import SyncMembersScreen from './screens/admin/SyncMembersScreen'
 import RequireAuth from './components/RequireAuth'
 import SplashScreen from './components/SplashScreen'
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
@@ -65,6 +66,7 @@ export default function App() {
         <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
         <Route path='/admin/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
         <Route path='/admin/biometrics' element={<RequireAuth><MemberBiometricsScreen /></RequireAuth>} />
+        <Route path='/admin/sync-members' element={<RequireAuth><SyncMembersScreen /></RequireAuth>} />
 
         {/* Old /admin/events/:id/* URLs redirect to /events/:id/* */}
         <Route path='/admin/events/:eventId' element={<RedirectAdminEvent />} />
