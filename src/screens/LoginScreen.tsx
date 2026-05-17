@@ -190,7 +190,7 @@ export default function LoginScreen() {
             className='text-sm text-center'
             style={{ color: 'var(--muted)', textDecoration: 'none' }}
           >
-            View Current Meeting QR Codes To Scan
+            View Meetings At This Location
           </Link>
         </form>
       </div>
