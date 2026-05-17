@@ -61,6 +61,13 @@ create table if not exists public.member_profiles (
   oversight_id        text, oversight_name    text,
   denomination_id     text, denomination_name text,
   face_descriptor     double precision[],
+  -- Generated boolean so admin biometrics screens can read enrolment status
+  -- without pulling the full 128-float face_descriptor over the wire. STORED
+  -- so PostgREST can index/filter on it cheaply. Mirrors migration 009.
+  has_face_id         boolean
+    generated always as (
+      face_descriptor is not null and array_length(face_descriptor, 1) > 0
+    ) stored,
   updated_at          timestamptz not null default now()
 );
 
@@ -70,6 +77,7 @@ create index if not exists member_profiles_council_idx      on public.member_pro
 create index if not exists member_profiles_stream_idx       on public.member_profiles (stream_id);
 create index if not exists member_profiles_campus_idx       on public.member_profiles (campus_id);
 create index if not exists member_profiles_oversight_idx    on public.member_profiles (oversight_id);
+create index if not exists member_profiles_has_face_id_idx  on public.member_profiles (has_face_id);
 
 
 -- ─── superadmins ────────────────────────────────────────────────────────────
