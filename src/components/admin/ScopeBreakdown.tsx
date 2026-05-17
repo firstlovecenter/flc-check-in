@@ -105,19 +105,34 @@ export default function ScopeBreakdown({ eventId }) {
 
   // Group sliceRows by childLevel, anchored to the real child church list so
   // empty child scopes (no eligible members) still appear.
+  // Stats model matches EventDashboard:
+  //   attended = stillIn + left  (anyone who has a record)
+  //   absent   = members with no record at all
   const { groups, unassignedCount } = useMemo(() => {
     if (!childLevel) return { groups: [], unassignedCount: 0 }
     const idCol   = `${childLevel}_id`
     const nameCol = `${childLevel}_name`
-    const allRecordIds  = new Set(records.map((r) => r.member_id))
-    const checkedOutIds = new Set(records.filter((r) => r.checked_out_at != null).map((r) => r.member_id))
+    const recordByMember = new Map(records.map((r) => [r.member_id, r]))
+
+    type GroupStats = {
+      id: string
+      name: string
+      total: number
+      attended: number
+      stillIn: number
+      left: number
+      absent: number
+    }
+    const blank = (id: string, name: string): GroupStats => ({
+      id, name, total: 0, attended: 0, stillIn: 0, left: 0, absent: 0,
+    })
 
     // Seed map from graph child list (authoritative) so every child church
     // has a card, even if it has 0 eligible members.
-    const map = new Map<string, { id: string; name: string; total: number; checkedIn: number; checkedOut: number; defaulted: number }>()
+    const map = new Map<string, GroupStats>()
     if (childChurches) {
       for (const c of childChurches) {
-        map.set(c.id, { id: c.id, name: c.name, total: 0, checkedIn: 0, checkedOut: 0, defaulted: 0 })
+        map.set(c.id, blank(c.id, c.name))
       }
     }
 
@@ -126,14 +141,16 @@ export default function ScopeBreakdown({ eventId }) {
       const key = m[idCol]
       if (!key) { unassigned++; continue }
       const name = m[nameCol] || key
-      if (!map.has(key)) map.set(key, { id: key, name, total: 0, checkedIn: 0, checkedOut: 0, defaulted: 0 })
+      if (!map.has(key)) map.set(key, blank(key, name))
       const g = map.get(key)!
       g.total++
-      if (allRecordIds.has(m.id)) {
-        g.checkedIn++ // attended (includes those who later checked out)
-        if (checkedOutIds.has(m.id)) g.checkedOut++
+      const rec = recordByMember.get(m.id)
+      if (rec) {
+        g.attended++
+        if (rec.checked_out_at) g.left++
+        else g.stillIn++
       } else {
-        g.defaulted++
+        g.absent++
       }
     }
     return {
@@ -210,7 +227,7 @@ export default function ScopeBreakdown({ eventId }) {
         {!isMemberList && (
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
             {groups.map((g) => {
-              const pct = g.total > 0 ? Math.round((g.checkedIn / g.total) * 100) : 0
+              const pct = g.total > 0 ? Math.round((g.attended / g.total) * 100) : 0
               // Navigate to a scoped EventDashboard for this child church.
               const drillPath = `/events/${eventId}?scopeLevel=${childLevel}&scopeChurchId=${g.id}&scopeChurchName=${encodeURIComponent(g.name)}`
               return (
@@ -228,10 +245,10 @@ export default function ScopeBreakdown({ eventId }) {
                     <div className='h-full' style={{ width: `${pct}%`, background: pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--coral)', borderRadius: 'var(--radius-pill)' }} />
                   </div>
                   <div className='flex gap-4'>
-                    <SmallStat value={g.checkedIn} label='Attended' color='var(--green)' />
-                    <SmallStat value={g.checkedOut} label='Left' color='var(--amber)' />
-                    <SmallStat value={g.defaulted} label='Absent' color='var(--coral)' />
-                    <SmallStat value={g.total} label='Total' />
+                    <SmallStat value={g.stillIn} label='Still In' color='var(--green)' />
+                    <SmallStat value={g.left}    label='Left'     color='var(--amber)' />
+                    <SmallStat value={g.absent}  label='Absent'   color='var(--coral)' />
+                    <SmallStat value={g.total}   label='Total' />
                   </div>
                 </Link>
               )

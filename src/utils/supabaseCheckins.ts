@@ -514,23 +514,17 @@ function invalidateEventListCache() {
 export async function pauseEvent(eventId)  { invalidateEventListCache(); return updateEventStatus(eventId, 'PAUSED') }
 export async function resumeEvent(eventId) { invalidateEventListCache(); return updateEventStatus(eventId, 'ACTIVE') }
 
-// Manually ending an event:
+// Manually ending an event. Calls the end_event_now RPC which atomically:
 //  - Flips status to ENDED.
-//  - Truncates ends_at to now() IF the scheduled end was in the future, so the
-//    event drops out of active lists immediately and shows the actual end time
-//    in history. If ends_at is already past, leave it alone (cron has already
-//    auto-ended this event; we shouldn't rewrite the original schedule).
+//  - Truncates ends_at to now() if the scheduled end was still in the future.
+//  - Closes every open checkin_record (auto_checked_out = true).
+// Admins see the result immediately — no waiting for the every-minute cron.
 export async function endEvent(eventId) {
   invalidateEventListCache()
-  const current = await getEvent(eventId)
-  const patch: Record<string, any> = { status: 'ENDED' }
-  if (new Date(current.ends_at) > new Date()) {
-    patch.ends_at = new Date().toISOString()
-  }
-  const { data, error } = await supabase
-    .from('checkin_events').update(patch).eq('id', eventId).select().single()
-  if (error) throw error
-  return mapEventRow(data)
+  const { error: rpcError } = await supabase.rpc('end_event_now', { p_event_id: eventId })
+  if (rpcError) throw rpcError
+  // Re-read the row so callers get the updated mapped event.
+  return getEvent(eventId)
 }
 
 async function updateEventStatus(eventId, status) {
@@ -724,15 +718,6 @@ export async function getMyRecord(eventId, memberId) {
     .maybeSingle()
   if (error) throw error
   return data || null
-}
-
-/** Voluntarily check out: sets checked_out_at = now() on the leader's own record. */
-export async function selfCheckOut(recordId) {
-  const { error } = await supabase
-    .from('checkin_records')
-    .update({ checked_out_at: new Date().toISOString() })
-    .eq('id', recordId)
-  if (error) throw error
 }
 
 // ─── Attendance Stats ─────────────────────────────────────────────────────────

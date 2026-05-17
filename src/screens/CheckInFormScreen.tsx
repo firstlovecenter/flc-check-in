@@ -8,7 +8,7 @@ import FaceCapture from '../components/checkin/FaceCapture'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import { getCurrentUser, formatName } from '../utils/auth'
 import {
-  getEvent, submitCheckIn, getMyRecord, selfCheckOut,
+  getEvent, submitCheckIn, getMyRecord,
   getMyFaceDescriptor, claimFaceMatch,
 } from '../utils/supabaseCheckins'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
@@ -70,26 +70,6 @@ export default function CheckInFormScreen() {
     setExistingRecord(updated)
   }, [eventId, user.userId])
 
-  // Stable checkout handler — defined at component level so it always captures
-  // the current success/existingRecord via closure without creating a new
-  // function on every render (preventing the duplicate-RPC race condition).
-  const handleCheckOut = useCallback(async () => {
-    if (submitting) return
-    const recordId = (success as any)?.id || (existingRecord as any)?.id
-    if (!recordId) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      await selfCheckOut(recordId)
-      const updated = await getMyRecord(eventId, user.userId)
-      setExistingRecord(updated)
-      setSuccess(null)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }, [submitting, success, existingRecord, eventId, user.userId])
 
   const handleQR = useCallback(async (token, position) => {
     if (submitting) return
@@ -254,23 +234,11 @@ export default function CheckInFormScreen() {
             <p className='text-sm text-center' style={{ color: 'var(--coral)' }}>{error}</p>
           )}
 
-          {/* Actions */}
+          {/* Actions — no self-checkout; checkout is system-driven:
+              1. Member leaves the geofence for >20 minutes (auto via heartbeat)
+              2. Admin ends the event (sets ends_at = now)
+              3. Event time runs out (cron / auto_checkout_expired_events) */}
           <div className='flex flex-col gap-3'>
-            {!checkedOut && (
-              <button
-                onClick={handleCheckOut}
-                disabled={submitting}
-                className='w-full py-3 text-sm font-semibold cursor-pointer btn-pill'
-                style={{
-                  background: 'transparent',
-                  color: 'var(--coral)',
-                  border: '1.5px solid var(--coral)',
-                  opacity: submitting ? 0.5 : 1,
-                }}
-              >
-                {submitting ? 'Checking out…' : 'Check Out'}
-              </button>
-            )}
             <Link to='/home' className='btn-pill btn-secondary w-full text-center' style={{ fontSize: '14px' }}>
               Back to Home
             </Link>

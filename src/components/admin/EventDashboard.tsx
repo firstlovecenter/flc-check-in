@@ -127,16 +127,31 @@ export default function EventDashboard({ eventId }) {
   // Stat slice: use scoped subset when a filter is active, otherwise the viewer's own slice.
   const displaySlice = useMemo(() => scopedMembers ?? viewerSlice, [scopedMembers, viewerSlice])
 
+  // Stats model:
+  //   • attended  = anyone who has a record (cumulative — includes those who later left)
+  //   • stillIn   = checked in AND not yet checked out (currently present)
+  //   • left      = checked out (the "outgoing" tally for the event)
+  //   • absent    = no record at all (never showed)
+  // Invariants:
+  //   stillIn + left   === attended
+  //   attended + absent === total
   const stats = useMemo(() => {
     const sliceIds = new Set(displaySlice.map((m) => m.id))
     const sliceRecords = records.filter((r) => sliceIds.has(r.member_id))
-    const checkedOutRecords = sliceRecords.filter((r) => r.checked_out_at != null)
-    // Anyone with a record counts as attended — checkout does not remove them from the tally.
+    const leftCount = sliceRecords.filter((r) => r.checked_out_at != null).length
     const attendedIds = new Set(sliceRecords.map((r) => r.member_id))
+    const stillIn = sliceRecords.length - leftCount
     const total = sliceIds.size
-    const defaulted = displaySlice.filter((m) => !attendedIds.has(m.id)).length
+    const absent = displaySlice.filter((m) => !attendedIds.has(m.id)).length
     const pct = total > 0 ? Math.round((attendedIds.size / total) * 100) : 0
-    return { total, checkedIn: attendedIds.size, checkedOut: checkedOutRecords.length, defaulted, pct }
+    return {
+      total,
+      attended: attendedIds.size,
+      stillIn,
+      left: leftCount,
+      absent,
+      pct,
+    }
   }, [records, displaySlice])
 
   // A member who has checked in — even if they later checked out — is still
@@ -276,14 +291,19 @@ export default function EventDashboard({ eventId }) {
           </Link>
         )}
 
-        {/* Stat grid */}
+        {/* Stat grid.
+            Invariants for the four counts (assuming no manual edits):
+              stillIn + left   === attended
+              attended + absent === total
+            "Attended" is shown as the headline percentage rather than its own
+            card so admins compare Still In / Left / Absent at a glance. */}
         <div>
           <p className='eyebrow mb-3 justify-start'>Check-In Monitoring</p>
           <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
-            <StatCard value={stats.checkedIn}  label='Attended'       color='var(--green)' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.defaulted}  label='Defaulted'      color='var(--coral)' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.checkedOut} label='Left Early'     color='var(--amber)' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.total}      label='Total Expected' color='var(--text)'  to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
+            <StatCard value={stats.stillIn}  label='Still In'       color='var(--green)' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.left}     label='Left'           color='var(--amber)' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.absent}   label='Absent'         color='var(--coral)' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.total}    label='Total Expected' color='var(--text)'  to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
           </div>
           {viewerCaps.canManage && riskyCount > 0 && (
             <Link

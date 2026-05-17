@@ -145,6 +145,10 @@ create table if not exists public.checkin_records (
   checked_in_at       timestamptz not null default now(),
   checked_out_at      timestamptz,
   auto_checked_out    boolean not null default false,
+  -- First time we observed the member outside the fence in this event. Cleared
+  -- when they come back inside. Used by report_member_location to enforce a
+  -- grace period before auto-checkout (see migration 010).
+  outside_since       timestamptz,
   is_late             boolean not null default false,
   method              text not null check (method in ('QR','PIN','MANUAL','FACE_ID')),
   geo_verified        boolean not null,
@@ -489,6 +493,9 @@ $$;
 
 
 -- ─── report_member_location: location heartbeat + auto-checkout ─────────────
+-- Grace period: member must be continuously outside the fence for >= 20
+-- minutes before being auto-checked-out (avoids checking out for a single
+-- bad GPS reading or a short bathroom break). See migration 010.
 create or replace function public.report_member_location(
   p_event_id  uuid,
   p_member_id text,
@@ -500,11 +507,47 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_inside boolean;
+  v_inside         boolean;
+  v_grace_minutes  int := 20;
+  v_outside_since  timestamptz;
   v_was_checked_out boolean := false;
+  v_minutes_left   int;
 begin
   v_inside := public.point_in_event_geofence(p_event_id, p_lat, p_lng);
-  if not v_inside then
+
+  if v_inside then
+    -- Back inside: clear any pending outside-timer.
+    update public.checkin_records
+       set outside_since = null
+     where event_id = p_event_id
+       and member_id = p_member_id
+       and checked_out_at is null
+       and outside_since is not null;
+    return jsonb_build_object('inside_fence', true, 'checked_out', false);
+  end if;
+
+  select outside_since into v_outside_since
+    from public.checkin_records
+   where event_id = p_event_id
+     and member_id = p_member_id
+     and checked_out_at is null
+   limit 1;
+
+  if v_outside_since is null then
+    update public.checkin_records
+       set outside_since = now()
+     where event_id = p_event_id
+       and member_id = p_member_id
+       and checked_out_at is null;
+    return jsonb_build_object(
+      'inside_fence', false,
+      'checked_out', false,
+      'outside_since', now(),
+      'minutes_left', v_grace_minutes
+    );
+  end if;
+
+  if now() - v_outside_since >= make_interval(mins => v_grace_minutes) then
     update public.checkin_records
        set checked_out_at  = now(),
            auto_checked_out = true
@@ -512,13 +555,78 @@ begin
        and member_id = p_member_id
        and checked_out_at is null;
     if found then v_was_checked_out := true; end if;
+    return jsonb_build_object('inside_fence', false, 'checked_out', v_was_checked_out);
   end if;
-  return jsonb_build_object('inside_fence', v_inside, 'checked_out', v_was_checked_out);
+
+  v_minutes_left := greatest(
+    0,
+    v_grace_minutes - floor(extract(epoch from (now() - v_outside_since)) / 60)::int
+  );
+  return jsonb_build_object(
+    'inside_fence', false,
+    'checked_out', false,
+    'outside_since', v_outside_since,
+    'minutes_left', v_minutes_left
+  );
+end;
+$$;
+
+
+-- ─── end_event_now: admin ends an event atomically ─────────────────────────
+-- Flips status to ENDED, truncates ends_at to now() (if still in the future),
+-- and closes every open record in one transaction. Used by endEvent() in the
+-- app so admins don't have to wait for the every-minute cron tick to see
+-- attendees move from "Checked In" to "Checked Out". See migration 011.
+create or replace function public.end_event_now(p_event_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_event       public.checkin_events%rowtype;
+  v_now         timestamptz := now();
+  v_new_ends_at timestamptz;
+  v_closed      int := 0;
+begin
+  select * into v_event from public.checkin_events where id = p_event_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'reason', 'event_not_found');
+  end if;
+
+  v_new_ends_at := case
+    when v_event.ends_at > v_now then v_now
+    else v_event.ends_at
+  end;
+
+  update public.checkin_events
+     set status  = 'ENDED',
+         ends_at = v_new_ends_at
+   where id = p_event_id;
+
+  with closed as (
+    update public.checkin_records
+       set checked_out_at  = v_now,
+           auto_checked_out = true
+     where event_id = p_event_id
+       and checked_out_at is null
+    returning id
+  )
+  select count(*) into v_closed from closed;
+
+  return jsonb_build_object(
+    'ok', true,
+    'event_id', p_event_id,
+    'ends_at', v_new_ends_at,
+    'records_closed', v_closed
+  );
 end;
 $$;
 
 
 -- ─── auto_checkout_expired_events: cron job for ended events ────────────────
+-- Also catches ENDED events that still have open records, as a safety net
+-- in case end_event_now() didn't get to close them.
 create or replace function public.auto_checkout_expired_events()
 returns int
 language plpgsql
@@ -534,8 +642,7 @@ begin
            auto_checked_out = true
       from public.checkin_events ce
      where cr.event_id = ce.id
-       and ce.status = 'ACTIVE'
-       and ce.ends_at <= now()
+       and (ce.status = 'ENDED' or (ce.status = 'ACTIVE' and ce.ends_at <= now()))
        and cr.checked_out_at is null
     returning cr.id
   )
