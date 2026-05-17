@@ -527,28 +527,6 @@ export async function endEvent(eventId) {
   return getEvent(eventId)
 }
 
-/** Hard-delete an event. Restricted to super-admins server-side: the
- *  delete_event RPC checks the caller's email against the superadmins
- *  table before proceeding. Cascades via FKs remove every related
- *  checkin_record, audit_log entry, etc. Irreversible. */
-export async function deleteEvent(eventId: string, adminEmail: string) {
-  if (!adminEmail) throw new Error('Admin email is required')
-  const { data, error } = await supabase.rpc('delete_event', {
-    p_event_id: eventId,
-    p_admin_email: adminEmail,
-  })
-  if (error) throw error
-  if (!data?.ok) {
-    const reason = data?.reason
-    if (reason === 'forbidden')        throw new Error('Only super-admins can delete events.')
-    if (reason === 'event_not_found')  throw new Error('Event not found.')
-    if (reason === 'admin_email_required') throw new Error('Admin email is required.')
-    throw new Error(reason || 'Delete failed.')
-  }
-  invalidateEventListCache()
-  return data
-}
-
 async function updateEventStatus(eventId, status) {
   const { data, error } = await supabase
     .from('checkin_events').update({ status }).eq('id', eventId).select().single()

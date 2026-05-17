@@ -1,8 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   pauseEvent, resumeEvent, endEvent, extendEvent, resetPin, addAuditLog,
-  deleteEvent,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import { getCurrentUser, formatName } from '../../utils/auth'
@@ -14,16 +12,12 @@ interface Props {
 }
 
 export default function CheckInAdminControls({ event, onChange }: Props) {
-  const navigate = useNavigate()
   const admin = getCurrentUser()
   const adminName = admin ? formatName(admin) : 'Admin'
-  const isSuperAdmin = !!admin?.isSuperAdmin
   const [busy, setBusy]         = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  // Inline confirmation — stores the pending action id ('end' | 'pin' | 'delete').
-  const [confirmAction, setConfirmAction] = useState<'end' | 'pin' | 'delete' | null>(null)
-  // Type-to-confirm string for the destructive delete action.
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  // Inline confirmation — stores the pending action id ('end' | 'pin').
+  const [confirmAction, setConfirmAction] = useState<'end' | 'pin' | null>(null)
   // The newly generated PIN to display inline instead of alert().
   const [newPinDisplay, setNewPinDisplay] = useState<string | null>(null)
 
@@ -75,36 +69,6 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     })
   }
 
-  async function doDelete() {
-    setConfirmAction(null)
-    setDeleteConfirmText('')
-    setBusy('delete')
-    setActionError(null)
-    try {
-      // Capture event identity BEFORE delete for the audit log entry —
-      // event_id on audit_log is `on delete set null`, so we lose the
-      // direct link, but the details payload still names the event.
-      const eventName = event.name
-      const eventId = event.id
-      await deleteEvent(eventId, admin?.email || '')
-      // Best-effort audit log — eventId will be set to null by the FK cascade,
-      // but the row is preserved with the details payload for traceability.
-      addAuditLog({
-        action: 'event.delete',
-        actorId: admin?.userId,
-        actorName: adminName,
-        eventId,
-        details: { event_name: eventName },
-      }).catch(() => {})
-      // Navigate away — the event no longer exists.
-      navigate('/admin/history', { replace: true })
-    } catch (err: any) {
-      setActionError(err.message || 'Delete failed')
-    } finally {
-      setBusy(null)
-    }
-  }
-
   return (
     <div>
       <div className='flex flex-wrap gap-2'>
@@ -135,14 +99,6 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
               {busy === 'end' ? '…' : 'End'}
             </Btn>
           </>
-        )}
-        {/* Super-admin only: hard-delete the event (any status). Server
-            re-checks isSuperAdmin via the superadmins table — this is just
-            the UI gate. */}
-        {isSuperAdmin && (
-          <Btn disabled={busy} danger onClick={() => { setDeleteConfirmText(''); setConfirmAction('delete') }}>
-            {busy === 'delete' ? '…' : '🗑 Delete'}
-          </Btn>
         )}
       </div>
 
@@ -191,7 +147,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {confirmAction === 'end' && (
+            {confirmAction === 'end' ? (
               <>
                 <p style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.5rem' }}>End this event?</p>
                 <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
@@ -202,8 +158,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
                   <Btn danger onClick={doEnd}>End Event</Btn>
                 </div>
               </>
-            )}
-            {confirmAction === 'pin' && (
+            ) : (
               <>
                 <p style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.5rem' }}>Reset PIN?</p>
                 <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
@@ -212,37 +167,6 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   <Btn onClick={() => setConfirmAction(null)}>Cancel</Btn>
                   <Btn onClick={doResetPin}>Generate New PIN</Btn>
-                </div>
-              </>
-            )}
-            {confirmAction === 'delete' && (
-              <>
-                <p style={{ color: 'var(--coral)', fontWeight: 700, marginBottom: '0.5rem' }}>
-                  Permanently delete this event?
-                </p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-                  This removes the event, every check-in record, and all related
-                  data. <strong style={{ color: 'var(--coral)' }}>This cannot be undone.</strong>
-                </p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                  Type <code style={{ color: 'var(--coral)', fontWeight: 700 }}>DELETE</code> to confirm:
-                </p>
-                <input
-                  type='text'
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder='DELETE'
-                  autoComplete='off'
-                  autoCorrect='off'
-                  spellCheck={false}
-                  className='input-field'
-                  style={{ fontSize: 14, padding: '8px 12px', marginBottom: '1rem' }}
-                />
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <Btn onClick={() => { setConfirmAction(null); setDeleteConfirmText('') }}>Cancel</Btn>
-                  <Btn danger disabled={deleteConfirmText !== 'DELETE'} onClick={doDelete}>
-                    Delete forever
-                  </Btn>
                 </div>
               </>
             )}
