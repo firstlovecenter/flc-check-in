@@ -9,15 +9,36 @@
 // proxy uses) so you only configure ONE variable per environment. Falls
 // back to AUTH_LAMBDA_URL if you prefer a server-only name.
 //
-//   https://<lambda-url>.lambda-url.<region>.on.aws/auth   ← include /auth
+// Accepted shapes — the function normalises all of these to "<origin>/auth":
+//   https://<host>                        → https://<host>/auth
+//   https://<host>/auth                   → https://<host>/auth
+//   https://<host>/auth/login             → https://<host>/auth
+//   https://<host>/auth/anything/else     → https://<host>/auth
+//
+// This matches Vite's dev proxy (vite.config.js) which also strips the
+// path and reconstructs /auth itself. So one env-var value works in both
+// places without a "split brain" between dev and prod.
 //
 // No hardcoded fallback — a misconfigured deployment fails loudly via a
 // 500 rather than silently routing prod logins to dev's user database.
 
-const TARGET = process.env.VITE_AUTH_API_URL || process.env.AUTH_LAMBDA_URL
+const RAW = process.env.VITE_AUTH_API_URL || process.env.AUTH_LAMBDA_URL
+
+/** Build "<origin>/auth" from whatever the env var contains. */
+function normaliseTarget(raw) {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    return `${u.origin}/auth`
+  } catch {
+    return null
+  }
+}
+
+const TARGET = normaliseTarget(RAW)
 
 if (!TARGET) {
-  console.error('[flc-auth] VITE_AUTH_API_URL is not set — add it to the Vercel project env vars')
+  console.error('[flc-auth] VITE_AUTH_API_URL is not set or invalid — add a full URL to the Vercel project env vars')
 }
 
 export default async function handler(req, res) {

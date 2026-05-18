@@ -16,10 +16,23 @@
 // No hardcoded fallback — a misconfigured deployment fails loudly via a 500
 // rather than silently routing prod traffic to dev.
 
-const TARGET = process.env.VITE_MEMBER_GRAPHQL_URL || process.env.MEMBER_GRAPHQL_URL
+/** Normalise the env var: validate it's a URL, strip trailing slash.
+ *  Unlike the auth proxy we keep the path because GraphQL endpoints
+ *  typically live at /graphql, not at the origin. */
+function normaliseTarget(raw) {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    return `${u.origin}${u.pathname.replace(/\/$/, '')}`
+  } catch {
+    return null
+  }
+}
+
+const TARGET = normaliseTarget(process.env.VITE_MEMBER_GRAPHQL_URL || process.env.MEMBER_GRAPHQL_URL)
 
 if (!TARGET) {
-  console.error('[flc-graphql] VITE_MEMBER_GRAPHQL_URL is not set — add it to the Vercel project env vars')
+  console.error('[flc-graphql] VITE_MEMBER_GRAPHQL_URL is not set or invalid — add a full URL to the Vercel project env vars')
 }
 
 export default async function handler(req, res) {
