@@ -127,8 +127,8 @@ export default function ScopeBreakdown({ eventId }) {
   // Stats model matches EventDashboard:
   //   attended = stillIn + left  (anyone who has a record)
   //   absent   = members with no record at all
-  const { groups, unassignedCount } = useMemo(() => {
-    if (!childLevel) return { groups: [], unassignedCount: 0 }
+  const { groups, unassignedRows } = useMemo(() => {
+    if (!childLevel) return { groups: [], unassignedRows: [] }
     const idCol   = `${childLevel}_id`
     const nameCol = `${childLevel}_name`
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
@@ -155,10 +155,18 @@ export default function ScopeBreakdown({ eventId }) {
       }
     }
 
-    let unassigned = 0
+    // Members with no child-scope assignment (e.g. council leaders in a
+    // council-level event have no governorship_id). Collect as rows so they
+    // can be rendered in-line rather than just counted.
+    const unassigned: { member: any; record: any; status: string }[] = []
     for (const m of sliceRows) {
       const key = m[idCol]
-      if (!key) { unassigned++; continue }
+      if (!key) {
+        const rec = recordByMember.get(m.id) || null
+        const status = !rec ? 'Defaulted' : rec.checked_out_at ? 'Checked Out' : 'Checked In'
+        unassigned.push({ member: m, record: rec, status })
+        continue
+      }
       const name = m[nameCol] || key
       if (!map.has(key)) map.set(key, blank(key, name))
       const g = map.get(key)!
@@ -172,11 +180,12 @@ export default function ScopeBreakdown({ eventId }) {
         g.absent++
       }
     }
+    const statusOrder = { 'Checked In': 0, 'Checked Out': 1, 'Defaulted': 2 }
     return {
       groups: [...map.values()].sort((a, b) => b.total - a.total),
-      unassignedCount: unassigned,
+      unassignedRows: unassigned.sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)),
     }
-  }, [sliceRows, childLevel, records])
+  }, [sliceRows, childLevel, records, childChurches])
 
   // At governorship level show individual members (governorship is the lowest
   // meaningful drill unit — bacentas are not reported on).
@@ -224,7 +233,7 @@ export default function ScopeBreakdown({ eventId }) {
           <p className='eyebrow m-0'>
             {isMemberList
               ? `${sliceRows.length} member${sliceRows.length !== 1 ? 's' : ''}`
-              : `${groups.length} ${cap(childLevel!)}${groups.length !== 1 ? 's' : ''}${unassignedCount > 0 ? ` · +${unassignedCount} unassigned` : ''}`}
+              : `${groups.length} ${cap(childLevel!)}${groups.length !== 1 ? 's' : ''}${unassignedRows.length > 0 ? ` · +${unassignedRows.length} at this level` : ''}`}
           </p>
           {!isMemberList && (
             <Link
@@ -238,11 +247,6 @@ export default function ScopeBreakdown({ eventId }) {
         </div>
 
         {/* ── Child-scope group cards ── */}
-        {!isMemberList && unassignedCount > 0 && (
-          <p className='text-xs' style={{ color: 'var(--muted)' }}>
-            {unassignedCount} leader{unassignedCount !== 1 ? 's' : ''} at this level (not counted in {cap(childLevel!)} totals)
-          </p>
-        )}
         {!isMemberList && (
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
             {groups.map((g) => {
@@ -275,37 +279,55 @@ export default function ScopeBreakdown({ eventId }) {
           </div>
         )}
 
+        {/* ── Members with no child-scope assignment (e.g. council leaders in a
+             council-level event who have no single governorship) ── */}
+        {!isMemberList && unassignedRows.length > 0 && (
+          <>
+            <p className='text-xs font-semibold mt-1' style={{ color: 'var(--muted)' }}>
+              {cap(currentLevel!)} level · {unassignedRows.length} member{unassignedRows.length !== 1 ? 's' : ''}
+            </p>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
+              {unassignedRows.map(({ member: m, record: r, status }) => (
+                <MemberRow key={m.id} member={m} record={r} status={status} />
+              ))}
+            </div>
+          </>
+        )}
+
         {/* ── Member list (at governorship / bottom of drill) ── */}
         {isMemberList && memberRows.length === 0 && (
           <p className='text-sm text-center mt-4' style={{ color: 'var(--muted)' }}>No eligible members in this scope.</p>
         )}
         {isMemberList && memberRows.length > 0 && (
           <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
-            {memberRows.map(({ member: m, record: r, status }) => {
-              const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
-              const statusColor = status === 'Checked In' ? 'var(--green)' : status === 'Checked Out' ? 'var(--amber)' : 'var(--coral)'
-              return (
-                <div
-                  key={m.id}
-                  className='px-4 py-3 flex items-center justify-between gap-3'
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-                >
-                  <div className='min-w-0'>
-                    <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
-                    <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{(m.roles || [])[0] || '—'}</p>
-                  </div>
-                  <div className='text-right shrink-0'>
-                    <p className='text-xs font-bold m-0' style={{ color: statusColor }}>{status}</p>
-                    {r?.checked_in_at && (
-                      <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+            {memberRows.map(({ member: m, record: r, status }) => (
+              <MemberRow key={m.id} member={m} record={r} status={status} />
+            ))}
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+function MemberRow({ member: m, record: r, status }: { member: any; record: any; status: string }) {
+  const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
+  const statusColor = status === 'Checked In' ? 'var(--green)' : status === 'Checked Out' ? 'var(--amber)' : 'var(--coral)'
+  return (
+    <div
+      className='px-4 py-3 flex items-center justify-between gap-3'
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+    >
+      <div className='min-w-0'>
+        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
+        <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{(m.roles || [])[0] || '—'}</p>
+      </div>
+      <div className='text-right shrink-0'>
+        <p className='text-xs font-bold m-0' style={{ color: statusColor }}>{status}</p>
+        {r?.checked_in_at && (
+          <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
+        )}
+      </div>
     </div>
   )
 }
