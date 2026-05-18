@@ -242,20 +242,32 @@ export async function adminClearFaceDescriptor(memberId: string): Promise<void> 
 // Uses the `has_face_id` generated column (migration 009) instead of pulling
 // the 128-float face_descriptor over the wire. For large scopes this turns a
 // multi-MB payload into a few KB.
+const MEMBER_PROFILE_BIOMETRICS_COLUMNS =
+  'id, first_name, last_name, email, roles, picture_url, ' +
+  'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+  'council_id, council_name, stream_id, stream_name, ' +
+  'campus_id, campus_name, oversight_id, oversight_name, ' +
+  'denomination_id, denomination_name, has_face_id'
+
+export async function listAllMembersForBiometrics(): Promise<Array<any>> {
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
+    .order('last_name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
 export async function listMembersForBiometricsAdmin(
   scopes: Array<{ level: string; id: string }>
 ): Promise<Array<any>> {
   if (!scopes?.length) return []
-  // OR over (<level>_id eq <id>) pairs.
   const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, first_name, last_name, email, roles, picture_url, ' +
-            'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
-            'council_id, council_name, stream_id, stream_name, ' +
-            'campus_id, campus_name, oversight_id, oversight_name, ' +
-            'denomination_id, denomination_name, has_face_id')
+    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
     .or(orFilter)
+    .order('last_name', { ascending: true })
   if (error) throw error
   return data || []
 }

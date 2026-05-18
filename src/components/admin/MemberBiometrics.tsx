@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import {
-  listMembersForBiometricsAdmin, adminClearFaceDescriptor, bulkUpsertMemberProfiles,
+  listMembersForBiometricsAdmin, listAllMembersForBiometrics,
+  adminClearFaceDescriptor, bulkUpsertMemberProfiles,
 } from '../../utils/supabaseCheckins'
 import {
   resolveCurrentMember, getAdminScopes, getAllLeadersAndAdmins,
   memberToProfileRow, searchMembersByName,
 } from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
+import { SCOPE_LEVELS } from '../../types/app'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 type Row = {
@@ -39,7 +41,7 @@ export default function MemberBiometrics() {
 
   // Biometrics list (Supabase, scoped)
   const [rows, setRows] = useState<Row[]>([])
-  const [loading, setLoading] = useState(!isSuperAdmin)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [resetting, setResetting] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -59,12 +61,46 @@ export default function MemberBiometrics() {
 
   // ── Load biometrics data ──────────────────────────────────────────
   async function refresh() {
-    if (isSuperAdmin) { setLoading(false); return }
+    if (isSuperAdmin) {
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await listAllMembersForBiometrics()
+        setRows(data)
+      } catch (err: any) {
+        setError(err.message || 'Could not load members')
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      const member = await resolveCurrentMember(user)
-      const scopes = getAdminScopes(member, user)
+      // Collect scopes from JWT churchScopes (both isAdminFor* and leads* edges).
+      const cs = user?.churchScopes as Record<string, { id: string; name?: string } | null | undefined> | undefined
+      const seen = new Set<string>()
+      const scopes: Array<{ level: string; id: string }> = []
+      const push = (level: string, ref: { id: string } | null | undefined) => {
+        if (!ref?.id) return
+        const k = `${level}:${ref.id}`
+        if (seen.has(k)) return
+        seen.add(k)
+        scopes.push({ level, id: ref.id })
+      }
+      for (const level of SCOPE_LEVELS) {
+        const L = level.charAt(0).toUpperCase() + level.slice(1) as string
+        push(level, cs?.[`isAdminFor${L}Of`])
+        push(level, cs?.[`leads${L}Of`])
+      }
+
+      // Enrich with graph-side edges in case JWT is stale.
+      try {
+        const member = await resolveCurrentMember(user)
+        for (const s of getAdminScopes(member, user)) push(s.level, { id: s.id })
+      } catch { /* graph unreachable — JWT scopes are sufficient */ }
+
+      if (!scopes.length) { setRows([]); return }
       const data = await listMembersForBiometricsAdmin(scopes)
       setRows(data)
     } catch (err: any) {
@@ -117,9 +153,14 @@ export default function MemberBiometrics() {
   const rowsById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows])
 
   const stats = useMemo(() => {
+    if (isGqlMode) {
+      const total = gqlResults.length
+      const enrolled = gqlResults.filter((m) => rowsById.get(m.id)?.has_face_id).length
+      return { total, enrolled, notEnrolled: total - enrolled }
+    }
     const enrolled = rows.filter((r) => r.has_face_id).length
     return { total: rows.length, enrolled, notEnrolled: rows.length - enrolled }
-  }, [rows])
+  }, [rows, gqlResults, isGqlMode, rowsById])
 
   useEffect(() => { setPage(1) }, [filter, search, pageSize])
 
@@ -236,8 +277,8 @@ export default function MemberBiometrics() {
           </p>
         )}
 
-        {/* ── Stats + filter tabs — biometrics list mode, non-superadmin only ── */}
-        {!isGqlMode && !isSuperAdmin && (
+        {/* ── Stats + filter tabs ── */}
+        {!isGqlMode && (
           <>
             <div
               className='p-4 grid grid-cols-3 gap-3 text-center'
@@ -266,6 +307,18 @@ export default function MemberBiometrics() {
               ))}
             </div>
           </>
+        )}
+
+        {/* ── Stats card for superadmin GQL results ── */}
+        {isGqlMode && gqlHasSearched && !gqlSearching && gqlResults.length > 0 && (
+          <div
+            className='p-4 grid grid-cols-3 gap-3 text-center'
+            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
+          >
+            <Stat value={stats.total}       label='Found' />
+            <Stat value={stats.enrolled}    label='Enrolled'  color='var(--green)' />
+            <Stat value={stats.notEnrolled} label='Pending'   color='var(--amber)' />
+          </div>
         )}
 
         {/* ── GraphQL search results (superadmin, search active) ── */}
@@ -330,12 +383,7 @@ export default function MemberBiometrics() {
         {!isGqlMode && (
           <>
             {loading && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading members…</p>}
-            {!loading && isSuperAdmin && (
-              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
-                Type at least 2 characters to search all members.
-              </p>
-            )}
-            {!loading && !isSuperAdmin && filtered.length === 0 && (
+            {!loading && filtered.length === 0 && (
               <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
                 {rows.length === 0 ? 'No members in your admin scopes yet.' : 'No matches.'}
               </p>
