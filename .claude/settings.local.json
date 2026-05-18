@@ -7,7 +7,20 @@
       "Bash(curl -sS -X POST https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/rpc/delete_event -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Content-Type: application/json' -d '{\"p_event_id\":\"00000000-0000-0000-0000-000000000000\",\"p_admin_email\":\"skaduteye@gmail.com\"}' --max-time 15)",
       "Bash(curl -sS -X POST https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/rpc/delete_event -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Content-Type: application/json' -d '{\"p_event_id\":\"00000000-0000-0000-0000-000000000000\",\"p_admin_email\":\"nobody@example.com\"}' --max-time 15)",
       "Bash(curl -sS https://qtegrwobxpljbzmctyof.supabase.co/rest/v1/ -H 'apikey: sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' -H 'Authorization: Bearer sb_publishable_tTJbaIv1QeQJHkr7vglHkg_WkV0j1oj' --max-time 15)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(git revert *)",
+      "Bash(git stash *)",
+      "Bash(git checkout *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git restore *)",
+      "Bash(rm -f .claude/settings.local.json && git status --short)",
+      "Bash(curl -sS -i -X POST https://hineni.firstlovecenter.com/api/flc-auth/login -H 'Content-Type: application/json' -d '{\"email\":\"denominationadmin@test.com\",\"password\":\"password\"}' --max-time 15)",
+      "Bash(curl -sS -o /dev/null -w 'HTTP %{http_code}\\\\n' -X POST https://hineni.firstlovecenter.com/api/flc-auth/login -H 'Content-Type: application/json' -d '{\"email\":\"skaduteye@gmail.com\",\"password\":\"password\"}' --max-time 15)",
+      "Bash(curl -sS -o /dev/null -w 'HTTP %{http_code}\\\\n' -X POST https://prod-hineni.vercel.app/api/flc-auth/login -H 'Content-Type: application/json' -d '{\"email\":\"denominationadmin@test.com\",\"password\":\"password\"}' --max-time 15)",
+      "Bash(curl -sS -X POST https://hineni.firstlovecenter.com/flc-graphql -H 'Content-Type: application/json' -d '{\"query\":\"{denominationsConnection{totalCount} councilsConnection{totalCount}}\"}' --max-time 15)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\samuel cyrus-aduteye\\Documents\\Codeslaw\\flc-check-in\\.claude"
     ]
   }
 }
