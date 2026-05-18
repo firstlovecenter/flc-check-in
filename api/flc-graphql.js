@@ -5,7 +5,10 @@
 // Vercel project's env vars, so each environment (prod, preview, dev) can
 // point at its own upstream without editing source.
 //
-// MEMBER_GRAPHQL_URL must be set per environment on the Vercel project:
+// Reads the upstream URL from VITE_MEMBER_GRAPHQL_URL (same env var the
+// client + Vite proxy use) so you only configure ONE variable per
+// environment. Falls back to MEMBER_GRAPHQL_URL if you prefer a
+// server-only name. Per environment on the Vercel project:
 //   prod    → https://api-synago.firstlovecenter.com/graphql
 //   preview → (whatever you want previews to use)
 //   dev     → (Vite has its own proxy in vite.config.js for local dev)
@@ -13,10 +16,10 @@
 // No hardcoded fallback — a misconfigured deployment fails loudly via a 500
 // rather than silently routing prod traffic to dev.
 
-const TARGET = process.env.MEMBER_GRAPHQL_URL
+const TARGET = process.env.VITE_MEMBER_GRAPHQL_URL || process.env.MEMBER_GRAPHQL_URL
 
 if (!TARGET) {
-  console.error('[flc-graphql] MEMBER_GRAPHQL_URL is not set — add it to the Vercel project env vars')
+  console.error('[flc-graphql] VITE_MEMBER_GRAPHQL_URL is not set — add it to the Vercel project env vars')
 }
 
 export default async function handler(req, res) {

@@ -5,16 +5,19 @@
 // does the same job, reading AUTH_LAMBDA_URL from the Vercel project's
 // environment variables.
 //
-// AUTH_LAMBDA_URL must be set per environment on the Vercel project:
+// Reads the upstream URL from VITE_AUTH_API_URL (same env var Vite's dev
+// proxy uses) so you only configure ONE variable per environment. Falls
+// back to AUTH_LAMBDA_URL if you prefer a server-only name.
+//
 //   https://<lambda-url>.lambda-url.<region>.on.aws/auth   ← include /auth
 //
 // No hardcoded fallback — a misconfigured deployment fails loudly via a
 // 500 rather than silently routing prod logins to dev's user database.
 
-const TARGET = process.env.AUTH_LAMBDA_URL
+const TARGET = process.env.VITE_AUTH_API_URL || process.env.AUTH_LAMBDA_URL
 
 if (!TARGET) {
-  console.error('[flc-auth] AUTH_LAMBDA_URL is not set — add it to the Vercel project env vars')
+  console.error('[flc-auth] VITE_AUTH_API_URL is not set — add it to the Vercel project env vars')
 }
 
 export default async function handler(req, res) {
