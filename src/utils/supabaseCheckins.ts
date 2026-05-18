@@ -497,13 +497,23 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   if (se) throw se
   const ids = (snap || []).map((r: any) => r.member_id)
   if (!ids.length) return []
-  // Exclude face_descriptor (~1KB / row) — dashboard joins never need it.
-  const { data: profiles, error: pe } = await supabase
-    .from('member_profiles')
-    .select(MEMBER_PROFILE_LIST_COLUMNS)
-    .in('id', ids)
-  if (pe) throw pe
-  return profiles || []
+
+  // Batch into groups of 50 to stay well under Supabase's URL length limit.
+  // 500 UUIDs in one .in() call ≈ 18 KB URL → 400 Bad Request.
+  const BATCH = 50
+  const batches: string[][] = []
+  for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH))
+
+  const results = await Promise.all(
+    batches.map((batch) =>
+      supabase
+        .from('member_profiles')
+        .select(MEMBER_PROFILE_LIST_COLUMNS)
+        .in('id', batch),
+    ),
+  )
+  for (const { error } of results) if (error) throw error
+  return results.flatMap((r) => r.data || [])
 }
 
 /** Events where the given graph member ID appears in the scope snapshot.
