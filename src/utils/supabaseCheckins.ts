@@ -249,11 +249,20 @@ const MEMBER_PROFILE_BIOMETRICS_COLUMNS =
   'campus_id, campus_name, oversight_id, oversight_name, ' +
   'denomination_id, denomination_name, has_face_id'
 
+// Only leaders/admins — rows where roles[] contains at least one leader/admin role.
+const LEADER_ADMIN_ROLES = [
+  'leaderBacenta','leaderGovernorship','leaderCouncil','leaderStream',
+  'leaderCampus','leaderOversight','leaderDenomination',
+  'adminGovernorship','adminCouncil','adminStream',
+  'adminCampus','adminOversight','adminDenomination',
+]
+
 export async function listAllMembersForBiometrics(): Promise<Array<any>> {
   const { data, error } = await supabase
     .from('member_profiles')
     .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
-    .order('last_name', { ascending: true })
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+    .order('first_name', { ascending: true })
   if (error) throw error
   return data || []
 }
@@ -266,8 +275,9 @@ export async function listMembersForBiometricsAdmin(
   const { data, error } = await supabase
     .from('member_profiles')
     .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
+    .overlaps('roles', LEADER_ADMIN_ROLES)
     .or(orFilter)
-    .order('last_name', { ascending: true })
+    .order('first_name', { ascending: true })
   if (error) throw error
   return data || []
 }
