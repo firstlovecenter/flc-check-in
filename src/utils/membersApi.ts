@@ -19,6 +19,7 @@ import {
   CHILD_LIST_QUERIES,
   GET_ALL_MEMBERS_PAGE,
   SEARCH_CHURCHES,
+  SEARCH_MEMBERS_BY_NAME,
 } from './membersApi.queries.js'
 
 function graphqlEndpoint() {
@@ -660,4 +661,14 @@ export function isLeaderOrAdmin(member) {
     member.isAdminForGovernorship, member.isAdminForCouncil, member.isAdminForStream,
     member.isAdminForCampus, member.isAdminForOversight, member.isAdminForDenomination,
   ].some((arr) => Array.isArray(arr) && arr.length > 0)
+}
+
+// ─── searchMembersByName ────────────────────────────────────────────────────
+// Case-insensitive substring search across firstName and lastName.
+// Returns full MemberFields so callers can pass results to memberToProfileRow().
+export async function searchMembersByName(q: string, limit = 10): Promise<any[]> {
+  const query = (q || '').trim()
+  if (query.length < 2) return []
+  const data = await client().request<{ members: any[] }>(SEARCH_MEMBERS_BY_NAME, { q: query, limit })
+  return data?.members || []
 }

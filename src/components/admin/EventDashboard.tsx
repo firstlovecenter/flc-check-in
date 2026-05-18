@@ -9,6 +9,7 @@ import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { supabase } from '../../utils/supabase'
 import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
+import AddMemberModal from './AddMemberModal'
 
 // Records arrive via Realtime; poll only needs to refresh event status.
 const POLL_MS = 60_000
@@ -86,6 +87,8 @@ export default function EventDashboard({ eventId }) {
   const [viewerScopeChildCount, setViewerScopeChildCount] = useState<number | null>(null)
   // Risk flags — count of members whose device fingerprint was shared.
   const [riskyCount, setRiskyCount] = useState(0)
+  const [showAddMember, setShowAddMember] = useState(false)
+  const isSuperAdmin = !!user?.isSuperAdmin
 
   // Refresh risk count whenever records change (admin only).
   useEffect(() => {
@@ -370,7 +373,28 @@ export default function EventDashboard({ eventId }) {
           )}
         </div>
 
+        {/* Superadmin: manually add a member to the event scope */}
+        {isSuperAdmin && !scopeChurchName && (
+          <button
+            type='button'
+            onClick={() => setShowAddMember(true)}
+            className='w-full py-2.5 text-sm font-semibold cursor-pointer mt-1'
+            style={{
+              background: 'transparent',
+              border: '1.5px dashed var(--border)',
+              borderRadius: 'var(--radius-btn)',
+              color: 'var(--muted)',
+            }}
+          >
+            + Add member to event scope
+          </button>
+        )}
+
       </main>
+
+      {showAddMember && (
+        <AddMemberModal eventId={eventId} onClose={() => setShowAddMember(false)} />
+      )}
     </div>
   )
 }

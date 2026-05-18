@@ -483,6 +483,17 @@ export async function snapshotEventScopeMembers(
   if (error) throw error
 }
 
+/** Add a single member to an event's scope snapshot and upsert their profile.
+ *  Used by superadmins to include a member who was added to the graph after
+ *  the snapshot was taken. profileRow must be the output of memberToProfileRow(). */
+export async function addMemberToEventScope(
+  eventId: string,
+  profileRow: any,
+): Promise<void> {
+  await bulkUpsertMemberProfiles([profileRow])
+  await snapshotEventScopeMembers(eventId, [profileRow.id])
+}
+
 /** Load the scope snapshot for an event joined with current member_profiles.
  *  Returns member_profiles rows for every snapshotted member that has a
  *  profile row. Members who have never logged in are omitted from the join

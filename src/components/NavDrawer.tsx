@@ -167,7 +167,10 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               )}
               <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={() => setOpen(false)} />
               {isSuperAdmin && (
-                <NavItem to='/admin/sync-members' icon={ICONS.sync} label='Sync Members' onClick={() => setOpen(false)} />
+                <>
+                  <NavItem to='/admin/members'      icon={ICONS.profile} label='Members'     onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/sync-members' icon={ICONS.sync}    label='Sync Members' onClick={() => setOpen(false)} />
+                </>
               )}
             </nav>
 
