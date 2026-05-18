@@ -58,6 +58,7 @@ export default function MemberBiometrics() {
 
   // ── Load biometrics data ──────────────────────────────────────────
   async function refresh() {
+    if (isSuperAdmin) { setLoading(false); return }
     setLoading(true)
     setError(null)
     try {
