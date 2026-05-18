@@ -39,7 +39,7 @@ export default function MemberBiometrics() {
 
   // Biometrics list (Supabase, scoped)
   const [rows, setRows] = useState<Row[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!isSuperAdmin)
   const [error, setError] = useState<string | null>(null)
   const [resetting, setResetting] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -52,6 +52,7 @@ export default function MemberBiometrics() {
   // GraphQL search results — superadmin only, when search >= 2 chars
   const [gqlResults, setGqlResults] = useState<any[]>([])
   const [gqlSearching, setGqlSearching] = useState(false)
+  const [gqlHasSearched, setGqlHasSearched] = useState(false)
 
   // Sync — superadmin only
   const [syncState, setSyncState] = useState<SyncState>({ status: 'idle' })
@@ -80,15 +81,15 @@ export default function MemberBiometrics() {
   useEffect(() => {
     if (!isSuperAdmin) return
     const trimmed = search.trim()
-    if (trimmed.length < 2) { setGqlResults([]); return }
+    if (trimmed.length < 2) { setGqlResults([]); setGqlHasSearched(false); return }
     let cancelled = false
     setGqlSearching(true)
     const t = setTimeout(async () => {
       try {
         const members = await searchMembersByName(trimmed, 25)
-        if (!cancelled) setGqlResults(members)
+        if (!cancelled) { setGqlResults(members); setGqlHasSearched(true) }
       } catch {
-        if (!cancelled) setGqlResults([])
+        if (!cancelled) { setGqlResults([]); setGqlHasSearched(true) }
       } finally {
         if (!cancelled) setGqlSearching(false)
       }
@@ -235,8 +236,8 @@ export default function MemberBiometrics() {
           </p>
         )}
 
-        {/* ── Stats + filter tabs — biometrics list mode only ── */}
-        {!isGqlMode && (
+        {/* ── Stats + filter tabs — biometrics list mode, non-superadmin only ── */}
+        {!isGqlMode && !isSuperAdmin && (
           <>
             <div
               className='p-4 grid grid-cols-3 gap-3 text-center'
@@ -273,7 +274,7 @@ export default function MemberBiometrics() {
             {gqlSearching && (
               <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Searching…</p>
             )}
-            {!gqlSearching && gqlResults.length === 0 && (
+            {!gqlSearching && gqlHasSearched && gqlResults.length === 0 && (
               <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>No members found.</p>
             )}
             {gqlResults.map((m) => {
@@ -329,7 +330,12 @@ export default function MemberBiometrics() {
         {!isGqlMode && (
           <>
             {loading && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading members…</p>}
-            {!loading && filtered.length === 0 && (
+            {!loading && isSuperAdmin && (
+              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+                Type at least 2 characters to search all members.
+              </p>
+            )}
+            {!loading && !isSuperAdmin && filtered.length === 0 && (
               <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
                 {rows.length === 0 ? 'No members in your admin scopes yet.' : 'No matches.'}
               </p>
