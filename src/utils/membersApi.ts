@@ -669,6 +669,12 @@ export function isLeaderOrAdmin(member) {
 export async function searchMembersByName(q: string, limit = 10): Promise<any[]> {
   const query = (q || '').trim()
   if (query.length < 2) return []
-  const data = await client().request<{ members: any[] }>(SEARCH_MEMBERS_BY_NAME, { q: query, limit })
+  // Schema only has case-sensitive _CONTAINS/_STARTS_WITH, so pass both the
+  // original and a title-cased version to catch "samuel" → "Samuel" mismatches.
+  const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
+  const data = await client().request<{ members: any[] }>(
+    SEARCH_MEMBERS_BY_NAME,
+    { q: titleCase, qLower: query.toLowerCase(), limit },
+  )
   return data?.members || []
 }

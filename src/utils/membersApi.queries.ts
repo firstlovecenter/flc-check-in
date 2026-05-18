@@ -500,13 +500,18 @@ export const SEARCH_CHURCHES = gql`
 
 export const SEARCH_MEMBERS_BY_NAME = gql`
   ${MEMBER_FIELDS}
-  query SearchMembersByName($q: String!, $limit: Int!) {
+  query SearchMembersByName($q: String!, $qLower: String!, $limit: Int!) {
     members(
       where: {
         OR: [
-          { firstName_CONTAINS_INSENSITIVE: $q }
-          { lastName_CONTAINS_INSENSITIVE: $q }
-          { fullName_CONTAINS_INSENSITIVE: $q }
+          { firstName_CONTAINS: $q }
+          { firstName_CONTAINS: $qLower }
+          { lastName_CONTAINS: $q }
+          { lastName_CONTAINS: $qLower }
+          { firstName_STARTS_WITH: $q }
+          { firstName_STARTS_WITH: $qLower }
+          { lastName_STARTS_WITH: $q }
+          { lastName_STARTS_WITH: $qLower }
         ]
       }
       limit: $limit
