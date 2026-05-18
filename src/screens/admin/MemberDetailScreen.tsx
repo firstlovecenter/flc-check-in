@@ -261,6 +261,7 @@ function Avatar({ pictureUrl, initials, size }: { pictureUrl: string | null; ini
         alt={initials}
         width={size}
         height={size}
+        decoding='async'
         style={{ ...common, objectFit: 'cover' }}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
       />

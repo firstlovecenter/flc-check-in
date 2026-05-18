@@ -22,7 +22,12 @@
       "Bash(curl -sS -o /dev/null -w 'HTTP %{http_code}\\\\n' -X POST https://hineni.firstlovecenter.com/api/flc-auth/login -H 'Content-Type: application/json' -d '{}' --max-time 15)",
       "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" https://hineni.firstlovecenter.com/api/flc-auth --max-time 10)",
       "Bash(curl -sS -o /dev/null -w \"HTTP %{http_code}\\\\n\" https://hineni.firstlovecenter.com/api/flc-auth/anything --max-time 10)",
-      "Bash(grep -n \"flc-auth\\\\|api/flc-auth\\\\|/auth$\\\\|rewrite:\" vite.config.js)"
+      "Bash(grep -n \"flc-auth\\\\|api/flc-auth\\\\|/auth$\\\\|rewrite:\" vite.config.js)",
+      "Bash(grep -nE \"select\\\\\\('\\\\\\\\*'\\\\\\)\" src/utils/supabaseCheckins.ts)",
+      "Bash(grep -nB 1 -A 5 \"supabase\\\\\\\\\\\\\\\\\\\\\\\\.\" vite.config.js)",
+      "Read(//c/Users/samuel cyrus-aduteye/Documents/Codeslaw/flc-check-in/supabase/**)",
+      "Bash(npm ls *)",
+      "Bash(timeout 5 powershell -Command \"Start-Sleep -Seconds 3\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\samuel cyrus-aduteye\\Documents\\Codeslaw\\flc-check-in\\.claude"

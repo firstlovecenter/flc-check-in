@@ -8,6 +8,40 @@ import { pointInGeofence } from './geo'
 import { getUserChurchRefs } from './userScope'
 import type { AppUser } from '../types/app'
 
+// ─── Column projections (Phase 2.1) ──────────────────────────────────────
+// Explicit column lists keep transferred-bytes small. The biggest wins:
+//   • MEMBER_PROFILE_LIST_COLUMNS — drops face_descriptor (~1 KB / row)
+//     from every dashboard / scope-member fetch. Multiplied across a 500-
+//     member scope this saves ~500 KB per call.
+//   • CHECKIN_EVENT_LIST_COLUMNS — drops geofence_polygon (jsonb, can be
+//     large) from list queries that only need to render an event card.
+//     Detail/edit screens use CHECKIN_EVENT_FULL_COLUMNS = '*'.
+const MEMBER_PROFILE_LIST_COLUMNS =
+  'id, email, title, first_name, last_name, phone, picture_url, roles, ' +
+  'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+  'council_id, council_name, stream_id, stream_name, ' +
+  'campus_id, campus_name, oversight_id, oversight_name, ' +
+  'denomination_id, denomination_name, has_face_id, updated_at'
+
+const CHECKIN_EVENT_LIST_COLUMNS =
+  'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
+  'venue_name, starts_at, ends_at, grace_period_min, auto_checkout_min, ' +
+  'allowed_check_in_methods, allowed_roles, ' +
+  'geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, ' +
+  'qr_secret, created_by_id, created_by_name, created_at'
+
+// Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
+const CHECKIN_EVENT_FULL_COLUMNS = '*'
+
+const CHECKIN_RECORD_COLUMNS =
+  'id, event_id, member_id, member_name, member_role, member_unit_name, ' +
+  'checked_in_at, checked_out_at, auto_checked_out, outside_since, is_late, ' +
+  'method, geo_verified, check_in_lat, check_in_lng, device_fingerprint, ' +
+  'manual_reason, verified_by'
+
+const AUDIT_LOG_COLUMNS =
+  'id, action, actor_id, actor_name, event_id, target_id, target_name, details, created_at'
+
 // ─── Module-level SWR cache for event listings ───────────────────────────
 // Keyed by the scope filter string so different users get separate cache
 // buckets (relevant when multiple users share a device / test session).
@@ -26,10 +60,14 @@ function triggerAutoEnd() {
   const now = Date.now()
   if (now - _lastAutoEndTs < AUTO_END_INTERVAL) return
   _lastAutoEndTs = now
-  supabase.rpc('auto_checkout_expired_events').then(() => {
-    // Invalidate caches so the next read picks up the updated statuses.
-    invalidateEventListCache()
-  }).catch(() => {/* best-effort */})
+  // Wrap in a real Promise so `.catch` is reachable — supabase-js's builder
+  // is a PromiseLike whose `.then` returns PromiseLike<void> without `.catch`.
+  Promise.resolve(supabase.rpc('auto_checkout_expired_events'))
+    .then(() => {
+      // Invalidate caches so the next read picks up the updated statuses.
+      invalidateEventListCache()
+    })
+    .catch(() => {/* best-effort */})
 }
 
 // Sentinel returned when a non-superadmin has no resolvable church ID.
@@ -281,8 +319,9 @@ export async function createEvent(input) {
 }
 
 export async function getEvent(eventId) {
+  // Detail/edit screen — need geofence_polygon and pin_hash.
   const { data, error } = await supabase
-    .from('checkin_events').select('*').eq('id', eventId).single()
+    .from('checkin_events').select(CHECKIN_EVENT_FULL_COLUMNS).eq('id', eventId).single()
   if (error) throw error
   return mapEventRow(data)
 }
@@ -305,7 +344,7 @@ export async function listActiveEvents(user?: AppUser) {
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   let query = supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
@@ -334,7 +373,7 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   // passed (not yet auto-ended by the server cron).
   let query = supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('status', ['ENDED', 'ACTIVE'])
     .lte('ends_at', nowIso)
     .gte('ends_at', cutoff)
@@ -355,9 +394,10 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
 export async function listActiveEventsAtLocation(lat, lng) {
   const nowIso          = new Date().toISOString()
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_FULL_COLUMNS)
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
@@ -371,9 +411,10 @@ export async function listActiveEventsAtLocation(lat, lng) {
  *  Kept for any future location-aware past-event views. */
 export async function listRecentPastEventsAtLocation(lat, lng, { daysBack = 30 } = {}) {
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
+  // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_FULL_COLUMNS)
     .eq('status', 'ENDED')
     .gte('ends_at', cutoff)
     .order('ends_at', { ascending: false })
@@ -395,7 +436,7 @@ export async function listEventsForAdminScopes(
   const orFilter = scopes
     .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
     .join(',')
-  let q = supabase.from('checkin_events').select('*').or(orFilter)
+  let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS).or(orFilter)
   if (statuses?.length) q = q.in('status', statuses)
   const { data, error } = await q.order('starts_at', { ascending: false })
   if (error) throw error
@@ -416,7 +457,7 @@ export async function listEventsAttendedByMember(memberId: string) {
   if (!ids.length) return []
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('id', ids)
     .order('starts_at', { ascending: false })
   if (error) throw error
@@ -456,9 +497,10 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   if (se) throw se
   const ids = (snap || []).map((r: any) => r.member_id)
   if (!ids.length) return []
+  // Exclude face_descriptor (~1KB / row) — dashboard joins never need it.
   const { data: profiles, error: pe } = await supabase
     .from('member_profiles')
-    .select('*')
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .in('id', ids)
   if (pe) throw pe
   return profiles || []
@@ -478,7 +520,7 @@ export async function listScopedEventsForMember(graphMemberId: string): Promise<
   if (!ids.length) return []
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('id', ids)
     .order('starts_at', { ascending: false })
   if (error) throw error
@@ -498,9 +540,10 @@ export async function listMemberProfilesByScope(
   scopeChurchId: string,
 ): Promise<any[]> {
   const col = `${scopeLevel}_id`
+  // Exclude face_descriptor (~1KB / row) — fallback path never needs it.
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('*')
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .eq(col, scopeChurchId)
   if (error) throw error
   return data || []
@@ -701,10 +744,10 @@ export async function reportLocation(eventId, memberId, lat, lng) {
 
 // ─── Dashboard reads ────────────────────────────────────────────────────────
 
-export async function listCheckedIn(eventId) {
+export async function listCheckedIn(eventId): Promise<any[]> {
   const { data, error } = await supabase
     .from('checkin_records')
-    .select('*')
+    .select(CHECKIN_RECORD_COLUMNS)
     .eq('event_id', eventId)
     .order('checked_in_at', { ascending: false })
   if (error) throw error
@@ -723,9 +766,10 @@ export async function listDefaulted(eventId, eligibleMemberIds) {
   const checkedIn = new Set((records || []).map((r) => r.member_id))
   const defaultedIds = eligibleMemberIds.filter((id) => !checkedIn.has(id))
   if (!defaultedIds.length) return []
+  // Defaulted-list rendering never needs face_descriptor.
   const { data: profiles, error: pe } = await supabase
     .from('member_profiles')
-    .select('*')
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .in('id', defaultedIds)
   if (pe) throw pe
   return profiles || []
@@ -735,7 +779,7 @@ export async function listDefaulted(eventId, eligibleMemberIds) {
 export async function getMyRecord(eventId, memberId) {
   const { data, error } = await supabase
     .from('checkin_records')
-    .select('*')
+    .select(CHECKIN_RECORD_COLUMNS)
     .eq('event_id', eventId)
     .eq('member_id', memberId)
     .maybeSingle()
@@ -846,7 +890,7 @@ export async function listAuditLogForEvent(eventId: string): Promise<any[]> {
   if (!eventId) return []
   const { data, error } = await supabase
     .from('audit_log')
-    .select('*')
+    .select(AUDIT_LOG_COLUMNS)
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
     .limit(100)

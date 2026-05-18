@@ -315,7 +315,8 @@ function RowAvatar({ pictureUrl, initials }: { pictureUrl: string | null; initia
         alt={initials}
         width={size}
         height={size}
-        loading='lazy'  // avoid fetching off-screen avatars on large lists
+        loading='lazy'   // avoid fetching off-screen avatars on large lists
+        decoding='async' // never block the main thread to decode the JPEG
         style={{ ...common, objectFit: 'cover' }}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
       />

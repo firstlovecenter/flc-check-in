@@ -7,6 +7,7 @@ import {
   listActiveEvents, listRecentPastEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
+import { getUserChurchRefs } from '../utils/userScope'
 import type { CheckinEventRow } from '../types/app'
 
 type HomeState =
@@ -69,6 +70,12 @@ export default function LeaderHomeScreen() {
             .slice(ownIdx >= 0 ? ownIdx : 0)
             .some((lvl) => !(activeUser as any)[lvl]?.id)
 
+        // Snapshot the scope set the first events fetch will use, so after
+        // hydration we can tell whether anything actually changed and only
+        // re-fetch when it did. This avoids the previous "always 4 calls
+        // on cold load" behaviour when the JWT already had what we needed.
+        const scopeKeyBefore = scopeFingerprint(activeUser)
+
         // Kick off both the profile-hydration AND the events fetch concurrently.
         const hydrationPromise = needsAncestors
           ? (async () => {
@@ -100,14 +107,15 @@ export default function LeaderHomeScreen() {
         if (cancelled) return
         setState({ status: 'ok', active, past })
 
-        // If the JWT was missing ancestor IDs AND hydration just succeeded,
-        // re-run the events query with the now-complete user object so the
-        // user sees events at ancestor levels. This is best-effort — the
-        // first paint already happened with whatever scopes the JWT carried.
+        // Re-fetch ONLY when hydration actually widened the scope set. Most
+        // accounts (after their first hydrated session) hit this path and
+        // skip the second round-trip entirely.
         if (needsAncestors) {
           hydrationPromise.then(async (hydrated) => {
             if (!hydrated || cancelled) return
             const freshUser = getCurrentUser()
+            const scopeKeyAfter = scopeFingerprint(freshUser)
+            if (scopeKeyAfter === scopeKeyBefore) return  // nothing new — skip
             try {
               const [active2, past2] = await Promise.all([
                 listActiveEvents(freshUser ?? undefined),
@@ -291,4 +299,13 @@ export default function LeaderHomeScreen() {
       </main>
     </div>
   )
+}
+
+/** Stable string key for the user's full scope set. Used to detect whether
+ *  profile hydration actually widened the scope before triggering a second
+ *  events fetch. Order is canonical (SCOPE_LEVELS) inside getUserChurchRefs,
+ *  so this is a deterministic fingerprint. */
+function scopeFingerprint(user: any): string {
+  if (!user) return ''
+  return getUserChurchRefs(user).map((r) => `${r.level}:${r.id}`).join('|')
 }

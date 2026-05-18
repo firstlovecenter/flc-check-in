@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 
-// Minimum splash duration. Long enough for the halo to play roughly one
-// cycle (halo animation is 2.4s, but we don't need to hold the user that
-// long — we just want it to not feel "flashy"). Was 5s, which felt slow on
-// repeat visits where auth resolves in <50ms.
-const MIN_DURATION_MS = 1200
+// Splash floor durations. SessionStorage already short-circuits the splash
+// entirely on warm intra-tab visits (line 17), so these only matter for the
+// FIRST visit per session.
+//
+// MIN_DURATION_SLOW_MS  — held when auth takes a meaningful moment to
+//                         resolve (refresh-token round-trip, etc.). Just
+//                         long enough for the halo to play one cycle.
+// MIN_DURATION_FAST_MS  — held when auth resolves synchronously (valid
+//                         cached token, no network). Just long enough to
+//                         avoid a jarring flash.
+//
+// The "fast" path is what most users see on every cold reload.
+const MIN_DURATION_SLOW_MS = 1200
+const MIN_DURATION_FAST_MS = 400
+const FAST_AUTH_THRESHOLD_MS = 200
 const SPLASH_FLAG = 'flc.splashShown'
 
 type State = 'pending' | 'skip' | 'authed' | 'guest'
@@ -36,7 +46,14 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
 
     authCheck.then((result) => {
       const elapsed = Date.now() - start
-      const remaining = Math.max(0, MIN_DURATION_MS - elapsed)
+      // Pick the floor based on how long auth actually took. Fast resolves
+      // (cached valid token) only need a short flash-prevention pause;
+      // slow resolves (token refresh round-trip) hold long enough for one
+      // halo cycle so the spinner doesn't look glitchy.
+      const floor = elapsed <= FAST_AUTH_THRESHOLD_MS
+        ? MIN_DURATION_FAST_MS
+        : MIN_DURATION_SLOW_MS
+      const remaining = Math.max(0, floor - elapsed)
       setTimeout(() => {
         if (cancelled) return
         sessionStorage.setItem(SPLASH_FLAG, '1')

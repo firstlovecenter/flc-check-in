@@ -108,6 +108,7 @@ export default function ProfileScreen() {
               alt={displayName}
               width={88}
               height={88}
+              decoding='async'
               style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }}
             />
           ) : (

@@ -182,7 +182,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)', textDecoration: 'none' }}
               >
                 {pictureUrl ? (
-                  <img src={pictureUrl} alt={fullName} width={24} height={24} style={{ borderRadius: '50%', objectFit: 'cover' }} />
+                  <img src={pictureUrl} alt={fullName} width={24} height={24} decoding='async' style={{ borderRadius: '50%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: 'var(--bg)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {initials}
