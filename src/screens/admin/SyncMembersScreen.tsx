@@ -1,5 +1,5 @@
-import SyncMembersPanel from '../../components/admin/SyncMembersPanel'
+import { Navigate } from 'react-router-dom'
 
 export default function SyncMembersScreen() {
-  return <SyncMembersPanel />
+  return <Navigate to='/admin/members' replace />
 }

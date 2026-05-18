@@ -160,18 +160,12 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               <NavItem to='/events'  icon={ICONS.qr}      label='Events'        onClick={() => setOpen(false)} />
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/events/new'  icon={ICONS.plus}    label='Create Event'      onClick={() => setOpen(false)} />
-                  <NavItem to='/admin/reports'     icon={ICONS.report}  label='Reports'           onClick={() => setOpen(false)} />
-                  <NavItem to='/admin/biometrics'  icon={ICONS.faceId}  label='Member Biometrics' onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/events/new' icon={ICONS.plus}    label='Create Event' onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/members'    icon={ICONS.profile} label='Members'      onClick={() => setOpen(false)} />
                 </>
               )}
               <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={() => setOpen(false)} />
-              {isSuperAdmin && (
-                <>
-                  <NavItem to='/admin/members'      icon={ICONS.profile} label='Members'     onClick={() => setOpen(false)} />
-                  <NavItem to='/admin/sync-members' icon={ICONS.sync}    label='Sync Members' onClick={() => setOpen(false)} />
-                </>
-              )}
             </nav>
 
             {/* Footer — profile · theme · sign out on one row */}
