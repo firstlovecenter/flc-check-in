@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getCurrentPosition, pointInGeofence, haversineMeters } from '../../utils/geo'
 import type { LatLng, CheckinEventRow } from '../../types/app'
+import Spinner from '../Spinner'
 
 type GuardState =
   | { status: 'loading' }
@@ -49,7 +50,16 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
   }, [event, initialPosition])
 
   if (state.status === 'loading') {
-    return <Centered><Card><p style={{ color: 'var(--muted)' }}>Acquiring GPS…</p></Card></Centered>
+    return (
+      <Centered>
+        <Card>
+          <div className='flex flex-col items-center gap-3'>
+            <Spinner />
+            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>Acquiring GPS…</p>
+          </div>
+        </Card>
+      </Centered>
+    )
   }
   if (state.status === 'denied') {
     return (

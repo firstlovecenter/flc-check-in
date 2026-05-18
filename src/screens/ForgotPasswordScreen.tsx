@@ -38,11 +38,11 @@ export default function ForgotPasswordScreen() {
       >
         <div className='flex flex-col items-center gap-3'>
           <img
-            src='/flc-logo-circle.jpeg'
+            src='/apple-touch-icon.png'
             alt='First Love Church'
             width={60}
             height={60}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
+            className='app-logo'
           />
           <h1
             className='m-0 leading-tight text-center'

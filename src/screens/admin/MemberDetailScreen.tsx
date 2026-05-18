@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import ScreenHeader from '../../components/ScreenHeader'
+import Spinner from '../../components/Spinner'
 import {
   getMemberProfile, listEventsAttendedByMember, adminClearFaceDescriptor,
 } from '../../utils/supabaseCheckins'
@@ -78,7 +79,7 @@ export default function MemberDetailScreen() {
       <ScreenHeader title='Member' back={{ to: '/admin/biometrics', label: 'Biometrics' }} />
       <main className='max-w-3xl mx-auto px-4 py-6 flex flex-col gap-4'>
 
-        {status === 'loading' && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading…</p>}
+        {status === 'loading' && <Spinner />}
         {status === 'error' && (
           <p className='text-sm text-center' style={{ color: 'var(--coral)' }}>{error}</p>
         )}

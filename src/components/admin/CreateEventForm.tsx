@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
@@ -207,7 +208,7 @@ export default function CreateEventForm() {
 
       {/* Scope: hidden if exactly 1 admin scope; dropdown if 2+ */}
       <Section title='Scope'>
-        {scopesLoading && <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading your scopes…</p>}
+        {scopesLoading && <Spinner />}
         {scopesError && <p className='text-sm' style={{ color: 'var(--coral)' }}>{scopesError}</p>}
 
         {/* Superadmin: search-any-church picker. Superadmins are not bound

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ScreenHeader from '../components/ScreenHeader'
+import Spinner from '../components/Spinner'
 import { getCurrentUser } from '../utils/auth'
 import { resolveCurrentMember } from '../utils/membersApi'
 import { getAttendanceStats } from '../utils/supabaseCheckins'
@@ -129,7 +130,7 @@ export default function ProfileScreen() {
           )}
 
           {loading ? (
-            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>Loading…</p>
+            <Spinner />
           ) : (
             <>
               <div className='text-center'>

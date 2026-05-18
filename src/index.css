@@ -231,3 +231,14 @@ body {
 .leaflet-control-layers-separator {
   border-top-color: var(--border) !important;
 }
+
+/* ─── App logo: adaptive tint for dark / light mode ─────────────────────── */
+/* Dark mode: slight brightness lift so the logo pops on the dark canvas.    */
+.app-logo {
+  border-radius: 22%;
+  filter: brightness(1.05) drop-shadow(0 2px 8px rgba(0,0,0,0.45));
+}
+/* Light mode: gentle shadow only — no brightness boost needed on white.     */
+[data-theme="light"] .app-logo {
+  filter: brightness(0.97) drop-shadow(0 1px 4px rgba(0,0,0,0.18));
+}

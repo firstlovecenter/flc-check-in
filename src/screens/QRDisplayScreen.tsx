@@ -8,6 +8,7 @@ import { Link } from 'react-router-dom'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
 import { listActiveEvents } from '../utils/supabaseCheckins'
+import Spinner from '../components/Spinner'
 import { generateQrToken, currentBucket, generateRotatingPin } from '../utils/checkinsCrypto'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
@@ -151,7 +152,7 @@ export default function QRDisplayScreen() {
       {header}
       <main className='w-full max-w-6xl mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-6'>
         {state.status === 'loading' && (
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
+          <Spinner />
         )}
 
         {state.status === 'error' && (
@@ -298,7 +299,7 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
         {event.scope_level} · {event.scope_church_name}
       </p>
       <h3 className='text-base font-semibold mb-4 m-0' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{event.name}</h3>
-      {token ? <QRCodeDisplay value={token} size={qrSize} /> : <p style={{ color: 'var(--muted)' }}>Loading QR…</p>}
+      {token ? <QRCodeDisplay value={token} size={qrSize} /> : <Spinner />}
       {showPin && pin && (
         <div className='mt-5' style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
           <p className='eyebrow m-0 mb-2 justify-center'>PIN</p>

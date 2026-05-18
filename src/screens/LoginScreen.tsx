@@ -64,11 +64,11 @@ export default function LoginScreen() {
         {/* Logo / wordmark */}
         <div className='flex flex-col items-center gap-3'>
           <img
-            src='/flc-logo-circle.jpeg'
+            src='/apple-touch-icon.png'
             alt='First Love Church'
             width={72}
             height={72}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
+            className='app-logo'
           />
           <h1
             className='m-0 leading-tight text-center'

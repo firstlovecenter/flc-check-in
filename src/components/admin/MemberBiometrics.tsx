@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Spinner from '../Spinner'
 import ScreenHeader from '../ScreenHeader'
 import {
   listMembersForBiometricsAdmin, listAllMembersForBiometrics,
@@ -283,7 +284,7 @@ export default function MemberBiometrics() {
 
         {/* ── Member list ── */}
         <>
-          {loading && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading members…</p>}
+          {loading && <Spinner />}
           {!loading && filtered.length === 0 && (
             <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
               {rows.length === 0 ? 'No members found.' : 'No matches.'}

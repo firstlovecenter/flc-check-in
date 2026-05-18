@@ -5,6 +5,7 @@ import LeaderHomeScreen from './screens/LeaderHomeScreen'
 import RequireAuth from './components/RequireAuth'
 import SplashScreen from './components/SplashScreen'
 import UpdatePrompt from './components/UpdatePrompt'
+import Spinner from './components/Spinner'
 
 // Lazy-load route screens so vendor chunks (leaflet, face-api, zxing, qrcode,
 // papaparse) only download when the user actually navigates to a screen that
@@ -30,14 +31,7 @@ const ProfileScreen          = lazy(() => import('./screens/ProfileScreen'))
 // Minimal fallback shown while a route chunk loads. Kept identical to the
 // app background so there's no visible flash between chunks.
 function RouteFallback() {
-  return (
-    <div
-      className='min-h-dvh flex items-center justify-center'
-      style={{ background: 'var(--bg)' }}
-    >
-      <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading…</p>
-    </div>
-  )
+  return <Spinner fullPage />
 }
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in

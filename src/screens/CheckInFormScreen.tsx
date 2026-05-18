@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ScreenHeader from '../components/ScreenHeader'
+import Spinner from '../components/Spinner'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
@@ -153,7 +154,7 @@ export default function CheckInFormScreen() {
   }
   // Still loading event or existing-record lookup
   if (!event || existingRecord === undefined) {
-    return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading event…</p></CenterCard>
+    return <Spinner fullPage />
   }
 
   // Time window check — client only blocks UI for events more than 1 hour
@@ -334,7 +335,7 @@ export default function CheckInFormScreen() {
             {activeTab === 'FACE_ID' && (
               <div className='flex flex-col gap-3'>
                 {faceDescriptor === null && (
-                  <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading face profile…</p>
+                  <Spinner />
                 )}
 
                 {faceDescriptor === false && (

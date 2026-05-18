@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import Spinner from '../Spinner'
 import { formatDistanceToNowStrict } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
 import { getCurrentUser } from '../../utils/auth'
@@ -172,7 +173,7 @@ export default function EventDashboard({ eventId }) {
   }, [records, viewerCaps?.canCheckIn, user.userId])
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
+  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
