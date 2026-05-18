@@ -257,12 +257,48 @@ const LEADER_ADMIN_ROLES = [
   'adminCampus','adminOversight','adminDenomination',
 ]
 
-export async function listAllMembersForBiometrics(): Promise<Array<any>> {
-  const { data, error } = await supabase
+export async function getBiometricsTotals(
+  scopes?: Array<{ level: string; id: string }>
+): Promise<{ total: number; enrolled: number }> {
+  const orFilter = scopes?.length ? scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',') : null
+
+  const totalQ = supabase
+    .from('member_profiles')
+    .select('id', { count: 'exact', head: true })
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+  const enrolledQ = supabase
+    .from('member_profiles')
+    .select('id', { count: 'exact', head: true })
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+    .eq('has_face_id', true)
+
+  const [totalRes, enrolledRes] = await Promise.all([
+    orFilter ? totalQ.or(orFilter) : totalQ,
+    orFilter ? enrolledQ.or(orFilter) : enrolledQ,
+  ])
+
+  return {
+    total: totalRes.count ?? 0,
+    enrolled: enrolledRes.count ?? 0,
+  }
+}
+
+export async function listAllMembersForBiometrics(search?: string): Promise<Array<any>> {
+  let query = supabase
     .from('member_profiles')
     .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
     .overlaps('roles', LEADER_ADMIN_ROLES)
     .order('first_name', { ascending: true })
+    .limit(5000)
+
+  if (search && search.trim().length >= 2) {
+    const q = search.trim()
+    query = query.or(
+      `first_name.ilike.%${q}%,last_name.ilike.%${q}%`
+    )
+  }
+
+  const { data, error } = await query
   if (error) throw error
   return data || []
 }

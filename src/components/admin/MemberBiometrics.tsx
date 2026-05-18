@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import {
   listMembersForBiometricsAdmin, listAllMembersForBiometrics,
-  adminClearFaceDescriptor, bulkUpsertMemberProfiles,
+  getBiometricsTotals, adminClearFaceDescriptor, bulkUpsertMemberProfiles,
 } from '../../utils/supabaseCheckins'
 import {
   resolveCurrentMember, getAdminScopes, getAllLeadersAndAdmins,
-  memberToProfileRow, searchMembersByName,
+  memberToProfileRow,
 } from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
 import { SCOPE_LEVELS } from '../../types/app'
@@ -39,7 +39,6 @@ export default function MemberBiometrics() {
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
 
-  // Biometrics list (Supabase, scoped)
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,36 +46,24 @@ export default function MemberBiometrics() {
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<number>(25)
-
-  // Search
   const [search, setSearch] = useState('')
-
-  // GraphQL search results — superadmin only, when search >= 2 chars
-  const [gqlResults, setGqlResults] = useState<any[]>([])
-  const [gqlSearching, setGqlSearching] = useState(false)
-  const [gqlHasSearched, setGqlHasSearched] = useState(false)
-
-  // Sync — superadmin only
+  const [dbTotals, setDbTotals] = useState<{ total: number; enrolled: number } | null>(null)
   const [syncState, setSyncState] = useState<SyncState>({ status: 'idle' })
 
   // ── Load biometrics data ──────────────────────────────────────────
-  async function refresh() {
-    if (isSuperAdmin) {
-      setLoading(true)
-      setError(null)
-      try {
-        const data = await listAllMembersForBiometrics()
-        setRows(data)
-      } catch (err: any) {
-        setError(err.message || 'Could not load members')
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
+  async function refresh(searchTerm?: string) {
     setLoading(true)
     setError(null)
     try {
+      if (isSuperAdmin) {
+        const [data, totals] = await Promise.all([
+          listAllMembersForBiometrics(searchTerm),
+          getBiometricsTotals(),
+        ])
+        setRows(data)
+        setDbTotals(totals)
+        return
+      }
       // Collect scopes from JWT churchScopes (both isAdminFor* and leads* edges).
       const cs = user?.churchScopes as Record<string, { id: string; name?: string } | null | undefined> | undefined
       const seen = new Set<string>()
@@ -89,20 +76,23 @@ export default function MemberBiometrics() {
         scopes.push({ level, id: ref.id })
       }
       for (const level of SCOPE_LEVELS) {
-        const L = level.charAt(0).toUpperCase() + level.slice(1) as string
+        const L = level.charAt(0).toUpperCase() + level.slice(1)
         push(level, cs?.[`isAdminFor${L}Of`])
         push(level, cs?.[`leads${L}Of`])
       }
-
       // Enrich with graph-side edges in case JWT is stale.
       try {
         const member = await resolveCurrentMember(user)
         for (const s of getAdminScopes(member, user)) push(s.level, { id: s.id })
       } catch { /* graph unreachable — JWT scopes are sufficient */ }
 
-      if (!scopes.length) { setRows([]); return }
-      const data = await listMembersForBiometricsAdmin(scopes)
+      if (!scopes.length) { setRows([]); setDbTotals({ total: 0, enrolled: 0 }); return }
+      const [data, totals] = await Promise.all([
+        listMembersForBiometricsAdmin(scopes),
+        getBiometricsTotals(scopes),
+      ])
       setRows(data)
+      setDbTotals(totals)
     } catch (err: any) {
       setError(err.message || 'Could not load members')
     } finally {
@@ -113,54 +103,37 @@ export default function MemberBiometrics() {
   useEffect(() => { refresh() }, [user.userId])
   useRefreshSignal(() => { refresh() })
 
-  // ── GraphQL search (superadmin only) ─────────────────────────────
+  // Debounced server-side search for superadmins
   useEffect(() => {
     if (!isSuperAdmin) return
     const trimmed = search.trim()
-    if (trimmed.length < 2) { setGqlResults([]); setGqlHasSearched(false); return }
     let cancelled = false
-    setGqlSearching(true)
-    const t = setTimeout(async () => {
-      try {
-        const members = await searchMembersByName(trimmed, 25)
-        if (!cancelled) { setGqlResults(members); setGqlHasSearched(true) }
-      } catch {
-        if (!cancelled) { setGqlResults([]); setGqlHasSearched(true) }
-      } finally {
-        if (!cancelled) setGqlSearching(false)
-      }
-    }, 300)
+    const t = setTimeout(() => {
+      if (!cancelled) refresh(trimmed || undefined)
+    }, 350)
     return () => { cancelled = true; clearTimeout(t) }
   }, [search, isSuperAdmin])
 
-  // When in GraphQL mode, biometrics list is hidden; local filter only for admins
-  const isGqlMode = isSuperAdmin && search.trim().length >= 2
-
   const filtered = useMemo(() => {
-    if (isGqlMode) return []
+    // Superadmin search is server-side; client-side filter still applies for
+    // enrolled/not-enrolled tabs and local text on non-superadmin accounts.
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
       if (filter === 'enrolled' && !r.has_face_id) return false
       if (filter === 'not-enrolled' && r.has_face_id) return false
+      if (isSuperAdmin) return true // server already filtered by name
       if (!q) return true
       const name = [r.first_name, r.last_name].filter(Boolean).join(' ').toLowerCase()
       const unit = (r.bacenta_name || r.governorship_name || r.council_name || r.stream_name || '').toLowerCase()
       return name.includes(q) || unit.includes(q) || (r.email || '').toLowerCase().includes(q)
     })
-  }, [rows, filter, search, isGqlMode])
-
-  // For cross-referencing graphql results with Face ID status from loaded rows
-  const rowsById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows])
+  }, [rows, filter, search, isSuperAdmin])
 
   const stats = useMemo(() => {
-    if (isGqlMode) {
-      const total = gqlResults.length
-      const enrolled = gqlResults.filter((m) => rowsById.get(m.id)?.has_face_id).length
-      return { total, enrolled, notEnrolled: total - enrolled }
-    }
-    const enrolled = rows.filter((r) => r.has_face_id).length
-    return { total: rows.length, enrolled, notEnrolled: rows.length - enrolled }
-  }, [rows, gqlResults, isGqlMode, rowsById])
+    const total = dbTotals?.total ?? rows.length
+    const enrolled = dbTotals?.enrolled ?? rows.filter((r) => r.has_face_id).length
+    return { total, enrolled, notEnrolled: total - enrolled }
+  }, [dbTotals, rows])
 
   useEffect(() => { setPage(1) }, [filter, search, pageSize])
 
@@ -206,6 +179,7 @@ export default function MemberBiometrics() {
       const profileRows = members.map(memberToProfileRow)
       const upserted = await bulkUpsertMemberProfiles(profileRows)
       setSyncState({ status: 'done', fetched: profileRows.length, upserted: upserted.length })
+      refresh(search.trim() || undefined)
     } catch (err: any) {
       setSyncState({ status: 'error', message: err?.message || 'Sync failed' })
     }
@@ -278,188 +252,114 @@ export default function MemberBiometrics() {
         )}
 
         {/* ── Stats + filter tabs ── */}
-        {!isGqlMode && (
-          <>
-            <div
-              className='p-4 grid grid-cols-3 gap-3 text-center'
-              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
-            >
-              <Stat value={stats.total}       label='In Scope' />
-              <Stat value={stats.enrolled}    label='Enrolled'  color='var(--green)' />
-              <Stat value={stats.notEnrolled} label='Pending'   color='var(--amber)' />
-            </div>
-            <div className='flex gap-1'>
-              {(['all', 'enrolled', 'not-enrolled'] as Filter[]).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className='text-xs px-3 py-1.5 cursor-pointer flex-1'
-                  style={{
-                    background: filter === f ? 'var(--accent)' : 'transparent',
-                    color: filter === f ? 'var(--bg)' : 'var(--text)',
-                    border: '1px solid ' + (filter === f ? 'var(--accent)' : 'var(--border)'),
-                    borderRadius: 'var(--radius-btn)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {f === 'all' ? 'All' : f === 'enrolled' ? 'Enrolled' : 'Not enrolled'}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* ── Stats card for superadmin GQL results ── */}
-        {isGqlMode && gqlHasSearched && !gqlSearching && gqlResults.length > 0 && (
+        <>
           <div
             className='p-4 grid grid-cols-3 gap-3 text-center'
             style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
           >
-            <Stat value={stats.total}       label='Found' />
+            <Stat value={stats.total}       label='In Scope' />
             <Stat value={stats.enrolled}    label='Enrolled'  color='var(--green)' />
             <Stat value={stats.notEnrolled} label='Pending'   color='var(--amber)' />
           </div>
-        )}
+          <div className='flex gap-1'>
+            {(['all', 'enrolled', 'not-enrolled'] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className='text-xs px-3 py-1.5 cursor-pointer flex-1'
+                style={{
+                  background: filter === f ? 'var(--accent)' : 'transparent',
+                  color: filter === f ? 'var(--bg)' : 'var(--text)',
+                  border: '1px solid ' + (filter === f ? 'var(--accent)' : 'var(--border)'),
+                  borderRadius: 'var(--radius-btn)',
+                  fontWeight: 600,
+                }}
+              >
+                {f === 'all' ? 'All' : f === 'enrolled' ? 'Enrolled' : 'Not enrolled'}
+              </button>
+            ))}
+          </div>
+        </>
 
-        {/* ── GraphQL search results (superadmin, search active) ── */}
-        {isGqlMode && (
+        {/* ── Member list ── */}
+        <>
+          {loading && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading members…</p>}
+          {!loading && filtered.length === 0 && (
+            <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+              {rows.length === 0 ? 'No members found.' : 'No matches.'}
+            </p>
+          )}
           <div className='flex flex-col gap-2'>
-            {gqlSearching && (
-              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Searching…</p>
-            )}
-            {!gqlSearching && gqlHasSearched && gqlResults.length === 0 && (
-              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>No members found.</p>
-            )}
-            {gqlResults.map((m) => {
-              const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || m.id
-              const row = rowsById.get(m.id)
-              const bacenta = m.bacenta?.name || m.leadsBacenta?.[0]?.name || null
-              const stream = (
-                m.leadsBacenta?.[0]?.governorship?.council?.stream?.name ||
-                m.leadsGovernorship?.[0]?.council?.stream?.name ||
-                m.leadsCouncil?.[0]?.stream?.name ||
-                m.leadsStream?.[0]?.name ||
-                null
-              )
-              const unit = row?.bacenta_name || row?.governorship_name || bacenta || null
-              const initials = [m.firstName?.[0], m.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
+            {pageRows.map((r) => {
+              const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.id
+              const unit = r.bacenta_name || r.governorship_name || r.council_name || r.stream_name || '—'
+              const initials = [r.first_name?.[0], r.last_name?.[0]].filter(Boolean).join('').toUpperCase() || '?'
               return (
                 <Link
-                  key={m.id}
-                  to={`/admin/members/${m.id}`}
+                  key={r.id}
+                  to={`/admin/members/${r.id}`}
                   className='p-3 flex items-center justify-between gap-3 transition-opacity hover:opacity-90 active:scale-[0.99]'
                   style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
                 >
-                  <RowAvatar pictureUrl={m.pictureUrl} initials={initials} />
+                  <RowAvatar pictureUrl={r.picture_url} initials={initials} />
                   <div className='min-w-0 flex-1'>
                     <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
-                    <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-                      {[unit, stream].filter(Boolean).join(' · ') || '—'}
-                    </p>
+                    <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
                   </div>
                   <div className='shrink-0 flex items-center gap-2'>
-                    {row && (
-                      row.has_face_id ? (
-                        <FaceIdBadge enrolled />
-                      ) : (
-                        <FaceIdBadge enrolled={false} />
-                      )
-                    )}
-                    {row?.has_face_id && (
+                    <FaceIdBadge enrolled={r.has_face_id} />
+                    {r.has_face_id && (
                       <ResetBtn
-                        loading={resetting === row.id}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleReset(row.id, name) }}
+                        loading={resetting === r.id}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleReset(r.id, name) }}
                       />
                     )}
-                    <ChevronRight />
                   </div>
                 </Link>
               )
             })}
           </div>
-        )}
 
-        {/* ── Biometrics list (default mode) ── */}
-        {!isGqlMode && (
-          <>
-            {loading && <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading members…</p>}
-            {!loading && filtered.length === 0 && (
-              <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
-                {rows.length === 0 ? 'No members in your admin scopes yet.' : 'No matches.'}
-              </p>
-            )}
-            <div className='flex flex-col gap-2'>
-              {pageRows.map((r) => {
-                const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.id
-                const unit = r.bacenta_name || r.governorship_name || r.council_name || r.stream_name || '—'
-                const initials = [r.first_name?.[0], r.last_name?.[0]].filter(Boolean).join('').toUpperCase() || '?'
-                return (
-                  <Link
-                    key={r.id}
-                    to={`/admin/members/${r.id}`}
-                    className='p-3 flex items-center justify-between gap-3 transition-opacity hover:opacity-90 active:scale-[0.99]'
-                    style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
+          {filtered.length > pageSize && (
+            <div className='flex items-center justify-between gap-3 flex-wrap text-xs' style={{ color: 'var(--muted)' }}>
+              <div className='flex items-center gap-2'>
+                <span>
+                  {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
+                </span>
+                <label className='flex items-center gap-1'>
+                  <span>per page</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className='cursor-pointer'
+                    style={{
+                      background: 'var(--bg2)',
+                      color: 'var(--text)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-btn)',
+                      padding: '4px 8px',
+                    }}
                   >
-                    <RowAvatar pictureUrl={r.picture_url} initials={initials} />
-                    <div className='min-w-0 flex-1'>
-                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
-                      <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
-                    </div>
-                    <div className='shrink-0 flex items-center gap-2'>
-                      <FaceIdBadge enrolled={r.has_face_id} />
-                      {r.has_face_id && (
-                        <ResetBtn
-                          loading={resetting === r.id}
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleReset(r.id, name) }}
-                        />
-                      )}
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-
-            {filtered.length > 0 && (
-              <div className='flex items-center justify-between gap-3 flex-wrap text-xs' style={{ color: 'var(--muted)' }}>
-                <div className='flex items-center gap-2'>
-                  <span>
-                    {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
-                  </span>
-                  <label className='flex items-center gap-1'>
-                    <span>per page</span>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                      className='cursor-pointer'
-                      style={{
-                        background: 'var(--bg2)',
-                        color: 'var(--text)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-btn)',
-                        padding: '4px 8px',
-                      }}
-                    >
-                      {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </label>
-                </div>
-                {totalPages > 1 && (
-                  <div className='flex items-center gap-1 flex-wrap'>
-                    <PageBtn disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</PageBtn>
-                    {pageItems.map((p, i) =>
-                      p === 'gap' ? (
-                        <span key={`gap-${i}`} style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>
-                      ) : (
-                        <PageBtn key={p} active={p === safePage} onClick={() => setPage(p)}>{p}</PageBtn>
-                      ),
-                    )}
-                    <PageBtn disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</PageBtn>
-                  </div>
-                )}
+                    {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
               </div>
-            )}
-          </>
-        )}
+              {totalPages > 1 && (
+                <div className='flex items-center gap-1 flex-wrap'>
+                  <PageBtn disabled={safePage === 1} onClick={() => setPage(safePage - 1)}>‹</PageBtn>
+                  {pageItems.map((p, i) =>
+                    p === 'gap' ? (
+                      <span key={`gap-${i}`} style={{ padding: '0 4px', color: 'var(--muted)' }}>…</span>
+                    ) : (
+                      <PageBtn key={p} active={p === safePage} onClick={() => setPage(p)}>{p}</PageBtn>
+                    ),
+                  )}
+                  <PageBtn disabled={safePage === totalPages} onClick={() => setPage(safePage + 1)}>›</PageBtn>
+                </div>
+              )}
+            </div>
+          )}
+        </>
 
       </main>
     </div>
@@ -490,14 +390,6 @@ function ResetBtn({ loading, onClick }: { loading: boolean; onClick: React.Mouse
     >
       {loading ? 'Resetting…' : 'Reset'}
     </button>
-  )
-}
-
-function ChevronRight() {
-  return (
-    <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' style={{ color: 'var(--muted)' }}>
-      <path d='M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z' />
-    </svg>
   )
 }
 
