@@ -125,6 +125,8 @@ create table if not exists public.checkin_events (
   created_by_id               text not null references public.member_profiles(id),
   created_by_name             text,
   created_at                  timestamptz not null default now(),
+  series_id                   uuid,
+  series_index                integer,
   check (
     (geofence_type = 'circle'  and geofence_center_lat is not null and geofence_center_lng is not null and geofence_radius_m is not null)
     or
@@ -135,6 +137,7 @@ create table if not exists public.checkin_events (
 
 create index if not exists checkin_events_status_ends_at_idx on public.checkin_events (status, ends_at);
 create index if not exists checkin_events_scope_idx          on public.checkin_events (scope_level, scope_church_id);
+create index if not exists checkin_events_series_id_idx      on public.checkin_events (series_id) where series_id is not null;
 
 
 -- ─── checkin_records ────────────────────────────────────────────────────────

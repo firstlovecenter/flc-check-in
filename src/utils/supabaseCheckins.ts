@@ -28,7 +28,8 @@ const CHECKIN_EVENT_LIST_COLUMNS =
   'venue_name, starts_at, ends_at, grace_period_min, auto_checkout_min, ' +
   'allowed_check_in_methods, allowed_roles, ' +
   'geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, ' +
-  'qr_secret, created_by_id, created_by_name, created_at'
+  'qr_secret, created_by_id, created_by_name, created_at, ' +
+  'series_id, series_index'
 
 // Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
 const CHECKIN_EVENT_FULL_COLUMNS = '*'
@@ -314,6 +315,13 @@ export async function createEvent(input) {
   }
   const { data, error } = await supabase.rpc('create_checkin_event', params)
   if (error) throw error
+  if (input.seriesId) {
+    // Non-critical — best-effort tag; series linkage doesn't affect check-in.
+    await supabase
+      .from('checkin_events')
+      .update({ series_id: input.seriesId, series_index: input.seriesIndex ?? 1 })
+      .eq('id', data)
+  }
   invalidateEventListCache()
   return { eventId: data, qrSecretHex, pin: input.pin || null }
 }

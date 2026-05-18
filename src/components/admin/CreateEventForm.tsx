@@ -43,7 +43,11 @@ export default function CreateEventForm() {
   const [pin, setPin] = useState(generatePin())
   const [geofence, setGeofence] = useState<GeofenceInput>({ type: 'circle', centerLat: 5.6037, centerLng: -0.1870, radiusM: 50 })
 
+  const [recurrencePattern, setRecurrencePattern] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none')
+  const [recurrenceCount, setRecurrenceCount] = useState<number | string>(4)
+
   const [submitting, setSubmitting] = useState(false)
+  const [submitProgress, setSubmitProgress] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // Fetch the admin's eligible scopes from FLC member graph.
@@ -124,47 +128,49 @@ export default function CreateEventForm() {
     }
     setSubmitting(true)
     try {
-      const { eventId } = await createEvent({
-        name,
-        venueName: venueName.trim() || null,
-        scopeLevel: selectedScope.level,
-        scopeChurchId: selectedScope.id,
-        scopeChurchName: selectedScope.name,
-        startsAt: new Date(startsAt),
-        endsAt: new Date(endsAt),
-        gracePeriodMin: Number(gracePeriodMin),
-        autoCheckoutMin: Number(autoCheckoutMin),
-        allowedCheckInMethods: methods,
-        allowedRoles: roles,
-        geofence,
-        pin: methods.includes('PIN') ? pin : null,
-        createdBy: { id: user.userId, name: formatName(user) },
-      })
-      // Fire-and-forget: snapshot every member currently in scope by their
-      // stable graph ID. Done in the background so navigation is instant.
-      // If this fails the dashboard falls back to a live graph query and
-      // re-saves the snapshot on first load.
-      ;(async () => {
-        try {
-          const scopeMembers = await getMembersInScope({
-            level: selectedScope.level,
-            churchId: selectedScope.id,
-          })
-          const rows = scopeMembers.map(memberToProfileRow)
-          const ids = rows.map((r: any) => r.id).filter(Boolean)
-          await Promise.all([
-            snapshotEventScopeMembers(eventId, ids),
-            bulkUpsertMemberProfiles(rows),
-          ])
-        } catch {
-          // Non-critical — dashboard will fall back to the live graph.
+      const occurrences = buildOccurrences(startsAt, endsAt, recurrencePattern, Number(recurrenceCount))
+      const seriesId = occurrences.length > 1 ? crypto.randomUUID() : undefined
+      let firstEventId: string | null = null
+
+      for (let i = 0; i < occurrences.length; i++) {
+        if (occurrences.length > 1) setSubmitProgress(`Creating ${i + 1} of ${occurrences.length}…`)
+        const { eventId } = await createEvent({
+          name,
+          venueName: venueName.trim() || null,
+          scopeLevel: selectedScope.level,
+          scopeChurchId: selectedScope.id,
+          scopeChurchName: selectedScope.name,
+          startsAt: occurrences[i].startsAt,
+          endsAt: occurrences[i].endsAt,
+          gracePeriodMin: Number(gracePeriodMin),
+          autoCheckoutMin: Number(autoCheckoutMin),
+          allowedCheckInMethods: methods,
+          allowedRoles: roles,
+          geofence,
+          pin: methods.includes('PIN') ? pin : null,
+          createdBy: { id: user.userId, name: formatName(user) },
+          seriesId,
+          seriesIndex: i + 1,
+        })
+        if (i === 0) {
+          firstEventId = eventId
+          // Snapshot scope members only for the first occurrence.
+          ;(async () => {
+            try {
+              const scopeMembers = await getMembersInScope({ level: selectedScope.level, churchId: selectedScope.id })
+              const rows = scopeMembers.map(memberToProfileRow)
+              const ids = rows.map((r: any) => r.id).filter(Boolean)
+              await Promise.all([snapshotEventScopeMembers(eventId, ids), bulkUpsertMemberProfiles(rows)])
+            } catch { /* non-critical */ }
+          })()
         }
-      })()
-      navigate(`/admin/events/${eventId}`, { replace: true })
+      }
+      navigate(`/admin/events/${firstEventId}`, { replace: true })
     } catch (err: any) {
       setError(err.message || 'Create failed')
     } finally {
       setSubmitting(false)
+      setSubmitProgress('')
     }
   }
 
@@ -384,6 +390,28 @@ export default function CreateEventForm() {
         <GeoFencePicker value={geofence} onChange={setGeofence} />
       </Section>
 
+      <Section title='Recurrence'>
+        <div className='flex flex-wrap gap-2'>
+          {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((p) => (
+            <Pill key={p} active={recurrencePattern === p} onClick={() => setRecurrencePattern(p)}>
+              {p === 'none' ? 'None' : p === 'weekly' ? 'Weekly' : p === 'biweekly' ? 'Bi-weekly' : 'Monthly'}
+            </Pill>
+          ))}
+        </div>
+        {recurrencePattern !== 'none' && (
+          <div className='flex flex-col gap-3 mt-1'>
+            <Field label='Number of occurrences'>
+              <input
+                type='number' min={2} max={52} value={recurrenceCount}
+                onChange={(e) => setRecurrenceCount(e.target.value)}
+                className='input-field'
+              />
+            </Field>
+            <RecurrencePreview startsAt={startsAt} endsAt={endsAt} pattern={recurrencePattern} count={Number(recurrenceCount)} />
+          </div>
+        )}
+      </Section>
+
       {error && (
         <div
           className='p-3 text-sm text-center'
@@ -398,7 +426,11 @@ export default function CreateEventForm() {
         disabled={submitting || !selectedScope}
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'
       >
-        {submitting ? 'Creating…' : 'Create event'}
+        {submitting
+          ? (submitProgress || 'Creating…')
+          : recurrencePattern !== 'none'
+            ? `Create ${Math.max(2, Number(recurrenceCount))} events`
+            : 'Create event'}
       </button>
     </form>
   )
@@ -451,4 +483,62 @@ function defaultEndsAt() {
   const d = new Date(Date.now() + 60 * 60 * 1000)
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
   return d.toISOString().slice(0, 16)
+}
+
+type RecurrencePattern = 'none' | 'weekly' | 'biweekly' | 'monthly'
+
+function buildOccurrences(
+  startsAt: string,
+  endsAt: string,
+  pattern: RecurrencePattern,
+  count: number,
+): Array<{ startsAt: Date; endsAt: Date }> {
+  const start = new Date(startsAt)
+  const end = new Date(endsAt)
+  const duration = end.getTime() - start.getTime()
+  if (pattern === 'none' || count < 2) return [{ startsAt: start, endsAt: end }]
+  const clamp = Math.max(2, Math.min(52, count))
+  return Array.from({ length: clamp }, (_, i) => {
+    let oStart: Date
+    if (i === 0) {
+      oStart = start
+    } else if (pattern === 'weekly') {
+      oStart = new Date(start); oStart.setDate(oStart.getDate() + i * 7)
+    } else if (pattern === 'biweekly') {
+      oStart = new Date(start); oStart.setDate(oStart.getDate() + i * 14)
+    } else {
+      oStart = new Date(start); oStart.setMonth(oStart.getMonth() + i)
+    }
+    return { startsAt: oStart, endsAt: new Date(oStart.getTime() + duration) }
+  })
+}
+
+function RecurrencePreview({ startsAt, endsAt, pattern, count }: {
+  startsAt: string; endsAt: string; pattern: RecurrencePattern; count: number
+}) {
+  const occurrences = buildOccurrences(startsAt, endsAt, pattern, count)
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  return (
+    <div className='flex flex-col gap-1 mt-1'>
+      <p className='text-xs' style={{ color: 'var(--muted)' }}>{occurrences.length} events will be created:</p>
+      <div
+        className='flex flex-col gap-0.5 rounded-md overflow-hidden'
+        style={{ border: '1px solid var(--border)', background: 'var(--bg2)', maxHeight: 180, overflowY: 'auto' }}
+      >
+        {occurrences.map((o, i) => (
+          <div
+            key={i}
+            className='flex items-center gap-2 px-3 py-2 text-xs'
+            style={{ borderBottom: i < occurrences.length - 1 ? '1px solid var(--border)' : 'none' }}
+          >
+            <span
+              className='shrink-0 font-mono font-bold text-center'
+              style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: 'var(--bg)', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >{i + 1}</span>
+            <span style={{ color: 'var(--text)' }}>{fmt(o.startsAt)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }

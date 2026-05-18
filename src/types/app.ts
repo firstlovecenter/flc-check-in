@@ -112,6 +112,8 @@ export interface CheckinEventRow {
   created_by_id: string
   created_by_name: string | null
   created_at: string
+  series_id: string | null
+  series_index: number | null
 }
 
 export interface CheckinRecordRow {
