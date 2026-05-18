@@ -50,8 +50,8 @@ export default function ScopeBreakdown({ eventId }) {
         setEvent(evt)
 
         const [viewer, ancestors, eventScopeMembers, recs] = await Promise.all([
-          resolveCurrentMember(user),
-          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }),
+          resolveCurrentMember(user).catch(() => null),
+          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
           getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id }),
           listCheckedIn(eventId),
         ])
@@ -62,7 +62,23 @@ export default function ScopeBreakdown({ eventId }) {
         const allowed = new Set(evt.allowed_roles || [])
         const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
-        const caps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        // superAdmin bypass: getViewerCapabilities only checks the member graph
+        // hierarchy and deliberately leaves this to callers (see membersApi.ts).
+        const caps = user?.isSuperAdmin
+          ? {
+              ...rawCaps,
+              canManage: true,
+              canCheckIn: true,
+              canView: true,
+              canManuallyCheckIn: true,
+              viewerScope: rawCaps.viewerScope ?? {
+                level: evt.scope_level,
+                id: evt.scope_church_id,
+                name: evt.scope_church_name,
+              },
+            }
+          : rawCaps
         if (cancelled) return
         setViewerCaps(caps)
         setAllEligible(eligibleRows)
