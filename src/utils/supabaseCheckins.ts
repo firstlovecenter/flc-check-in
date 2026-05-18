@@ -49,6 +49,7 @@ const AUDIT_LOG_COLUMNS =
 const EVENTS_LIST_TTL = 30 * 1000  // 30 s
 const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
+const _allEventsCaches    = new Map<string, { data: any[]; ts: number }>()
 
 // Throttle: fire the auto-end RPC at most once per minute client-side.
 let _lastAutoEndTs = 0
@@ -451,6 +452,30 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   const mapped = (data || []).map(mapEventRow)
   const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
   _pastEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+  return result
+}
+
+/** All events (past, active, future) for the user's scope, newest-first.
+ *  Used by the home screen so leaders always see their events. */
+export async function listAllEvents(user?: AppUser) {
+  triggerAutoEnd()
+  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  if (scopeFilter === _NO_SCOPE) return []
+  const cacheKey = `all:${scopeFilter ?? 'all'}`
+  const cached = _allEventsCaches.get(cacheKey)
+  if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+
+  let query = supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .order('starts_at', { ascending: false })
+    .limit(50)
+  if (scopeFilter) query = query.or(scopeFilter)
+  const { data, error } = await query
+  if (error) throw error
+  const mapped = (data || []).map(mapEventRow)
+  const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
+  _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
 

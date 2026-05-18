@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
-  listActiveEvents, listRecentPastEvents, getMemberProfile, upsertMemberProfile,
+  listAllEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
@@ -13,7 +13,7 @@ import type { CheckinEventRow } from '../types/app'
 type HomeState =
   | { status: 'loading' }
   | { status: 'error'; error: string }
-  | { status: 'ok'; active: CheckinEventRow[]; past: CheckinEventRow[] }
+  | { status: 'ok'; events: CheckinEventRow[] }
 
 export default function LeaderHomeScreen() {
   const user = getCurrentUser()
@@ -100,29 +100,21 @@ export default function LeaderHomeScreen() {
             })()
           : Promise.resolve(false)
 
-        const [active, past] = await Promise.all([
-          listActiveEvents(activeUser ?? undefined),
-          listRecentPastEvents({ user: activeUser ?? undefined }),
-        ])
+        const events = await listAllEvents(activeUser ?? undefined)
         if (cancelled) return
-        setState({ status: 'ok', active, past })
+        setState({ status: 'ok', events })
 
-        // Re-fetch ONLY when hydration actually widened the scope set. Most
-        // accounts (after their first hydrated session) hit this path and
-        // skip the second round-trip entirely.
+        // Re-fetch ONLY when hydration actually widened the scope set.
         if (needsAncestors) {
           hydrationPromise.then(async (hydrated) => {
             if (!hydrated || cancelled) return
             const freshUser = getCurrentUser()
             const scopeKeyAfter = scopeFingerprint(freshUser)
-            if (scopeKeyAfter === scopeKeyBefore) return  // nothing new — skip
+            if (scopeKeyAfter === scopeKeyBefore) return
             try {
-              const [active2, past2] = await Promise.all([
-                listActiveEvents(freshUser ?? undefined),
-                listRecentPastEvents({ user: freshUser ?? undefined }),
-              ])
+              const events2 = await listAllEvents(freshUser ?? undefined)
               if (cancelled) return
-              setState({ status: 'ok', active: active2, past: past2 })
+              setState({ status: 'ok', events: events2 })
             } catch { /* keep the first-paint state */ }
           })
         }
@@ -159,9 +151,7 @@ export default function LeaderHomeScreen() {
         )}
       />
       <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6'>
-        <p className='eyebrow mb-3'>
-          Upcoming / Current Events
-        </p>
+        <p className='eyebrow mb-3'>Events</p>
 
         {state.status === 'loading' && (
           <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
@@ -181,7 +171,7 @@ export default function LeaderHomeScreen() {
           </div>
         )}
 
-        {state.status === 'ok' && state.active.length === 0 && (
+        {state.status === 'ok' && state.events.length === 0 && (
           <div
             className='p-8 text-center'
             style={{
@@ -190,17 +180,22 @@ export default function LeaderHomeScreen() {
               borderRadius: 'var(--radius-card)',
             }}
           >
-            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>
-              No active events right now.
-            </p>
+            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>No events found.</p>
           </div>
         )}
 
-        {state.status === 'ok' && state.active.length > 0 && (
+        {state.status === 'ok' && state.events.length > 0 && (
           <div className='flex flex-col gap-2.5'>
-            {state.active.map((evt) => {
+            {state.events.map((evt) => {
+              const now = new Date()
+              const starts = new Date(evt.starts_at)
+              const ends = new Date(evt.ends_at)
+              const isLive = evt.status === 'ACTIVE' && starts <= now && ends >= now
+              const isPast = ends < now || evt.status === 'ENDED'
+              const isFuture = starts > now && evt.status !== 'ENDED'
               const levelColor = `var(--badge-${evt.scope_level}, var(--accent))`
-              const isLive = evt.status === 'ACTIVE'
+              const stripeColor = isPast ? 'var(--border)' : levelColor
+
               return (
                 <Link
                   key={evt.id}
@@ -212,10 +207,11 @@ export default function LeaderHomeScreen() {
                     borderRadius: 'var(--radius-card)',
                     textDecoration: 'none',
                     overflow: 'hidden',
-                    boxShadow: 'var(--shadow-2)',
+                    boxShadow: isPast ? 'none' : 'var(--shadow-2)',
+                    opacity: isPast ? 0.6 : 1,
                   }}
                 >
-                  <div style={{ width: 4, background: levelColor, flexShrink: 0 }} />
+                  <div style={{ width: 4, background: stripeColor, flexShrink: 0 }} />
                   <div className='px-4 py-3 flex-1 min-w-0 flex items-center justify-between gap-3'>
                     <div className='min-w-0'>
                       <div className='flex items-center gap-1.5 min-w-0'>
@@ -228,8 +224,7 @@ export default function LeaderHomeScreen() {
                         <p className='text-sm font-bold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{evt.name}</p>
                       </div>
                       <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-                        {evt.scope_church_name}
-                        {evt.venue_name ? ` · ${evt.venue_name}` : ''}
+                        {evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}
                       </p>
                     </div>
                     <div className='shrink-0 text-right'>
@@ -238,9 +233,12 @@ export default function LeaderHomeScreen() {
                       </p>
                       <span
                         className='text-[10px] font-bold uppercase tracking-wider'
-                        style={{ color: isLive ? 'var(--green)' : levelColor, letterSpacing: '0.06em' }}
+                        style={{
+                          color: isLive ? 'var(--green)' : isPast ? 'var(--muted)' : levelColor,
+                          letterSpacing: '0.06em',
+                        }}
                       >
-                        {isLive ? 'Live' : evt.status}
+                        {isLive ? 'Live' : isPast ? 'Ended' : isFuture ? 'Upcoming' : evt.status}
                       </span>
                     </div>
                   </div>
@@ -248,53 +246,6 @@ export default function LeaderHomeScreen() {
               )
             })}
           </div>
-        )}
-
-        {state.status === 'ok' && state.past.length > 0 && (
-          <>
-            <div className='my-6' style={{ borderTop: '1px solid var(--border)' }} />
-            <p className='eyebrow mb-3'>Past Events</p>
-            <div className='flex flex-col gap-2'>
-              {state.past.map((evt) => (
-                <Link
-                  key={evt.id}
-                  to={`/events/${evt.id}`}
-                  className='flex transition-opacity hover:opacity-70 active:scale-[0.99]'
-                  style={{
-                    background: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-card)',
-                    textDecoration: 'none',
-                    overflow: 'hidden',
-                    opacity: 0.5,
-                  }}
-                >
-                  {/* Left muted stripe */}
-                  <div style={{ width: 3, background: 'var(--border)', flexShrink: 0 }} />
-                  <div className='px-4 py-3 flex-1 min-w-0 flex items-center justify-between gap-3'>
-                    <div className='min-w-0'>
-                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)', opacity: 0.75 }}>{evt.name}</p>
-                      <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-                        {evt.scope_church_name}
-                        {evt.venue_name ? ` · ${evt.venue_name}` : ''}
-                      </p>
-                    </div>
-                    <div className='shrink-0 text-right'>
-                      <p className='text-xs font-bold m-0' style={{ color: 'var(--muted)' }}>
-                        {format(new Date(evt.starts_at), 'd MMM')}
-                      </p>
-                      <span
-                        className='text-[10px] font-bold uppercase tracking-wider'
-                        style={{ color: 'var(--muted)', letterSpacing: '0.06em', opacity: 0.6 }}
-                      >
-                        Ended
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </>
         )}
       </main>
     </div>
