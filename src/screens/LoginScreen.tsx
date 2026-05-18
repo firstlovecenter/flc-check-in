@@ -115,6 +115,9 @@ export default function LoginScreen() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
+          <p className='text-xs text-center m-0' style={{ color: 'var(--muted)' }}>
+            Use the same credentials as the <strong>Synago App</strong>.
+          </p>
           <div className='flex flex-col gap-2'>
             <label
               className='eyebrow'
@@ -193,6 +196,7 @@ export default function LoginScreen() {
             View Meetings At This Location
           </Link>
         </form>
+
       </div>
     </div>
   )
