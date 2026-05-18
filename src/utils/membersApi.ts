@@ -18,6 +18,7 @@ import {
   CHILD_COUNT_QUERIES,
   CHILD_LIST_QUERIES,
   GET_ALL_MEMBERS_PAGE,
+  SEARCH_CHURCHES,
 } from './membersApi.queries.js'
 
 function graphqlEndpoint() {
@@ -118,6 +119,7 @@ export function memberToProfileRow(m) {
     first_name: m.firstName || null,
     last_name: m.lastName || null,
     phone: m.phoneNumber || m.whatsappNumber || null,
+    picture_url: m.pictureUrl || null,
     roles: derivedRoles(m),
     bacenta_id:      bacenta?.id      || null,  bacenta_name:      bacenta?.name      || null,
     governorship_id: governorship?.id || null,  governorship_name: governorship?.name || null,
@@ -596,6 +598,55 @@ export async function getChildChurches({ level, id }: { level: string; id: strin
   // Response has one array field — grab whatever's there.
   const list = Object.values(data || {})[0]
   return Array.isArray(list) ? list : []
+}
+
+// ─── searchChurches(q, limit?) ───────────────────────────────────────────
+// Substring-search churches across every level (denomination → governorship).
+// Bacentas are intentionally excluded — superadmin event creation targets
+// council level and above, and a denomination has ~1700 bacentas which
+// would dwarf the result list. If you ever need bacenta search, add a
+// separate paged query.
+//
+// Returns a flat list, level-tagged, deduped by (level, id). Ordered with
+// highest scope first so a search for "Test" surfaces "Test Denomination"
+// before "Test Council" / "Test Stream" / etc.
+const SEARCH_LEVEL_ORDER: Record<string, number> = {
+  denomination: 0, oversight: 1, campus: 2, stream: 3, council: 4, governorship: 5,
+}
+
+export interface ChurchSearchResult {
+  level: 'denomination' | 'oversight' | 'campus' | 'stream' | 'council' | 'governorship'
+  id: string
+  name: string
+}
+
+export async function searchChurches(q: string, limit = 8): Promise<ChurchSearchResult[]> {
+  const query = (q || '').trim()
+  if (query.length < 2) return []
+  const data = await client().request<Record<string, { id: string; name: string }[]>>(
+    SEARCH_CHURCHES, { q: query, limit },
+  )
+  const buckets: Array<[ChurchSearchResult['level'], { id: string; name: string }[] | undefined]> = [
+    ['denomination', data?.denominations],
+    ['oversight',    data?.oversights],
+    ['campus',       data?.campuses],
+    ['stream',       data?.streams],
+    ['council',      data?.councils],
+    ['governorship', data?.governorships],
+  ]
+  const seen = new Set<string>()
+  const out: ChurchSearchResult[] = []
+  for (const [level, list] of buckets) {
+    for (const row of list || []) {
+      if (!row?.id) continue
+      const k = `${level}:${row.id}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push({ level, id: row.id, name: row.name })
+    }
+  }
+  out.sort((a, b) => (SEARCH_LEVEL_ORDER[a.level] ?? 9) - (SEARCH_LEVEL_ORDER[b.level] ?? 9))
+  return out
 }
 
 // ─── isLeaderOrAdmin(member) ────────────────────────────────────────────────

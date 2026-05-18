@@ -6,6 +6,7 @@ import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
   resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
+  searchChurches, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 
@@ -16,10 +17,18 @@ const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 export default function CreateEventForm() {
   const navigate = useNavigate()
   const user = getCurrentUser()
+  const isSuperAdmin = !!user?.isSuperAdmin
 
   const [scopes, setScopes] = useState<AdminScope[]>([])
   const [scopesLoading, setScopesLoading] = useState(true)
   const [scopesError, setScopesError] = useState<string | null>(null)
+
+  // Superadmin search-picker state. Superadmins can create events for any
+  // church in the denomination, not just their own admin scopes.
+  const [superSearch, setSuperSearch] = useState('')
+  const [superResults, setSuperResults] = useState<ChurchSearchResult[]>([])
+  const [superSearching, setSuperSearching] = useState(false)
+  const [superSelected, setSuperSelected] = useState<AdminScope | null>(null)
 
   const [name, setName] = useState('')
   const [venueName, setVenueName] = useState('')
@@ -37,8 +46,10 @@ export default function CreateEventForm() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Fetch the admin's eligible scopes from FLC member graph
+  // Fetch the admin's eligible scopes from FLC member graph.
+  // Superadmins skip this — they pick any church via the search picker below.
   useEffect(() => {
+    if (isSuperAdmin) { setScopesLoading(false); return }
     let cancelled = false
     ;(async () => {
       try {
@@ -54,13 +65,35 @@ export default function CreateEventForm() {
       }
     })()
     return () => { cancelled = true }
-  }, [user.userId])
+  }, [user.userId, isSuperAdmin])
+
+  // Debounced church search for superadmins.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    const q = superSearch.trim()
+    if (q.length < 2) { setSuperResults([]); return }
+    let cancelled = false
+    setSuperSearching(true)
+    const t = setTimeout(async () => {
+      try {
+        const results = await searchChurches(q, 8)
+        if (!cancelled) setSuperResults(results)
+      } catch {
+        if (!cancelled) setSuperResults([])
+      } finally {
+        if (!cancelled) setSuperSearching(false)
+      }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [superSearch, isSuperAdmin])
 
   const selectedScope = useMemo(() => {
+    // Superadmin: their picker's selection wins.
+    if (isSuperAdmin) return superSelected
     if (!scopeId) return null
     const [level, id] = scopeId.split(':')
     return scopes.find((s) => s.level === level && s.id === id) || null
-  }, [scopeId, scopes])
+  }, [isSuperAdmin, superSelected, scopeId, scopes])
 
   // Roles available for this scope = leadership levels strictly below it.
   const availableRoles = useMemo(
@@ -138,7 +171,8 @@ export default function CreateEventForm() {
   // Friendly empty state — strictly only admins reach this form (RequireAdmin
   // guards the route), so this is the rare case where they have admin roles
   // but no concrete admin scope on the member graph.
-  if (!scopesLoading && scopes.length === 0) {
+  // Superadmins skip this — they pick any church via the search picker.
+  if (!isSuperAdmin && !scopesLoading && scopes.length === 0) {
     return (
       <div
         className='p-5 text-sm text-center'
@@ -169,7 +203,96 @@ export default function CreateEventForm() {
       <Section title='Scope'>
         {scopesLoading && <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading your scopes…</p>}
         {scopesError && <p className='text-sm' style={{ color: 'var(--coral)' }}>{scopesError}</p>}
-        {scopes.length === 1 && selectedScope && (
+
+        {/* Superadmin: search-any-church picker. Superadmins are not bound
+            to their own admin scopes — they can create events for any
+            church in the denomination. */}
+        {isSuperAdmin && (
+          <div className='flex flex-col gap-2'>
+            {superSelected ? (
+              <div
+                className='px-4 py-3 flex items-center justify-between gap-3'
+                style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+              >
+                <div className='min-w-0'>
+                  <p className='eyebrow m-0'>{superSelected.level}</p>
+                  <p className='text-sm font-semibold m-0 mt-0.5 truncate' style={{ color: 'var(--text)' }}>
+                    {superSelected.name}
+                  </p>
+                </div>
+                <button
+                  type='button'
+                  onClick={() => { setSuperSelected(null); setSuperSearch(''); setSuperResults([]) }}
+                  className='text-xs px-2.5 py-1 cursor-pointer shrink-0'
+                  style={{ background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)' }}
+                >Change</button>
+              </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <input
+                  type='text'
+                  value={superSearch}
+                  onChange={(e) => setSuperSearch(e.target.value)}
+                  placeholder='🔍 Search any church (council, stream, campus, oversight, denomination)…'
+                  className='input-field'
+                  autoComplete='off'
+                />
+                {superSearching && (
+                  <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
+                )}
+                {superResults.length > 0 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 4px)',
+                      left: 0, right: 0,
+                      zIndex: 100,
+                      background: 'var(--card)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-btn)',
+                      maxHeight: 320,
+                      overflowY: 'auto',
+                      boxShadow: 'var(--shadow-2)',
+                    }}
+                  >
+                    {superResults.map((r) => (
+                      <button
+                        key={`${r.level}:${r.id}`}
+                        type='button'
+                        onClick={() => {
+                          setSuperSelected({ level: r.level, id: r.id, name: r.name })
+                          setSuperResults([])
+                          setSuperSearch('')
+                        }}
+                        className='w-full text-left px-3 py-2.5 cursor-pointer'
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: '1px solid var(--border)',
+                          color: 'var(--text)',
+                          fontFamily: 'var(--sans)',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <div className='text-sm font-semibold truncate'>{r.name}</div>
+                        <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>
+                          {r.level}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!superSearching && superSearch.trim().length >= 2 && superResults.length === 0 && (
+                  <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Non-superadmin: the user's own admin scopes. */}
+        {!isSuperAdmin && scopes.length === 1 && selectedScope && (
           <div
             className='px-4 py-3'
             style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
@@ -178,7 +301,7 @@ export default function CreateEventForm() {
             <p className='text-sm font-semibold m-0 mt-0.5' style={{ color: 'var(--text)' }}>{selectedScope.name}</p>
           </div>
         )}
-        {scopes.length > 1 && (
+        {!isSuperAdmin && scopes.length > 1 && (
           <select required value={scopeId} onChange={(e) => setScopeId(e.target.value)}
             className='input-field'>
             {scopes.map((s) => (
@@ -272,7 +395,7 @@ export default function CreateEventForm() {
 
       <button
         type='submit'
-        disabled={submitting || scopes.length === 0}
+        disabled={submitting || !selectedScope}
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'
       >
         {submitting ? 'Creating…' : 'Create event'}

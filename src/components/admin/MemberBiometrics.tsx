@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import {
   listMembersForBiometricsAdmin, adminClearFaceDescriptor,
@@ -12,6 +13,7 @@ type Row = {
   first_name: string | null
   last_name: string | null
   email: string | null
+  picture_url: string | null
   bacenta_name: string | null
   governorship_name: string | null
   council_name: string | null
@@ -167,13 +169,16 @@ export default function MemberBiometrics() {
           {pageRows.map((r) => {
             const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.id
             const unit = r.bacenta_name || r.governorship_name || r.council_name || r.stream_name || '—'
+            const initials = [r.first_name?.[0], r.last_name?.[0]].filter(Boolean).join('').toUpperCase() || '?'
             return (
-              <div
+              <Link
                 key={r.id}
-                className='p-3 flex items-center justify-between gap-3'
-                style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+                to={`/admin/members/${r.id}`}
+                className='p-3 flex items-center justify-between gap-3 transition-opacity hover:opacity-90 active:scale-[0.99]'
+                style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
               >
-                <div className='min-w-0'>
+                <RowAvatar pictureUrl={r.picture_url} initials={initials} />
+                <div className='min-w-0 flex-1'>
                   <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
                   <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
                 </div>
@@ -191,7 +196,7 @@ export default function MemberBiometrics() {
                   )}
                   {r.has_face_id && (
                     <button
-                      onClick={() => handleReset(r)}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleReset(r) }}
                       disabled={resetting === r.id}
                       className='text-xs px-3 py-1 cursor-pointer disabled:opacity-50'
                       style={{ background: 'transparent', color: 'var(--coral)', border: '1.5px solid var(--coral)', borderRadius: 'var(--radius-btn)' }}
@@ -200,7 +205,7 @@ export default function MemberBiometrics() {
                     </button>
                   )}
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>
@@ -288,5 +293,43 @@ function Stat({ value, label, color = 'var(--text)' }) {
       <p className='text-2xl font-bold m-0' style={{ color }}>{value}</p>
       <p className='text-[10px] uppercase tracking-widest m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{label}</p>
     </div>
+  )
+}
+
+/** Small round avatar for member-list rows. picture_url is a URL string to
+ *  an external image (Cloudinary etc.) — not image bytes. Falls back to a
+ *  circular initials chip when the URL is missing or 404s. */
+function RowAvatar({ pictureUrl, initials }: { pictureUrl: string | null; initials: string }) {
+  const size = 40
+  const common: React.CSSProperties = {
+    width: size, height: size,
+    borderRadius: '50%',
+    flexShrink: 0,
+    border: '1.5px solid var(--border)',
+    background: 'var(--bg2)',
+  }
+  if (pictureUrl) {
+    return (
+      <img
+        src={pictureUrl}
+        alt={initials}
+        width={size}
+        height={size}
+        loading='lazy'  // avoid fetching off-screen avatars on large lists
+        style={{ ...common, objectFit: 'cover' }}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      />
+    )
+  }
+  return (
+    <div
+      aria-label={initials}
+      style={{
+        ...common,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--muted)',
+        fontSize: 13, fontWeight: 700,
+      }}
+    >{initials}</div>
   )
 }

@@ -83,6 +83,7 @@ export async function upsertMemberProfile(user) {
     first_name: user.firstName || user.first_name || null,
     last_name: user.lastName || user.last_name || null,
     phone: user.phone || user.phoneNumber || null,
+    picture_url: user.picture_url || user.pictureUrl || null,
     roles: user.roles || [],
     bacenta_id:      user.bacenta?.id      || user.bacenta_id      || null,
     bacenta_name:    user.bacenta?.name    || user.bacenta_name    || null,
@@ -130,7 +131,7 @@ export async function bulkUpsertMemberProfiles(rows) {
 export async function getMemberProfile(memberId) {
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, email, title, first_name, last_name, phone, roles, ' +
+    .select('id, email, title, first_name, last_name, phone, picture_url, roles, ' +
             'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
             'council_id, council_name, stream_id, stream_name, ' +
             'campus_id, campus_name, oversight_id, oversight_name, ' +
@@ -210,7 +211,7 @@ export async function listMembersForBiometricsAdmin(
   const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, first_name, last_name, email, roles, ' +
+    .select('id, first_name, last_name, email, roles, picture_url, ' +
             'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
             'council_id, council_name, stream_id, stream_name, ' +
             'campus_id, campus_name, oversight_id, oversight_name, ' +

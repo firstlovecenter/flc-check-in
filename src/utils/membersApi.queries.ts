@@ -477,3 +477,23 @@ export const CHILD_LIST_QUERIES = {
   oversight:    LIST_CAMPUSES_IN_OVERSIGHT,
   denomination: LIST_OVERSIGHTS_IN_DENOMINATION,
 }
+
+
+// ─── SEARCH_CHURCHES ─────────────────────────────────────────────────────
+// Used by the superadmin's "create event for any church" picker. Runs one
+// filtered list per level in a single GraphQL document; client filters out
+// empty arrays and tags each result with its level. name_CONTAINS is a
+// Neo4j-GraphQL operator → substring match, case-sensitive (Neo4j default).
+// We don't include bacentas because superadmin event creation typically
+// targets council level and above; opening that list would also balloon
+// the response (~1700 rows on prod).
+export const SEARCH_CHURCHES = gql`
+  query SearchChurches($q: String!, $limit: Int!) {
+    denominations(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+    oversights(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+    campuses(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+    streams(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+    councils(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+    governorships(where: { name_CONTAINS: $q }, limit: $limit) { id name }
+  }
+`

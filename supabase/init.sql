@@ -60,6 +60,9 @@ create table if not exists public.member_profiles (
   campus_id           text, campus_name       text,
   oversight_id        text, oversight_name    text,
   denomination_id     text, denomination_name text,
+  -- Cached profile picture URL from the FLC member graph. Synced at login
+  -- and on bulk upserts. See migration 015.
+  picture_url         text,
   face_descriptor     double precision[],
   -- Generated boolean so admin biometrics screens can read enrolment status
   -- without pulling the full 128-float face_descriptor over the wire. STORED
