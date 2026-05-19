@@ -417,7 +417,10 @@ export async function listActiveEvents(user?: AppUser) {
 
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
-  const cacheKey    = scopeFilter ?? 'all'
+  // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
+  // and each scoped user (their orFilter string). Without this, a public-page
+  // fetch (which strips special_group events) would poison the superadmin cache.
+  const cacheKey = user?.isSuperAdmin ? 'superadmin' : (scopeFilter ?? 'public')
   const cached = _activeEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -571,14 +574,19 @@ export async function listRecentPastEventsAtLocation(lat, lng, { daysBack = 30 }
  *  scopes: array of { level, id } — typically from getAdminScopes(member). */
 export async function listEventsForAdminScopes(
   scopes: Array<{ level: string; id: string }>,
-  { statuses }: { statuses?: string[] } = {}
+  { statuses, user }: { statuses?: string[]; user?: AppUser } = {}
 ) {
-  if (!scopes?.length) return []
-  // OR over (scope_level + scope_church_id) pairs.
-  const orFilter = scopes
-    .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
-    .join(',')
-  let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS).or(orFilter)
+  let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
+  if (user?.isSuperAdmin) {
+    // Superadmins see every event — no scope restriction.
+  } else {
+    if (!scopes?.length) return []
+    // OR over (scope_level + scope_church_id) pairs.
+    const orFilter = scopes
+      .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
+      .join(',')
+    q = q.or(orFilter)
+  }
   if (statuses?.length) q = q.in('status', statuses)
   const { data, error } = await q.order('starts_at', { ascending: false })
   if (error) throw error
