@@ -160,7 +160,6 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               <NavItem to='/events'  icon={ICONS.qr}      label='Events'        onClick={() => setOpen(false)} />
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/events/new' icon={ICONS.plus}    label='Create Event' onClick={() => setOpen(false)} />
                   <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={() => setOpen(false)} />
                   <NavItem to='/admin/members'    icon={ICONS.profile} label='Members'      onClick={() => setOpen(false)} />
                 </>

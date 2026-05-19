@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
 import Spinner from '../components/Spinner'
@@ -18,6 +18,8 @@ type HomeState =
 
 export default function LeaderHomeScreen() {
   const user = getCurrentUser()
+  const navigate = useNavigate()
+  const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
   const [state, setState] = useState<HomeState>({ status: 'loading' })
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -152,6 +154,21 @@ export default function LeaderHomeScreen() {
         )}
       />
       <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6'>
+
+        {isAdmin && (
+          <div className='mb-6'>
+            <button
+              type='button'
+              onClick={() => navigate('/admin/events/new')}
+              className='btn-pill btn-primary flex items-center gap-2 px-4 py-2.5 font-semibold text-sm cursor-pointer'
+            >
+              <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
+                <path d='M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z' />
+              </svg>
+              Create Event
+            </button>
+          </div>
+        )}
 
         {state.status === 'loading' && <Spinner />}
 
