@@ -158,7 +158,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             {/* Nav items */}
             <nav className='flex-1 overflow-y-auto p-2 flex flex-col gap-1'>
               <NavItem to='/home'    icon={ICONS.home}    label='Home'          onClick={() => setOpen(false)} />
-              <NavItem to='/events'  icon={ICONS.qr}      label='Events'        onClick={() => setOpen(false)} />
+              <NavItem to='/events'  icon={ICONS.qr}      label='Scan QR Code'  onClick={() => setOpen(false)} />
               {isAdmin && (
                 <>
                   <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={() => setOpen(false)} />
