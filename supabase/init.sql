@@ -127,6 +127,7 @@ create table if not exists public.checkin_events (
   created_at                  timestamptz not null default now(),
   series_id                   uuid,
   series_index                integer,
+  is_public                   boolean not null default true,
   check (
     (geofence_type = 'circle'  and geofence_center_lat is not null and geofence_center_lng is not null and geofence_radius_m is not null)
     or
@@ -764,7 +765,8 @@ create or replace function public.create_checkin_event(
   p_pin_plain                text,
   p_qr_secret_hex            text,
   p_created_by_id            text,
-  p_created_by_name          text
+  p_created_by_name          text,
+  p_is_public                boolean default true
 ) returns uuid
 language plpgsql
 security definer
@@ -784,14 +786,14 @@ begin
     allowed_check_in_methods, allowed_roles,
     geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, geofence_polygon,
     pin_hash, pin_set_at, qr_secret,
-    created_by_id, created_by_name
+    created_by_id, created_by_name, is_public
   ) values (
     p_name, p_event_type, p_scope_level, p_scope_church_id, p_scope_church_name, p_venue_name,
     p_starts_at, p_ends_at, p_grace_period_min, p_auto_checkout_min,
     p_allowed_check_in_methods, p_allowed_roles,
     p_geofence_type, p_geofence_center_lat, p_geofence_center_lng, p_geofence_radius_m, p_geofence_polygon,
     v_pin_hash, case when p_pin_plain is not null then now() else null end, decode(p_qr_secret_hex, 'hex'),
-    p_created_by_id, p_created_by_name
+    p_created_by_id, p_created_by_name, p_is_public
   ) returning id into v_id;
 
   return v_id;
@@ -1178,7 +1180,7 @@ grant execute on function
     timestamptz, timestamptz, int, int,
     text[], text[],
     text, double precision, double precision, int, jsonb,
-    text, text, text, text
+    text, text, text, text, boolean
   ),
   public.reset_event_pin(uuid, text),
   public.submit_checkin(

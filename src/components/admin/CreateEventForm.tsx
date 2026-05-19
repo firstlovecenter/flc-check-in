@@ -59,6 +59,10 @@ export default function CreateEventForm() {
   const [recurrencePattern, setRecurrencePattern] = useState<'none' | 'weekly' | 'biweekly' | 'monthly'>('none')
   const [recurrenceCount, setRecurrenceCount] = useState<number | string>(4)
 
+  // Superadmin-only: whether this event appears on the public QR page.
+  // Defaults true for church-scope events, false for special-group events.
+  const [isPublic, setIsPublic] = useState(true)
+
   const [submitting, setSubmitting] = useState(false)
   const [submitProgress, setSubmitProgress] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -112,6 +116,12 @@ export default function CreateEventForm() {
       .then(setGroups)
       .catch(() => setGroups([]))
       .finally(() => setGroupsLoading(false))
+  }, [isSuperAdmin, superMode])
+
+  // Default is_public to false for group-mode events, true for church-scope events.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    setIsPublic(superMode !== 'group')
   }, [isSuperAdmin, superMode])
 
   // The "primary" scope used for roles display and event creation anchor.
@@ -218,6 +228,7 @@ export default function CreateEventForm() {
           createdBy: { id: user.userId, name: formatName(user) },
           seriesId,
           seriesIndex: i + 1,
+          isPublic: isSuperAdmin ? isPublic : true,
         })
         if (i === 0) {
           firstEventId = eventId
@@ -544,6 +555,47 @@ export default function CreateEventForm() {
           </div>
         )}
       </Section>
+
+      {isSuperAdmin && (
+        <Section title='Visibility'>
+          <button
+            type='button'
+            onClick={() => setIsPublic((v) => !v)}
+            className='w-full text-left px-4 py-3 cursor-pointer flex items-center justify-between gap-3'
+            style={{
+              background: 'var(--bg2)',
+              border: `1.5px solid ${isPublic ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-btn)',
+            }}
+          >
+            <div>
+              <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>
+                {isPublic ? 'Visible on public page' : 'Hidden from public page'}
+              </p>
+              <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>
+                {isPublic
+                  ? 'Anyone can scan the QR code from the public events page.'
+                  : 'Only invited members and superadmins can see this event.'}
+              </p>
+            </div>
+            {/* Toggle pill */}
+            <div
+              className='shrink-0'
+              style={{
+                width: 44, height: 24, borderRadius: 12,
+                background: isPublic ? 'var(--accent)' : 'var(--border)',
+                position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <div style={{
+                position: 'absolute', top: 3, left: isPublic ? 23 : 3,
+                width: 18, height: 18, borderRadius: 9,
+                background: '#fff', transition: 'left 0.2s',
+              }} />
+            </div>
+          </button>
+        </Section>
+      )}
 
       {error && (
         <div

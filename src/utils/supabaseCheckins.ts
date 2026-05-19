@@ -29,7 +29,7 @@ const CHECKIN_EVENT_LIST_COLUMNS =
   'allowed_check_in_methods, allowed_roles, ' +
   'geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, ' +
   'qr_secret, created_by_id, created_by_name, created_at, ' +
-  'series_id, series_index'
+  'series_id, series_index, is_public'
 
 // Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
 const CHECKIN_EVENT_FULL_COLUMNS = '*'
@@ -371,6 +371,7 @@ export async function createEvent(input) {
     p_qr_secret_hex: qrSecretHex,
     p_created_by_id: input.createdBy.id,
     p_created_by_name: input.createdBy.name,
+    p_is_public: input.isPublic ?? true,
   }
   const { data, error } = await supabase.rpc('create_checkin_event', params)
   if (error) throw error
@@ -416,6 +417,11 @@ export async function listActiveEvents(user?: AppUser) {
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
+  // Never expose special_group events on the public QR page or to non-superadmins.
+  // Superadmins (scopeFilter === null AND user present) still see them.
+  if (!user || !user.isSuperAdmin) query = query.neq('scope_level', 'special_group')
+  // Public QR page (no user): only show events the creator flagged as public.
+  if (!user) query = query.eq('is_public', true)
   if (scopeFilter) query = query.or(scopeFilter)
   const { data, error } = await query
   if (error) throw error

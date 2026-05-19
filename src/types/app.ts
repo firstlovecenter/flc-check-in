@@ -115,6 +115,7 @@ export interface CheckinEventRow {
   created_at: string
   series_id: string | null
   series_index: number | null
+  is_public: boolean
 }
 
 export interface CheckinRecordRow {
