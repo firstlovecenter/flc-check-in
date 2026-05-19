@@ -53,19 +53,24 @@ export default function QRDisplayScreen() {
     ;(async () => {
       try {
         const user = isSignedIn() ? getCurrentUser() : null
-        // Fetch public events and (if signed in) special-group events the user
-        // belongs to in parallel, then merge deduped by id.
-        const [publicEvents, groupEvents] = await Promise.all([
-          listActiveEvents(),
-          user?.userId ? listActiveSpecialGroupEventsForUser(user.userId) : Promise.resolve([]),
-        ])
-        if (cancelled) return
-        const seen = new Set<string>()
-        const events = [...publicEvents, ...groupEvents].filter((e) => {
-          if (seen.has(e.id)) return false
-          seen.add(e.id)
-          return true
-        })
+        // Superadmins see all events (including all special-group events) via
+        // listActiveEvents(user). Everyone else gets public events + only the
+        // special-group events for groups they personally belong to.
+        let events: any[]
+        if (user?.isSuperAdmin) {
+          events = await listActiveEvents(user)
+        } else {
+          const [publicEvents, groupEvents] = await Promise.all([
+            listActiveEvents(),
+            user?.userId ? listActiveSpecialGroupEventsForUser(user.userId) : Promise.resolve([]),
+          ])
+          const seen = new Set<string>()
+          events = [...publicEvents, ...groupEvents].filter((e) => {
+            if (seen.has(e.id)) return false
+            seen.add(e.id)
+            return true
+          })
+        }
         if (cancelled) return
         setState({ status: 'ok', events })
         // Auto-select when there's exactly one event
