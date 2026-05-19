@@ -183,7 +183,7 @@ export default function CreateEventForm() {
     }
     if (!isSuperAdmin && !selectedScope) { setError('No admin scope.'); return }
     if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
-    if (roles.length === 0) { setError('Pick at least one allowed role.'); return }
+    if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError('Pick at least one allowed role.'); return }
     if (geofence.type === 'polygon') {
       if ((geofence.polygon || []).length < 3) {
         setError('Polygon needs at least 3 vertices.'); return
@@ -487,7 +487,7 @@ export default function CreateEventForm() {
         )}
       </Section>
 
-      <Section title='Allowed roles'>
+      {!(isSuperAdmin && superMode === 'group') && <Section title='Allowed roles'>
         {availableRoles.length === 0 ? (
           <p className='text-sm' style={{ color: 'var(--muted)' }}>
             No leader levels exist below this scope.
@@ -506,7 +506,7 @@ export default function CreateEventForm() {
             </div>
           </>
         )}
-      </Section>
+      </Section>}
 
       <Section title='Geofence'>
         <GeoFencePicker value={geofence} onChange={setGeofence} />

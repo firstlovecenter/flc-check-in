@@ -247,7 +247,8 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
                   <SearchDropdownItem
                     key={m.id}
                     label={name}
-                    sublabel={m.phoneNumber || m.email || ''}
+                    sublabel={memberLeadsLabel(m)}
+                    pictureUrl={m.pictureUrl}
                     disabled={already}
                     onClick={() => handleAdd(m)}
                   />
@@ -267,15 +268,23 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
           <p className='text-sm text-center py-4' style={{ color: 'var(--muted)' }}>No members yet. Search above to add people.</p>
         )}
         <div className='flex flex-col gap-1.5'>
-          {members.map((m) => (
+          {members.map((m) => {
+            const name = m.member_name || m.member_id
+            const initials = name.trim().split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+            return (
             <div
               key={m.member_id}
               className='flex items-center justify-between gap-3 px-3 py-2.5'
               style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
             >
-              <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>
-                {m.member_name || m.member_id}
-              </p>
+              <div className='flex items-center gap-2.5 min-w-0'>
+                <div className='shrink-0' style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+                </div>
+                <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>
+                  {name}
+                </p>
+              </div>
               <button
                 type='button'
                 onClick={() => handleRemove(m.member_id)}
@@ -286,7 +295,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
                 {removing === m.member_id ? '…' : 'Remove'}
               </button>
             </div>
-          ))}
+          )})}
         </div>
       </Section>
     </div>
@@ -381,6 +390,26 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
   )
 }
 
+// ─── memberLeadsLabel ─────────────────────────────────────────────────────────
+// Returns the most specific "leads X" label from a graph member object.
+function memberLeadsLabel(m: any): string {
+  const pick = (arr: any[]) => (Array.isArray(arr) && arr[0]?.name) ? arr[0].name : null
+  return (
+    pick(m.leadsBacenta)       && `Leads Bacenta · ${pick(m.leadsBacenta)}`       ||
+    pick(m.leadsGovernorship)  && `Leads Governorship · ${pick(m.leadsGovernorship)}`  ||
+    pick(m.leadsCouncil)       && `Leads Council · ${pick(m.leadsCouncil)}`       ||
+    pick(m.leadsStream)        && `Leads Stream · ${pick(m.leadsStream)}`         ||
+    pick(m.leadsCampus)        && `Leads Campus · ${pick(m.leadsCampus)}`         ||
+    pick(m.leadsOversight)     && `Leads Oversight · ${pick(m.leadsOversight)}`   ||
+    pick(m.leadsDenomination)  && `Leads Denomination · ${pick(m.leadsDenomination)}` ||
+    pick(m.isAdminForCouncil)  && `Admin · ${pick(m.isAdminForCouncil)}`          ||
+    pick(m.isAdminForStream)   && `Admin · ${pick(m.isAdminForStream)}`           ||
+    pick(m.isAdminForCampus)   && `Admin · ${pick(m.isAdminForCampus)}`           ||
+    pick(m.isAdminForOversight)&& `Admin · ${pick(m.isAdminForOversight)}`        ||
+    ''
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function Section({ title, children }) {
   return (
@@ -423,15 +452,16 @@ function SearchDropdown({ children }) {
   )
 }
 
-function SearchDropdownItem({ label, sublabel, disabled, onClick }: {
-  label: string; sublabel?: string; disabled?: boolean; onClick: () => void
+function SearchDropdownItem({ label, sublabel, pictureUrl, disabled, onClick }: {
+  label: string; sublabel?: string; pictureUrl?: string | null; disabled?: boolean; onClick: () => void
 }) {
+  const initials = label ? label.trim().split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase() : '?'
   return (
     <button
       type='button'
       onClick={onClick}
       disabled={disabled}
-      className='w-full text-left px-3 py-2.5 cursor-pointer'
+      className='w-full text-left px-3 py-2 cursor-pointer flex items-center gap-3'
       style={{
         background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
         color: disabled ? 'var(--muted)' : 'var(--text)', fontFamily: 'var(--sans)',
@@ -440,8 +470,17 @@ function SearchDropdownItem({ label, sublabel, disabled, onClick }: {
       onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--bg2)' }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
     >
-      <div className='text-sm font-semibold truncate'>{label}</div>
-      {sublabel && <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>{sublabel}</div>}
+      {/* Avatar */}
+      <div className='shrink-0' style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {pictureUrl
+          ? <img src={pictureUrl} alt={label} width={32} height={32} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+          : <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+        }
+      </div>
+      <div className='min-w-0'>
+        <div className='text-sm font-semibold truncate'>{label}</div>
+        {sublabel && <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 1 }}>{sublabel}</div>}
+      </div>
     </button>
   )
 }
