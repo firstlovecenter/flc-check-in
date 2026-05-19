@@ -103,7 +103,7 @@ create table if not exists public.checkin_events (
   status                      text not null default 'ACTIVE'
     check (status in ('ACTIVE', 'PAUSED', 'ENDED')),
   scope_level                 text not null
-    check (scope_level in ('bacenta','governorship','council','stream','campus','oversight','denomination')),
+    check (scope_level in ('bacenta','governorship','council','stream','campus','oversight','denomination','special_group')),
   scope_church_id             text not null,
   scope_church_name           text not null,
   venue_name                  text,

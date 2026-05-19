@@ -41,7 +41,7 @@ export default function CreateEventForm() {
   // Superadmin group mode — pick a saved special group.
   const [groups, setGroups] = useState<SpecialGroup[]>([])
   const [groupsLoading, setGroupsLoading] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
 
   const [name, setName] = useState('')
   const [venueName, setVenueName] = useState('')
@@ -121,19 +121,20 @@ export default function CreateEventForm() {
   const selectedScope = useMemo<AdminScope | null>(() => {
     if (isSuperAdmin) {
       if (superMode === 'churches') return superScopes[0] || null
-      // group mode — use denomination as the DB anchor scope
-      const denomId = user.denomination?.id
-      if (!denomId) return null
+      // group mode — use special_group sentinel scope so the event is invisible
+      // to regular admins (their scope filter never generates a special_group clause).
+      const selectedGroups = groups.filter((g) => selectedGroupIds.includes(g.id))
+      if (selectedGroups.length === 0) return null
       return {
-        level: 'denomination',
-        id: denomId,
-        name: user.denomination?.name || 'Denomination',
+        level: 'special_group',
+        id: selectedGroupIds.join(','),
+        name: selectedGroups.map((g) => g.name).join(', '),
       }
     }
     if (!scopeId) return null
     const [level, id] = scopeId.split(':')
     return scopes.find((s) => s.level === level && s.id === id) || null
-  }, [isSuperAdmin, superMode, superScopes, scopeId, scopes, user.denomination?.id])
+  }, [isSuperAdmin, superMode, superScopes, selectedGroupIds, groups, scopeId, scopes])
 
   // Roles available for this scope = leadership levels strictly below it.
   const availableRoles = useMemo(
@@ -175,11 +176,8 @@ export default function CreateEventForm() {
     if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) {
       setError('Add at least one church scope.'); return
     }
-    if (isSuperAdmin && superMode === 'group' && !selectedGroupId) {
-      setError('Select a group.'); return
-    }
-    if (isSuperAdmin && superMode === 'group' && !selectedScope) {
-      setError('No denomination ID found in your account. Contact support.'); return
+    if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) {
+      setError('Select at least one group.'); return
     }
     if (!isSuperAdmin && !selectedScope) { setError('No admin scope.'); return }
     if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
@@ -229,10 +227,14 @@ export default function CreateEventForm() {
               let memberIds: string[] = []
               let profileRows: any[] = []
 
-              if (isSuperAdmin && superMode === 'group' && selectedGroupId) {
-                // Group mode: fetch the group's member list and snapshot those IDs.
-                const groupMembers = await listSpecialGroupMembers(selectedGroupId)
-                memberIds = groupMembers.map((m) => m.member_id)
+              if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0) {
+                // Group mode: union members across all selected groups, deduplicated.
+                const results = await Promise.all(selectedGroupIds.map(listSpecialGroupMembers))
+                const seen = new Set<string>()
+                memberIds = results.flat().filter((m) => {
+                  if (seen.has(m.member_id)) return false
+                  seen.add(m.member_id); return true
+                }).map((m) => m.member_id)
               } else {
                 // Church scopes: union members from all selected scopes.
                 const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
@@ -384,33 +386,42 @@ export default function CreateEventForm() {
                 {!groupsLoading && groups.length > 0 && (
                   <>
                     <p className='text-xs' style={{ color: 'var(--muted)' }}>
-                      Pick a saved group — all its members will be in scope for this meeting.
+                      Select one or more groups — members from all selected groups will be in scope.
                     </p>
                     <div className='flex flex-col gap-1.5'>
-                      {groups.map((g) => (
-                        <button
-                          key={g.id}
-                          type='button'
-                          onClick={() => setSelectedGroupId(g.id)}
-                          className='w-full text-left px-3 py-2.5 cursor-pointer flex items-center justify-between gap-3'
-                          style={{
-                            background: selectedGroupId === g.id ? 'var(--cta-bg)' : 'var(--bg2)',
-                            border: `1.5px solid ${selectedGroupId === g.id ? 'var(--accent)' : 'var(--border)'}`,
-                            borderRadius: 'var(--radius-btn)',
-                            color: selectedGroupId === g.id ? 'var(--cta-text)' : 'var(--text)',
-                          }}
-                        >
-                          <div className='min-w-0'>
-                            <p className='text-sm font-semibold m-0 truncate'>{g.name}</p>
-                            {g.description && (
-                              <p className='text-xs m-0 mt-0.5 truncate' style={{ color: selectedGroupId === g.id ? 'var(--cta-text)' : 'var(--muted)', opacity: 0.8 }}>{g.description}</p>
+                      {groups.map((g) => {
+                        const selected = selectedGroupIds.includes(g.id)
+                        return (
+                          <button
+                            key={g.id}
+                            type='button'
+                            onClick={() => setSelectedGroupIds((prev) =>
+                              prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id]
                             )}
-                          </div>
-                          <span className='shrink-0 text-xs font-semibold px-2 py-0.5' style={{ background: 'rgba(0,0,0,0.15)', borderRadius: 'var(--radius-pill)' }}>
-                            {g.member_count ?? 0}
-                          </span>
-                        </button>
-                      ))}
+                            className='w-full text-left px-3 py-2.5 cursor-pointer flex items-center gap-3'
+                            style={{
+                              background: selected ? 'var(--cta-bg)' : 'var(--bg2)',
+                              border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                              borderRadius: 'var(--radius-btn)',
+                              color: selected ? 'var(--cta-text)' : 'var(--text)',
+                            }}
+                          >
+                            {/* Checkbox indicator */}
+                            <div className='shrink-0' style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${selected ? 'var(--cta-text)' : 'var(--border)'}`, background: selected ? 'var(--cta-text)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {selected && <svg viewBox='0 0 10 8' width='10' height='8' fill='none'><path d='M1 4l3 3 5-6' stroke='var(--cta-bg)' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round'/></svg>}
+                            </div>
+                            <div className='min-w-0 flex-1'>
+                              <p className='text-sm font-semibold m-0 truncate'>{g.name}</p>
+                              {g.description && (
+                                <p className='text-xs m-0 mt-0.5 truncate' style={{ color: selected ? 'var(--cta-text)' : 'var(--muted)', opacity: 0.8 }}>{g.description}</p>
+                              )}
+                            </div>
+                            <span className='shrink-0 text-xs font-semibold px-2 py-0.5' style={{ background: 'rgba(0,0,0,0.15)', borderRadius: 'var(--radius-pill)' }}>
+                              {g.member_count ?? 0}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </>
                 )}
@@ -548,7 +559,7 @@ export default function CreateEventForm() {
         disabled={
           submitting ||
           (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) ||
-          (isSuperAdmin && superMode === 'group' && (!selectedGroupId || !selectedScope)) ||
+          (isSuperAdmin && superMode === 'group' && (selectedGroupIds.length === 0 || !selectedScope)) ||
           (!isSuperAdmin && !selectedScope)
         }
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'

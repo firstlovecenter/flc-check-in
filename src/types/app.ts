@@ -14,6 +14,7 @@ export const SCOPE_LEVELS = [
   'campus',
   'oversight',
   'denomination',
+  'special_group',
 ] as const
 export type ScopeLevel = typeof SCOPE_LEVELS[number]
 
