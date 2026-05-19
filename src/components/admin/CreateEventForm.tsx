@@ -3,16 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser, formatName } from '../../utils/auth'
-import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
+import {
+  createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles,
+  listSpecialGroups, listSpecialGroupMembers, type SpecialGroup,
+} from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
   resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
-  searchChurches, searchMembersByName, type ChurchSearchResult,
+  searchChurches, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 
 interface AdminScope { level: string; id: string; name: string }
-interface SpecificPerson { id: string; name: string; role?: string }
 
 const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 
@@ -26,8 +28,8 @@ export default function CreateEventForm() {
   const [scopesError, setScopesError] = useState<string | null>(null)
 
   // Superadmin scope mode: 'churches' = one or more church scopes,
-  // 'people' = hand-picked specific individuals.
-  const [superMode, setSuperMode] = useState<'churches' | 'people'>('churches')
+  // 'group' = a saved special group.
+  const [superMode, setSuperMode] = useState<'churches' | 'group'>('churches')
 
   // Superadmin church search state — supports adding multiple scopes.
   const [superSearch, setSuperSearch] = useState('')
@@ -36,11 +38,10 @@ export default function CreateEventForm() {
   // Selected church scopes (multiple allowed).
   const [superScopes, setSuperScopes] = useState<AdminScope[]>([])
 
-  // Superadmin people search state — hand-pick specific members.
-  const [peopleSearch, setPeopleSearch] = useState('')
-  const [peopleResults, setPeopleResults] = useState<any[]>([])
-  const [peopleSearching, setPeopleSearching] = useState(false)
-  const [specificPeople, setSpecificPeople] = useState<SpecificPerson[]>([])
+  // Superadmin group mode — pick a saved special group.
+  const [groups, setGroups] = useState<SpecialGroup[]>([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
 
   const [name, setName] = useState('')
   const [venueName, setVenueName] = useState('')
@@ -103,34 +104,24 @@ export default function CreateEventForm() {
     return () => { cancelled = true; clearTimeout(t) }
   }, [superSearch, isSuperAdmin, superMode])
 
-  // Debounced people search for superadmins (people mode).
+  // Load groups when superadmin switches to group mode.
   useEffect(() => {
-    if (!isSuperAdmin || superMode !== 'people') return
-    const q = peopleSearch.trim()
-    if (q.length < 2) { setPeopleResults([]); return }
-    let cancelled = false
-    setPeopleSearching(true)
-    const t = setTimeout(async () => {
-      try {
-        const results = await searchMembersByName(q, 10)
-        if (!cancelled) setPeopleResults(results)
-      } catch {
-        if (!cancelled) setPeopleResults([])
-      } finally {
-        if (!cancelled) setPeopleSearching(false)
-      }
-    }, 300)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [peopleSearch, isSuperAdmin, superMode])
+    if (!isSuperAdmin || superMode !== 'group') return
+    setGroupsLoading(true)
+    listSpecialGroups()
+      .then(setGroups)
+      .catch(() => setGroups([]))
+      .finally(() => setGroupsLoading(false))
+  }, [isSuperAdmin, superMode])
 
   // The "primary" scope used for roles display and event creation anchor.
   // For superadmin churches mode: first selected scope.
-  // For superadmin people mode: denomination from user's JWT (anchor scope for DB).
+  // For superadmin group mode: denomination from user's JWT (anchor for DB row).
   // For regular admin: derived from scopeId / scopes list.
   const selectedScope = useMemo<AdminScope | null>(() => {
     if (isSuperAdmin) {
       if (superMode === 'churches') return superScopes[0] || null
-      // people mode — use the denomination from JWT as DB anchor scope
+      // group mode — use denomination as the DB anchor scope
       const denomId = user.denomination?.id
       if (!denomId) return null
       return {
@@ -147,9 +138,8 @@ export default function CreateEventForm() {
   // Roles available for this scope = leadership levels strictly below it.
   const availableRoles = useMemo(
     () => {
-      if (isSuperAdmin && superMode === 'people') {
-        // For specific-people events, show all roles so the admin can restrict
-        // if desired. Default will be all checked below.
+      if (isSuperAdmin && superMode === 'group') {
+        // Group events span any level — expose all roles so the admin can restrict.
         return allowedRolesForScope('denomination')
       }
       return selectedScope ? allowedRolesForScope(selectedScope.level) : []
@@ -178,18 +168,6 @@ export default function CreateEventForm() {
     setSuperScopes((prev) => prev.filter((s) => `${s.level}:${s.id}` !== key))
   }
 
-  function addPerson(m: any) {
-    const fullName = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
-    if (specificPeople.some((p) => p.id === m.id)) return
-    setSpecificPeople((prev) => [...prev, { id: m.id, name: fullName }])
-    setPeopleSearch('')
-    setPeopleResults([])
-  }
-
-  function removePerson(id: string) {
-    setSpecificPeople((prev) => prev.filter((p) => p.id !== id))
-  }
-
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
@@ -197,10 +175,10 @@ export default function CreateEventForm() {
     if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) {
       setError('Add at least one church scope.'); return
     }
-    if (isSuperAdmin && superMode === 'people' && specificPeople.length === 0) {
-      setError('Add at least one person.'); return
+    if (isSuperAdmin && superMode === 'group' && !selectedGroupId) {
+      setError('Select a group.'); return
     }
-    if (isSuperAdmin && superMode === 'people' && !selectedScope) {
+    if (isSuperAdmin && superMode === 'group' && !selectedScope) {
       setError('No denomination ID found in your account. Contact support.'); return
     }
     if (!isSuperAdmin && !selectedScope) { setError('No admin scope.'); return }
@@ -251,9 +229,10 @@ export default function CreateEventForm() {
               let memberIds: string[] = []
               let profileRows: any[] = []
 
-              if (isSuperAdmin && superMode === 'people') {
-                // Specific people: snapshot exactly the selected IDs.
-                memberIds = specificPeople.map((p) => p.id)
+              if (isSuperAdmin && superMode === 'group' && selectedGroupId) {
+                // Group mode: fetch the group's member list and snapshot those IDs.
+                const groupMembers = await listSpecialGroupMembers(selectedGroupId)
+                memberIds = groupMembers.map((m) => m.member_id)
               } else {
                 // Church scopes: union members from all selected scopes.
                 const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
@@ -324,13 +303,13 @@ export default function CreateEventForm() {
         {scopesLoading && <Spinner />}
         {scopesError && <p className='text-sm' style={{ color: 'var(--coral)' }}>{scopesError}</p>}
 
-        {/* Superadmin: multi-scope church picker OR specific-people picker. */}
+        {/* Superadmin: multi-scope church picker OR saved group. */}
         {isSuperAdmin && (
           <div className='flex flex-col gap-3'>
             {/* Mode toggle */}
             <div className='flex gap-2'>
               <Pill active={superMode === 'churches'} onClick={() => setSuperMode('churches')}>Church scopes</Pill>
-              <Pill active={superMode === 'people'} onClick={() => setSuperMode('people')}>Specific people</Pill>
+              <Pill active={superMode === 'group'} onClick={() => setSuperMode('group')}>Special group</Pill>
             </div>
 
             {superMode === 'churches' && (
@@ -394,66 +373,47 @@ export default function CreateEventForm() {
               </div>
             )}
 
-            {superMode === 'people' && (
+            {superMode === 'group' && (
               <div className='flex flex-col gap-2'>
-                <p className='text-xs' style={{ color: 'var(--muted)' }}>
-                  Search and add the specific people who should be in scope for this meeting.
-                </p>
-                {/* Selected people chips */}
-                {specificPeople.length > 0 && (
-                  <div className='flex flex-wrap gap-1.5'>
-                    {specificPeople.map((p) => (
-                      <span
-                        key={p.id}
-                        className='flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold'
-                        style={{ background: 'var(--cta-bg)', color: 'var(--cta-text)', borderRadius: 'var(--radius-pill)', border: '1.5px solid var(--border)' }}
-                      >
-                        {p.name}
-                        <button
-                          type='button'
-                          onClick={() => removePerson(p.id)}
-                          className='cursor-pointer ml-0.5 opacity-70 hover:opacity-100'
-                          style={{ background: 'none', border: 'none', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
-                          aria-label={`Remove ${p.name}`}
-                        >×</button>
-                      </span>
-                    ))}
-                  </div>
+                {groupsLoading && <Spinner />}
+                {!groupsLoading && groups.length === 0 && (
+                  <p className='text-xs' style={{ color: 'var(--muted)' }}>
+                    No groups yet. Create one from the Special Groups page first.
+                  </p>
                 )}
-                {/* People search */}
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type='text'
-                    value={peopleSearch}
-                    onChange={(e) => setPeopleSearch(e.target.value)}
-                    placeholder='Search by name…'
-                    className='input-field'
-                    autoComplete='off'
-                  />
-                  {peopleSearching && (
-                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
-                  )}
-                  {peopleResults.length > 0 && (
-                    <SearchDropdown>
-                      {peopleResults.map((m) => {
-                        const fullName = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
-                        const already = specificPeople.some((p) => p.id === m.id)
-                        return (
-                          <SearchDropdownItem
-                            key={m.id}
-                            label={fullName}
-                            sublabel={m.phoneNumber || m.email || ''}
-                            disabled={already}
-                            onClick={() => addPerson(m)}
-                          />
-                        )
-                      })}
-                    </SearchDropdown>
-                  )}
-                  {!peopleSearching && peopleSearch.trim().length >= 2 && peopleResults.length === 0 && (
-                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
-                  )}
-                </div>
+                {!groupsLoading && groups.length > 0 && (
+                  <>
+                    <p className='text-xs' style={{ color: 'var(--muted)' }}>
+                      Pick a saved group — all its members will be in scope for this meeting.
+                    </p>
+                    <div className='flex flex-col gap-1.5'>
+                      {groups.map((g) => (
+                        <button
+                          key={g.id}
+                          type='button'
+                          onClick={() => setSelectedGroupId(g.id)}
+                          className='w-full text-left px-3 py-2.5 cursor-pointer flex items-center justify-between gap-3'
+                          style={{
+                            background: selectedGroupId === g.id ? 'var(--cta-bg)' : 'var(--bg2)',
+                            border: `1.5px solid ${selectedGroupId === g.id ? 'var(--accent)' : 'var(--border)'}`,
+                            borderRadius: 'var(--radius-btn)',
+                            color: selectedGroupId === g.id ? 'var(--cta-text)' : 'var(--text)',
+                          }}
+                        >
+                          <div className='min-w-0'>
+                            <p className='text-sm font-semibold m-0 truncate'>{g.name}</p>
+                            {g.description && (
+                              <p className='text-xs m-0 mt-0.5 truncate' style={{ color: selectedGroupId === g.id ? 'var(--cta-text)' : 'var(--muted)', opacity: 0.8 }}>{g.description}</p>
+                            )}
+                          </div>
+                          <span className='shrink-0 text-xs font-semibold px-2 py-0.5' style={{ background: 'rgba(0,0,0,0.15)', borderRadius: 'var(--radius-pill)' }}>
+                            {g.member_count ?? 0}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -588,7 +548,7 @@ export default function CreateEventForm() {
         disabled={
           submitting ||
           (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) ||
-          (isSuperAdmin && superMode === 'people' && (specificPeople.length === 0 || !selectedScope)) ||
+          (isSuperAdmin && superMode === 'group' && (!selectedGroupId || !selectedScope)) ||
           (!isSuperAdmin && !selectedScope)
         }
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'

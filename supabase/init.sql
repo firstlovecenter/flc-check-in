@@ -249,9 +249,36 @@ create table if not exists public.audit_log (
 create index if not exists audit_log_event_idx on public.audit_log(event_id, created_at desc);
 
 
+-- ─── special_groups ──────────────────────────────────────────────────────────
+-- Named cross-scope groups managed by superadmins. A group is a reusable list
+-- of member IDs that cuts across the church hierarchy — used for special
+-- meetings that don't map to a single council/stream/campus scope.
+create table if not exists public.special_groups (
+  id           uuid        primary key default gen_random_uuid(),
+  name         text        not null,
+  description  text,
+  created_by   text        not null,  -- member graph ID of creating superadmin
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create table if not exists public.special_group_members (
+  group_id    uuid  not null references public.special_groups(id) on delete cascade,
+  member_id   text  not null,          -- stable FLC graph ID
+  member_name text,                    -- cached display name
+  added_at    timestamptz not null default now(),
+  primary key (group_id, member_id)
+);
+
+create index if not exists special_group_members_group_idx  on public.special_group_members (group_id);
+create index if not exists special_group_members_member_idx on public.special_group_members (member_id);
+
+
 -- ─── RLS enabled with minimum-required policies ─────────────────────────────
 -- checkin_attempts, checkin_devices, face_match_claims have no policy
 -- (deny-all for direct access) — they are only written via security-definer RPCs.
+alter table public.special_groups        enable row level security;
+alter table public.special_group_members enable row level security;
 alter table public.member_profiles   enable row level security;
 alter table public.checkin_events    enable row level security;
 alter table public.checkin_records   enable row level security;
@@ -267,6 +294,8 @@ create policy "anon_all_member_profiles"       on public.member_profiles       f
 create policy "anon_all_checkin_events"        on public.checkin_events        for all to anon using (true) with check (true);
 create policy "anon_all_checkin_records"       on public.checkin_records       for all to anon using (true) with check (true);
 create policy "anon_all_event_scope_members"   on public.event_scope_members   for all to anon using (true) with check (true);
+create policy "anon_all_special_groups"        on public.special_groups        for all to anon using (true) with check (true);
+create policy "anon_all_special_group_members" on public.special_group_members for all to anon using (true) with check (true);
 create policy "anon_all_absence_notes"         on public.absence_notes         for all to anon using (true) with check (true);
 create policy "anon_insert_audit_log"          on public.audit_log             for insert to anon with check (true);
 create policy "anon_read_audit_log"            on public.audit_log             for select to anon using (true);

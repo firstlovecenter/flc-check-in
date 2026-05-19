@@ -24,6 +24,7 @@ const MemberBiometricsScreen = lazy(() => import('./screens/admin/MemberBiometri
 const MemberDetailScreen     = lazy(() => import('./screens/admin/MemberDetailScreen'))
 const SyncMembersScreen      = lazy(() => import('./screens/admin/SyncMembersScreen'))
 const MemberSearchScreen     = lazy(() => import('./screens/admin/MemberSearchScreen'))
+const SpecialGroupsScreen    = lazy(() => import('./screens/admin/SpecialGroupsScreen'))
 const ForgotPasswordScreen   = lazy(() => import('./screens/ForgotPasswordScreen'))
 const ResetPasswordScreen    = lazy(() => import('./screens/ResetPasswordScreen'))
 const ProfileScreen          = lazy(() => import('./screens/ProfileScreen'))
@@ -84,6 +85,7 @@ export default function App() {
         <Route path='/admin/members' element={<RequireAuth><MemberSearchScreen /></RequireAuth>} />
         <Route path='/admin/members/:memberId' element={<RequireAuth><MemberDetailScreen /></RequireAuth>} />
         <Route path='/admin/sync-members' element={<RequireAuth><SyncMembersScreen /></RequireAuth>} />
+        <Route path='/admin/groups' element={<RequireAuth><SpecialGroupsScreen /></RequireAuth>} />
 
         {/* Old /admin/events/:id/* URLs redirect to /events/:id/* */}
         <Route path='/admin/events/:eventId' element={<RedirectAdminEvent />} />

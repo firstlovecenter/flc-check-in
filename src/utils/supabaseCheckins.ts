@@ -1066,3 +1066,137 @@ function mapEventRow(row) {
       : row.status
   return { ...row, status, qr_secret_hex: qrSecretHex }
 }
+
+
+// ─── Special Groups ───────────────────────────────────────────────────────────
+// Cross-scope groups of members managed by superadmins. Used for special
+// meetings that span multiple church scopes without following the hierarchy.
+
+export interface SpecialGroup {
+  id: string
+  name: string
+  description: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  member_count?: number
+}
+
+export interface SpecialGroupMember {
+  group_id: string
+  member_id: string
+  member_name: string | null
+  added_at: string
+}
+
+export async function listSpecialGroups(): Promise<SpecialGroup[]> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .select('id, name, description, created_by, created_at, updated_at')
+    .order('name', { ascending: true })
+  if (error) throw error
+  // Attach member counts via a second query (Supabase doesn't support
+  // COUNT in select without an RPC, so we do a lightweight aggregate).
+  const groups = data || []
+  if (!groups.length) return []
+  const ids = groups.map((g) => g.id)
+  const { data: counts, error: ce } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .in('group_id', ids)
+  if (ce) throw ce
+  const countMap = new Map<string, number>()
+  for (const row of counts || []) {
+    countMap.set(row.group_id, (countMap.get(row.group_id) ?? 0) + 1)
+  }
+  return groups.map((g) => ({ ...g, member_count: countMap.get(g.id) ?? 0 }))
+}
+
+export async function getSpecialGroup(groupId: string): Promise<SpecialGroup | null> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .select('*')
+    .eq('id', groupId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function createSpecialGroup(input: {
+  name: string
+  description?: string
+  createdBy: string
+}): Promise<SpecialGroup> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .insert({
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      created_by: input.createdBy,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSpecialGroup(groupId: string, input: {
+  name: string
+  description?: string
+}): Promise<void> {
+  const { error } = await supabase
+    .from('special_groups')
+    .update({
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', groupId)
+  if (error) throw error
+}
+
+export async function deleteSpecialGroup(groupId: string): Promise<void> {
+  const { error } = await supabase
+    .from('special_groups')
+    .delete()
+    .eq('id', groupId)
+  if (error) throw error
+}
+
+export async function listSpecialGroupMembers(groupId: string): Promise<SpecialGroupMember[]> {
+  const { data, error } = await supabase
+    .from('special_group_members')
+    .select('group_id, member_id, member_name, added_at')
+    .eq('group_id', groupId)
+    .order('member_name', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function addMembersToSpecialGroup(
+  groupId: string,
+  members: { id: string; name: string }[],
+): Promise<void> {
+  if (!members.length) return
+  const rows = members.map((m) => ({
+    group_id: groupId,
+    member_id: m.id,
+    member_name: m.name,
+  }))
+  const { error } = await supabase
+    .from('special_group_members')
+    .upsert(rows, { onConflict: 'group_id,member_id' })
+  if (error) throw error
+}
+
+export async function removeMemberFromSpecialGroup(
+  groupId: string,
+  memberId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('special_group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('member_id', memberId)
+  if (error) throw error
+}
