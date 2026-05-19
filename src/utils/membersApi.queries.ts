@@ -482,19 +482,20 @@ export const CHILD_LIST_QUERIES = {
 // ─── SEARCH_CHURCHES ─────────────────────────────────────────────────────
 // Used by the superadmin's "create event for any church" picker. Runs one
 // filtered list per level in a single GraphQL document; client filters out
-// empty arrays and tags each result with its level. name_CONTAINS_INSENSITIVE
-// is a Neo4j-GraphQL operator → case-insensitive substring match.
+// empty arrays and tags each result with its level.
+// Uses OR of _CONTAINS (title-case) + _CONTAINS (lowercase) because the
+// schema only exposes case-sensitive _CONTAINS (not _CONTAINS_INSENSITIVE).
 // We don't include bacentas because superadmin event creation typically
 // targets council level and above; opening that list would also balloon
 // the response (~1700 rows on prod).
 export const SEARCH_CHURCHES = gql`
-  query SearchChurches($q: String!, $limit: Int!) {
-    denominations(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
-    oversights(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
-    campuses(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
-    streams(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
-    councils(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
-    governorships(where: { name_CONTAINS_INSENSITIVE: $q }, limit: $limit) { id name }
+  query SearchChurches($q: String!, $qLower: String!, $limit: Int!) {
+    denominations(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    oversights(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    campuses(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    streams(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    councils(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    governorships(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
   }
 `
 

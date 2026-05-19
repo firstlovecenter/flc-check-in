@@ -7,11 +7,12 @@ import { createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles } from
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
   resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
-  searchChurches, type ChurchSearchResult,
+  searchChurches, searchMembersByName, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 
 interface AdminScope { level: string; id: string; name: string }
+interface SpecificPerson { id: string; name: string; role?: string }
 
 const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
 
@@ -24,12 +25,22 @@ export default function CreateEventForm() {
   const [scopesLoading, setScopesLoading] = useState(true)
   const [scopesError, setScopesError] = useState<string | null>(null)
 
-  // Superadmin search-picker state. Superadmins can create events for any
-  // church in the denomination, not just their own admin scopes.
+  // Superadmin scope mode: 'churches' = one or more church scopes,
+  // 'people' = hand-picked specific individuals.
+  const [superMode, setSuperMode] = useState<'churches' | 'people'>('churches')
+
+  // Superadmin church search state — supports adding multiple scopes.
   const [superSearch, setSuperSearch] = useState('')
   const [superResults, setSuperResults] = useState<ChurchSearchResult[]>([])
   const [superSearching, setSuperSearching] = useState(false)
-  const [superSelected, setSuperSelected] = useState<AdminScope | null>(null)
+  // Selected church scopes (multiple allowed).
+  const [superScopes, setSuperScopes] = useState<AdminScope[]>([])
+
+  // Superadmin people search state — hand-pick specific members.
+  const [peopleSearch, setPeopleSearch] = useState('')
+  const [peopleResults, setPeopleResults] = useState<any[]>([])
+  const [peopleSearching, setPeopleSearching] = useState(false)
+  const [specificPeople, setSpecificPeople] = useState<SpecificPerson[]>([])
 
   const [name, setName] = useState('')
   const [venueName, setVenueName] = useState('')
@@ -72,16 +83,16 @@ export default function CreateEventForm() {
     return () => { cancelled = true }
   }, [user.userId, isSuperAdmin])
 
-  // Debounced church search for superadmins.
+  // Debounced church search for superadmins (churches mode).
   useEffect(() => {
-    if (!isSuperAdmin) return
+    if (!isSuperAdmin || superMode !== 'churches') return
     const q = superSearch.trim()
     if (q.length < 2) { setSuperResults([]); return }
     let cancelled = false
     setSuperSearching(true)
     const t = setTimeout(async () => {
       try {
-        const results = await searchChurches(q, 8)
+        const results = await searchChurches(q, 10)
         if (!cancelled) setSuperResults(results)
       } catch {
         if (!cancelled) setSuperResults([])
@@ -90,24 +101,63 @@ export default function CreateEventForm() {
       }
     }, 300)
     return () => { cancelled = true; clearTimeout(t) }
-  }, [superSearch, isSuperAdmin])
+  }, [superSearch, isSuperAdmin, superMode])
 
-  const selectedScope = useMemo(() => {
-    // Superadmin: their picker's selection wins.
-    if (isSuperAdmin) return superSelected
+  // Debounced people search for superadmins (people mode).
+  useEffect(() => {
+    if (!isSuperAdmin || superMode !== 'people') return
+    const q = peopleSearch.trim()
+    if (q.length < 2) { setPeopleResults([]); return }
+    let cancelled = false
+    setPeopleSearching(true)
+    const t = setTimeout(async () => {
+      try {
+        const results = await searchMembersByName(q, 10)
+        if (!cancelled) setPeopleResults(results)
+      } catch {
+        if (!cancelled) setPeopleResults([])
+      } finally {
+        if (!cancelled) setPeopleSearching(false)
+      }
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [peopleSearch, isSuperAdmin, superMode])
+
+  // The "primary" scope used for roles display and event creation anchor.
+  // For superadmin churches mode: first selected scope.
+  // For superadmin people mode: denomination from user's JWT (anchor scope for DB).
+  // For regular admin: derived from scopeId / scopes list.
+  const selectedScope = useMemo<AdminScope | null>(() => {
+    if (isSuperAdmin) {
+      if (superMode === 'churches') return superScopes[0] || null
+      // people mode — use the denomination from JWT as DB anchor scope
+      const denomId = user.denomination?.id
+      if (!denomId) return null
+      return {
+        level: 'denomination',
+        id: denomId,
+        name: user.denomination?.name || 'Denomination',
+      }
+    }
     if (!scopeId) return null
     const [level, id] = scopeId.split(':')
     return scopes.find((s) => s.level === level && s.id === id) || null
-  }, [isSuperAdmin, superSelected, scopeId, scopes])
+  }, [isSuperAdmin, superMode, superScopes, scopeId, scopes, user.denomination?.id])
 
   // Roles available for this scope = leadership levels strictly below it.
   const availableRoles = useMemo(
-    () => (selectedScope ? allowedRolesForScope(selectedScope.level) : []),
-    [selectedScope]
+    () => {
+      if (isSuperAdmin && superMode === 'people') {
+        // For specific-people events, show all roles so the admin can restrict
+        // if desired. Default will be all checked below.
+        return allowedRolesForScope('denomination')
+      }
+      return selectedScope ? allowedRolesForScope(selectedScope.level) : []
+    },
+    [selectedScope, isSuperAdmin, superMode]
   )
 
-  // When the scope changes, reset the role selection to "all eligible roles
-  // checked." Avoids showing roles from a previous scope.
+  // When the scope changes, reset the role selection to "all eligible roles checked."
   useEffect(() => {
     setRoles(availableRoles)
   }, [availableRoles.join(',')]) // eslint-disable-line
@@ -116,10 +166,44 @@ export default function CreateEventForm() {
     setter(current.includes(value) ? current.filter((v) => v !== value) : [...current, value])
   }
 
+  function addSuperScope(r: ChurchSearchResult) {
+    const key = `${r.level}:${r.id}`
+    if (superScopes.some((s) => `${s.level}:${s.id}` === key)) return
+    setSuperScopes((prev) => [...prev, { level: r.level, id: r.id, name: r.name }])
+    setSuperSearch('')
+    setSuperResults([])
+  }
+
+  function removeSuperScope(key: string) {
+    setSuperScopes((prev) => prev.filter((s) => `${s.level}:${s.id}` !== key))
+  }
+
+  function addPerson(m: any) {
+    const fullName = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
+    if (specificPeople.some((p) => p.id === m.id)) return
+    setSpecificPeople((prev) => [...prev, { id: m.id, name: fullName }])
+    setPeopleSearch('')
+    setPeopleResults([])
+  }
+
+  function removePerson(id: string) {
+    setSpecificPeople((prev) => prev.filter((p) => p.id !== id))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    if (!selectedScope) { setError('No admin scope.'); return }
+
+    if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) {
+      setError('Add at least one church scope.'); return
+    }
+    if (isSuperAdmin && superMode === 'people' && specificPeople.length === 0) {
+      setError('Add at least one person.'); return
+    }
+    if (isSuperAdmin && superMode === 'people' && !selectedScope) {
+      setError('No denomination ID found in your account. Contact support.'); return
+    }
+    if (!isSuperAdmin && !selectedScope) { setError('No admin scope.'); return }
     if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
     if (roles.length === 0) { setError('Pick at least one allowed role.'); return }
     if (geofence.type === 'polygon') {
@@ -127,6 +211,12 @@ export default function CreateEventForm() {
         setError('Polygon needs at least 3 vertices.'); return
       }
     }
+
+    // Determine the DB anchor scope.
+    // Multi-church: use first scope as anchor; snapshot will union all.
+    // People mode: denomination anchor; snapshot seeded with specific IDs.
+    const anchorScope = selectedScope!
+
     setSubmitting(true)
     try {
       const occurrences = buildOccurrences(startsAt, endsAt, recurrencePattern, Number(recurrenceCount))
@@ -138,9 +228,9 @@ export default function CreateEventForm() {
         const { eventId } = await createEvent({
           name,
           venueName: venueName.trim() || null,
-          scopeLevel: selectedScope.level,
-          scopeChurchId: selectedScope.id,
-          scopeChurchName: selectedScope.name,
+          scopeLevel: anchorScope.level,
+          scopeChurchId: anchorScope.id,
+          scopeChurchName: anchorScope.name,
           startsAt: occurrences[i].startsAt,
           endsAt: occurrences[i].endsAt,
           gracePeriodMin: Number(gracePeriodMin),
@@ -158,10 +248,33 @@ export default function CreateEventForm() {
           // Snapshot scope members only for the first occurrence.
           ;(async () => {
             try {
-              const scopeMembers = await getMembersInScope({ level: selectedScope.level, churchId: selectedScope.id })
-              const rows = scopeMembers.map(memberToProfileRow)
-              const ids = rows.map((r: any) => r.id).filter(Boolean)
-              await Promise.all([snapshotEventScopeMembers(eventId, ids), bulkUpsertMemberProfiles(rows)])
+              let memberIds: string[] = []
+              let profileRows: any[] = []
+
+              if (isSuperAdmin && superMode === 'people') {
+                // Specific people: snapshot exactly the selected IDs.
+                memberIds = specificPeople.map((p) => p.id)
+              } else {
+                // Church scopes: union members from all selected scopes.
+                const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
+                const results = await Promise.all(
+                  scopesToFetch.map((s) => getMembersInScope({ level: s.level, churchId: s.id }))
+                )
+                const allMembers = results.flat()
+                // Deduplicate by member id.
+                const seen = new Set<string>()
+                const unique = allMembers.filter((m) => {
+                  if (!m?.id || seen.has(m.id)) return false
+                  seen.add(m.id); return true
+                })
+                profileRows = unique.map(memberToProfileRow)
+                memberIds = profileRows.map((r: any) => r.id).filter(Boolean)
+              }
+
+              await Promise.all([
+                snapshotEventScopeMembers(eventId, memberIds),
+                profileRows.length ? bulkUpsertMemberProfiles(profileRows) : Promise.resolve(),
+              ])
             } catch { /* non-critical */ }
           })()
         }
@@ -211,88 +324,136 @@ export default function CreateEventForm() {
         {scopesLoading && <Spinner />}
         {scopesError && <p className='text-sm' style={{ color: 'var(--coral)' }}>{scopesError}</p>}
 
-        {/* Superadmin: search-any-church picker. Superadmins are not bound
-            to their own admin scopes — they can create events for any
-            church in the denomination. */}
+        {/* Superadmin: multi-scope church picker OR specific-people picker. */}
         {isSuperAdmin && (
-          <div className='flex flex-col gap-2'>
-            {superSelected ? (
-              <div
-                className='px-4 py-3 flex items-center justify-between gap-3'
-                style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-              >
-                <div className='min-w-0'>
-                  <p className='eyebrow m-0'>{superSelected.level}</p>
-                  <p className='text-sm font-semibold m-0 mt-0.5 truncate' style={{ color: 'var(--text)' }}>
-                    {superSelected.name}
-                  </p>
-                </div>
-                <button
-                  type='button'
-                  onClick={() => { setSuperSelected(null); setSuperSearch(''); setSuperResults([]) }}
-                  className='text-xs px-2.5 py-1 cursor-pointer shrink-0'
-                  style={{ background: 'transparent', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)' }}
-                >Change</button>
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <input
-                  type='text'
-                  value={superSearch}
-                  onChange={(e) => setSuperSearch(e.target.value)}
-                  placeholder='🔍 Search any church (council, stream, campus, oversight, denomination)…'
-                  className='input-field'
-                  autoComplete='off'
-                />
-                {superSearching && (
-                  <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
-                )}
-                {superResults.length > 0 && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 'calc(100% + 4px)',
-                      left: 0, right: 0,
-                      zIndex: 100,
-                      background: 'var(--card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-btn)',
-                      maxHeight: 320,
-                      overflowY: 'auto',
-                      boxShadow: 'var(--shadow-2)',
-                    }}
-                  >
-                    {superResults.map((r) => (
-                      <button
-                        key={`${r.level}:${r.id}`}
-                        type='button'
-                        onClick={() => {
-                          setSuperSelected({ level: r.level, id: r.id, name: r.name })
-                          setSuperResults([])
-                          setSuperSearch('')
-                        }}
-                        className='w-full text-left px-3 py-2.5 cursor-pointer'
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          borderBottom: '1px solid var(--border)',
-                          color: 'var(--text)',
-                          fontFamily: 'var(--sans)',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          <div className='flex flex-col gap-3'>
+            {/* Mode toggle */}
+            <div className='flex gap-2'>
+              <Pill active={superMode === 'churches'} onClick={() => setSuperMode('churches')}>Church scopes</Pill>
+              <Pill active={superMode === 'people'} onClick={() => setSuperMode('people')}>Specific people</Pill>
+            </div>
+
+            {superMode === 'churches' && (
+              <div className='flex flex-col gap-2'>
+                {/* Selected scopes chips */}
+                {superScopes.length > 0 && (
+                  <div className='flex flex-wrap gap-1.5'>
+                    {superScopes.map((s) => (
+                      <span
+                        key={`${s.level}:${s.id}`}
+                        className='flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold'
+                        style={{ background: 'var(--cta-bg)', color: 'var(--cta-text)', borderRadius: 'var(--radius-pill)', border: '1.5px solid var(--border)' }}
                       >
-                        <div className='text-sm font-semibold truncate'>{r.name}</div>
-                        <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>
-                          {r.level}
-                        </div>
-                      </button>
+                        <span className='opacity-70 uppercase tracking-wide' style={{ fontSize: 9 }}>{s.level}</span>
+                        {s.name}
+                        <button
+                          type='button'
+                          onClick={() => removeSuperScope(`${s.level}:${s.id}`)}
+                          className='cursor-pointer ml-0.5 opacity-70 hover:opacity-100'
+                          style={{ background: 'none', border: 'none', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
+                          aria-label={`Remove ${s.name}`}
+                        >×</button>
+                      </span>
                     ))}
                   </div>
                 )}
-                {!superSearching && superSearch.trim().length >= 2 && superResults.length === 0 && (
-                  <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+                {/* Church search */}
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type='text'
+                    value={superSearch}
+                    onChange={(e) => setSuperSearch(e.target.value)}
+                    placeholder='Search council, stream, campus, oversight, denomination…'
+                    className='input-field'
+                    autoComplete='off'
+                  />
+                  {superSearching && (
+                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
+                  )}
+                  {superResults.length > 0 && (
+                    <SearchDropdown>
+                      {superResults.map((r) => {
+                        const key = `${r.level}:${r.id}`
+                        const already = superScopes.some((s) => `${s.level}:${s.id}` === key)
+                        return (
+                          <SearchDropdownItem
+                            key={key}
+                            label={r.name}
+                            sublabel={r.level}
+                            disabled={already}
+                            onClick={() => addSuperScope(r)}
+                          />
+                        )
+                      })}
+                    </SearchDropdown>
+                  )}
+                  {!superSearching && superSearch.trim().length >= 2 && superResults.length === 0 && (
+                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {superMode === 'people' && (
+              <div className='flex flex-col gap-2'>
+                <p className='text-xs' style={{ color: 'var(--muted)' }}>
+                  Search and add the specific people who should be in scope for this meeting.
+                </p>
+                {/* Selected people chips */}
+                {specificPeople.length > 0 && (
+                  <div className='flex flex-wrap gap-1.5'>
+                    {specificPeople.map((p) => (
+                      <span
+                        key={p.id}
+                        className='flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold'
+                        style={{ background: 'var(--cta-bg)', color: 'var(--cta-text)', borderRadius: 'var(--radius-pill)', border: '1.5px solid var(--border)' }}
+                      >
+                        {p.name}
+                        <button
+                          type='button'
+                          onClick={() => removePerson(p.id)}
+                          className='cursor-pointer ml-0.5 opacity-70 hover:opacity-100'
+                          style={{ background: 'none', border: 'none', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
+                          aria-label={`Remove ${p.name}`}
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
                 )}
+                {/* People search */}
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type='text'
+                    value={peopleSearch}
+                    onChange={(e) => setPeopleSearch(e.target.value)}
+                    placeholder='Search by name…'
+                    className='input-field'
+                    autoComplete='off'
+                  />
+                  {peopleSearching && (
+                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
+                  )}
+                  {peopleResults.length > 0 && (
+                    <SearchDropdown>
+                      {peopleResults.map((m) => {
+                        const fullName = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
+                        const already = specificPeople.some((p) => p.id === m.id)
+                        return (
+                          <SearchDropdownItem
+                            key={m.id}
+                            label={fullName}
+                            sublabel={m.phoneNumber || m.email || ''}
+                            disabled={already}
+                            onClick={() => addPerson(m)}
+                          />
+                        )
+                      })}
+                    </SearchDropdown>
+                  )}
+                  {!peopleSearching && peopleSearch.trim().length >= 2 && peopleResults.length === 0 && (
+                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -424,7 +585,12 @@ export default function CreateEventForm() {
 
       <button
         type='submit'
-        disabled={submitting || !selectedScope}
+        disabled={
+          submitting ||
+          (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) ||
+          (isSuperAdmin && superMode === 'people' && (specificPeople.length === 0 || !selectedScope)) ||
+          (!isSuperAdmin && !selectedScope)
+        }
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'
       >
         {submitting
@@ -438,6 +604,54 @@ export default function CreateEventForm() {
 }
 
 const inputStyle = { background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)' }
+
+function SearchDropdown({ children }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: 'calc(100% + 4px)',
+        left: 0, right: 0,
+        zIndex: 100,
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-btn)',
+        maxHeight: 320,
+        overflowY: 'auto',
+        boxShadow: 'var(--shadow-2)',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SearchDropdownItem({ label, sublabel, disabled, onClick }: {
+  label: string; sublabel?: string; disabled?: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      disabled={disabled}
+      className='w-full text-left px-3 py-2.5 cursor-pointer'
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderBottom: '1px solid var(--border)',
+        color: disabled ? 'var(--muted)' : 'var(--text)',
+        fontFamily: 'var(--sans)',
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--bg2)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+    >
+      <div className='text-sm font-semibold truncate'>{label}</div>
+      {sublabel && <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>{sublabel}</div>}
+    </button>
+  )
+}
 
 function Section({ title, children }) {
   return (

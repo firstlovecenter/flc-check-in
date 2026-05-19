@@ -624,8 +624,9 @@ export interface ChurchSearchResult {
 export async function searchChurches(q: string, limit = 8): Promise<ChurchSearchResult[]> {
   const query = (q || '').trim()
   if (query.length < 2) return []
+  const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
   const data = await client().request<Record<string, { id: string; name: string }[]>>(
-    SEARCH_CHURCHES, { q: query, limit },
+    SEARCH_CHURCHES, { q: titleCase, qLower: query.toLowerCase(), limit },
   )
   const buckets: Array<[ChurchSearchResult['level'], { id: string; name: string }[] | undefined]> = [
     ['denomination', data?.denominations],
