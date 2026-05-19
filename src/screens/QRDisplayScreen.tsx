@@ -7,11 +7,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
-import { listActiveEvents } from '../utils/supabaseCheckins'
+import { listActiveEvents, listActiveSpecialGroupEventsForUser } from '../utils/supabaseCheckins'
 import Spinner from '../components/Spinner'
 import { generateQrToken, currentBucket, generateRotatingPin } from '../utils/checkinsCrypto'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
+import { getCurrentUser } from '../utils/auth'
 
 type QRState =
   | { status: 'loading' }
@@ -51,7 +52,20 @@ export default function QRDisplayScreen() {
     let cancelled = false
     ;(async () => {
       try {
-        const events = await listActiveEvents()
+        const user = isSignedIn() ? getCurrentUser() : null
+        // Fetch public events and (if signed in) special-group events the user
+        // belongs to in parallel, then merge deduped by id.
+        const [publicEvents, groupEvents] = await Promise.all([
+          listActiveEvents(),
+          user?.userId ? listActiveSpecialGroupEventsForUser(user.userId) : Promise.resolve([]),
+        ])
+        if (cancelled) return
+        const seen = new Set<string>()
+        const events = [...publicEvents, ...groupEvents].filter((e) => {
+          if (seen.has(e.id)) return false
+          seen.add(e.id)
+          return true
+        })
         if (cancelled) return
         setState({ status: 'ok', events })
         // Auto-select when there's exactly one event

@@ -195,6 +195,19 @@ export async function getMyFaceDescriptor(memberId: string): Promise<Float32Arra
   return new Float32Array(arr)
 }
 
+/** Lightweight enrollment check — reads the boolean generated column instead
+ *  of fetching the full face_descriptor blob. Used by BiometricEnrolGate to
+ *  skip the enrolment prompt for users who have already set up Face ID. */
+export async function checkHasFaceId(memberId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select('has_face_id')
+    .eq('id', memberId)
+    .maybeSingle()
+  if (error) throw error
+  return !!data?.has_face_id
+}
+
 // Self-service first-time enrolment. Refuses to overwrite an existing
 // descriptor — once a user has Face ID set up, only an admin can clear it
 // (which then re-enables this path on the user's next login).
@@ -417,8 +430,9 @@ export async function listActiveEvents(user?: AppUser) {
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
-  // Never expose special_group events on the public QR page or to non-superadmins.
-  // Superadmins (scopeFilter === null AND user present) still see them.
+  // Never expose special_group events on the public QR page or to non-superadmins
+  // via this function. Member-scoped special group events are fetched separately
+  // via listActiveSpecialGroupEventsForUser and merged by the caller.
   if (!user || !user.isSuperAdmin) query = query.neq('scope_level', 'special_group')
   // Public QR page (no user): only show events the creator flagged as public.
   if (!user) query = query.eq('is_public', true)
@@ -429,6 +443,37 @@ export async function listActiveEvents(user?: AppUser) {
   const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
   _activeEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
+}
+
+/** Active special-group events scoped to groups the given member belongs to.
+ *  Used by the QR display page to show special meeting QR codes only to
+ *  members who are actually in that group — other authenticated users won't
+ *  see them, and anonymous visitors never see them at all. */
+export async function listActiveSpecialGroupEventsForUser(memberId: string) {
+  // Step 1: resolve which special groups this member belongs to.
+  const { data: memberships, error: me } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .eq('member_id', memberId)
+  if (me) throw me
+  const groupIds = (memberships || []).map((m: { group_id: string }) => m.group_id)
+  if (!groupIds.length) return []
+
+  // Step 2: fetch active events scoped to those groups.
+  triggerAutoEnd()
+  const nowIso          = new Date().toISOString()
+  const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .eq('status', 'ACTIVE')
+    .eq('scope_level', 'special_group')
+    .in('scope_church_id', groupIds)
+    .lte('starts_at', oneHourLaterIso)
+    .gte('ends_at', nowIso)
+    .order('ends_at', { ascending: true })
+  if (error) throw error
+  return (data || []).map(mapEventRow)
 }
 
 /** Recent past events (ENDED or time-expired ACTIVE), within `daysBack` days,
@@ -1093,6 +1138,7 @@ export interface SpecialGroupMember {
   member_id: string
   member_name: string | null
   added_at: string
+  picture_url?: string | null
 }
 
 export async function listSpecialGroups(): Promise<SpecialGroup[]> {
@@ -1176,7 +1222,17 @@ export async function listSpecialGroupMembers(groupId: string): Promise<SpecialG
     .eq('group_id', groupId)
     .order('member_name', { ascending: true })
   if (error) throw error
-  return data || []
+  const members = data || []
+  if (!members.length) return []
+  // Enrich with picture_url from member_profiles (member_id == member_profiles.id)
+  const ids = members.map((m) => m.member_id)
+  const { data: profiles } = await supabase
+    .from('member_profiles')
+    .select('id, picture_url')
+    .in('id', ids)
+  const picMap = new Map<string, string | null>()
+  for (const p of profiles || []) picMap.set(p.id, p.picture_url)
+  return members.map((m) => ({ ...m, picture_url: picMap.get(m.member_id) ?? null }))
 }
 
 export async function addMembersToSpecialGroup(

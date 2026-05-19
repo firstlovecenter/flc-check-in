@@ -278,8 +278,11 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
               style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
             >
               <div className='flex items-center gap-2.5 min-w-0'>
-                <div className='shrink-0' style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+                <div className='shrink-0' style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {m.picture_url
+                    ? <img src={m.picture_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+                  }
                 </div>
                 <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>
                   {name}

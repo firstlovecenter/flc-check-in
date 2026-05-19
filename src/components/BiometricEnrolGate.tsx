@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import FaceEnrollSweep from './checkin/FaceEnrollSweep'
-import { getMyFaceDescriptor, setMyFaceDescriptor } from '../utils/supabaseCheckins'
+import { checkHasFaceId, setMyFaceDescriptor } from '../utils/supabaseCheckins'
 import { getCurrentUser } from '../utils/auth'
 
 type GateState = 'checking' | 'open' | 'confirm' | 'saving' | 'done' | 'skipped'
@@ -19,9 +19,9 @@ export default function BiometricEnrolGate({ children }) {
     let cancelled = false
     ;(async () => {
       try {
-        const existing = await getMyFaceDescriptor(user.userId)
+        const enrolled = await checkHasFaceId(user.userId)
         if (cancelled) return
-        setState(existing ? 'done' : 'open')
+        setState(enrolled ? 'done' : 'open')
       } catch {
         if (!cancelled) setState('done')  // fail open — don't block the app on a transient error
       }
