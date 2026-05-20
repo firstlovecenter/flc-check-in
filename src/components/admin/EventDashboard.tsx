@@ -118,15 +118,17 @@ export default function EventDashboard({ eventId }) {
     return () => { cancelled = true }
   }, [viewerCaps?.viewerScope?.id, viewerCaps?.canManage, scopeLevel]) // eslint-disable-line
 
-  // Bacenta leaders have no sub-scope to manage — skip the dashboard entirely.
-  // Admin roles start from governorship upwards; bacenta viewerScope means pure leader.
+  // Bacenta leaders and special-group members have no sub-scope to manage —
+  // skip the dashboard entirely.
   // Active event → go straight to check-in. Ended event → go home.
   useEffect(() => {
     if (!viewerCaps || !event) return
-    if (viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage) {
+    const isBacentaLeader = viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage
+    const isSpecialGroupMember = event.scope_level === 'special_group' && !user?.isSuperAdmin
+    if (isBacentaLeader || isSpecialGroupMember) {
       navigate(event.status === 'ACTIVE' ? `/checkin/${eventId}` : '/home', { replace: true })
     }
-  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status]) // eslint-disable-line
+  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status, event?.scope_level]) // eslint-disable-line
 
   // Members that belong to the active child-scope filter (null = no filter).
   const scopedMembers = useMemo(() => {
