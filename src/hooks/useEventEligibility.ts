@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
   listEventScopeMembersWithProfiles, snapshotEventScopeMembers,
-  listMemberProfilesByScope,
+  listMemberProfilesByScope, listSpecialGroupMembers,
 } from '../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -118,16 +118,33 @@ export function useEventEligibility(
         // listEventScopeMembersWithProfiles hits Supabase (~50ms) vs Neo4j (~1s+).
         // resolveCurrentMember / getChurchAncestors are graph calls — swallow
         // their errors so a graph outage degrades gracefully instead of crashing.
+        const isSpecialGroup = evt.scope_level === 'special_group'
         const [viewer, ancestors, snapshotProfiles, childTotal] = await Promise.all([
           resolveCurrentMember(user).catch(() => null),
-          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
+          isSpecialGroup ? Promise.resolve([]) : getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
           listEventScopeMembersWithProfiles(eventId),
-          countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
+          isSpecialGroup ? Promise.resolve(null) : countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
         ])
         if (cancelled) return
 
         let allRows: any[]
-        if (snapshotProfiles.length > 0) {
+        if (isSpecialGroup) {
+          // Special-group events: membership lives in special_group_members,
+          // not in the church hierarchy. Use the event snapshot if it exists;
+          // otherwise fall back to a live special_group_members query.
+          if (snapshotProfiles.length > 0) {
+            allRows = snapshotProfiles
+          } else {
+            const members = await listSpecialGroupMembers(evt.scope_church_id)
+            allRows = members.map((m) => ({
+              id: m.member_id,
+              first_name: m.member_name?.split(' ')[0] ?? '',
+              last_name: m.member_name?.split(' ').slice(1).join(' ') ?? '',
+              roles: [],
+              picture_url: (m as any).picture_url ?? null,
+            }))
+          }
+        } else if (snapshotProfiles.length > 0) {
           // Snapshot exists — use it directly. No graph round-trip needed.
           allRows = snapshotProfiles
         } else {
@@ -179,9 +196,10 @@ export function useEventEligibility(
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
-        const eligibleRows = allRows.filter((r) =>
-          (r.roles || []).some((role: string) => allowed.has(role)),
-        )
+        // Special-group events: group membership IS eligibility — bypass role filter.
+        const eligibleRows = isSpecialGroup
+          ? allRows
+          : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
 
         // getViewerCapabilities requires a graph viewer node. When the graph is
@@ -189,6 +207,21 @@ export function useEventEligibility(
         // AppUser profile. Only the EXACT scope level is granted access —
         // ancestors do not see events below their scope (superAdmin handled above).
         let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
+        // Special-group events: church-hierarchy checks are irrelevant.
+        // Any member present in the group snapshot can self-check-in.
+        if (isSpecialGroup && !rawCaps.canManage && allMemberIdSet.has(user.userId)) {
+          rawCaps = {
+            canManage: false,
+            canCheckIn: true,
+            canView: true,
+            canManuallyCheckIn: false,
+            viewerScope: {
+              level: evt.scope_level as any,
+              id: evt.scope_church_id,
+              name: evt.scope_church_name,
+            },
+          }
+        }
         if (!rawCaps.canManage && viewer === null) {
           // Graph unavailable — reconstruct viewerScope from the JWT/profile.
           // Per-level resolution lives in utils/userScope.ts; only the
@@ -239,7 +272,9 @@ export function useEventEligibility(
 
         // Tier 3: viewer slice (only needed for non-admin leaders).
         let slice = eligibleRows
-        if (!caps.canManage && caps.viewerScope) {
+        // Skip the graph slice call for special-group events — the full group
+        // member list is already the correct slice.
+        if (!isSpecialGroup && !caps.canManage && caps.viewerScope) {
           try {
             const sliceMembers = await getMembersInScope({
               level: caps.viewerScope.level,
