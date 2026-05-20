@@ -401,7 +401,7 @@ export default function FullReport({ eventId }) {
                 entry={b}
                 tab={activeTab}
                 canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
-                canResetFaceId={adminCoversMember(adminScopes, b.member)}
+                canResetFaceId={!!user?.isSuperAdmin || adminCoversMember(adminScopes, b.member)}
                 resetting={resetting === b.member.id}
                 isRisky={riskyIds.has(b.member.id)}
                 absenceNote={activeTab === 'defaulted' ? absenceNotes.get(b.member.id) : undefined}
