@@ -509,13 +509,39 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   return result
 }
 
+/** All special-group events (any status) for the groups a member belongs to.
+ *  Parallel sibling of listActiveSpecialGroupEventsForUser — no time filter. */
+async function listAllSpecialGroupEventsForUser(memberId: string) {
+  const { data: memberships, error: me } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .eq('member_id', memberId)
+  if (me) throw me
+  const groupIds = (memberships || []).map((m: { group_id: string }) => m.group_id)
+  if (!groupIds.length) return []
+
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .eq('scope_level', 'special_group')
+    .in('scope_church_id', groupIds)
+    .order('starts_at', { ascending: false })
+    .limit(20)
+  if (error) throw error
+  return (data || []).map(mapEventRow)
+}
+
 /** All events (past, active, future) for the user's scope, newest-first.
- *  Used by the home screen so leaders always see their events. */
+ *  Used by the home screen so leaders always see their events.
+ *  Special-group events are merged in separately because buildScopeOrFilter
+ *  never generates special_group clauses. */
 export async function listAllEvents(user?: AppUser) {
   triggerAutoEnd()
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
-  const cacheKey = `all:${scopeFilter ?? 'all'}`
+  // Include userId in the cache key so two users with identical church
+  // hierarchies but different group memberships get separate buckets.
+  const cacheKey = user?.userId ? `all:${user.userId}` : `all:${scopeFilter ?? 'all'}`
   const cached = _allEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -525,10 +551,28 @@ export async function listAllEvents(user?: AppUser) {
     .order('starts_at', { ascending: false })
     .limit(50)
   if (scopeFilter) query = query.or(scopeFilter)
-  const { data, error } = await query
+  const [{ data, error }, groupEvents] = await Promise.all([
+    query,
+    user?.userId && !user.isSuperAdmin
+      ? listAllSpecialGroupEventsForUser(user.userId)
+      : Promise.resolve([] as any[]),
+  ])
   if (error) throw error
   const mapped = (data || []).map(mapEventRow)
-  const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
+
+  // Merge special-group events, deduplicating by id, then re-sort by starts_at.
+  let merged = mapped
+  if (groupEvents.length > 0) {
+    const seen = new Set(mapped.map((e) => e.id))
+    const fresh = groupEvents.filter((e) => !seen.has(e.id))
+    if (fresh.length > 0) {
+      merged = [...mapped, ...fresh].sort(
+        (a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime(),
+      )
+    }
+  }
+
+  const result = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
   _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
