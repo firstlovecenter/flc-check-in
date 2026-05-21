@@ -16,11 +16,42 @@ type HomeState =
   | { status: 'error'; error: string }
   | { status: 'ok'; events: CheckinEventRow[] }
 
+// Persist the last-rendered events list per user so cold loads paint instantly
+// with the previously-seen data while the network revalidates in the background.
+// The Supabase listAllEvents() in-memory cache only lives for the page session;
+// this layer survives full reloads / tab restores.
+const HOME_CACHE_KEY = 'flc:home:events:v1'
+const HOME_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000  // 24h sanity cap
+
+function readPersistedEvents(userId?: string): CheckinEventRow[] | null {
+  if (!userId) return null
+  try {
+    const raw = localStorage.getItem(`${HOME_CACHE_KEY}:${userId}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { ts: number; events: CheckinEventRow[] }
+    if (!parsed?.events || Date.now() - parsed.ts > HOME_CACHE_MAX_AGE_MS) return null
+    return parsed.events
+  } catch { return null }
+}
+
+function writePersistedEvents(userId: string | undefined, events: CheckinEventRow[]) {
+  if (!userId) return
+  try {
+    localStorage.setItem(
+      `${HOME_CACHE_KEY}:${userId}`,
+      JSON.stringify({ ts: Date.now(), events }),
+    )
+  } catch { /* quota / disabled storage */ }
+}
+
 export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
-  const [state, setState] = useState<HomeState>({ status: 'loading' })
+  const [state, setState] = useState<HomeState>(() => {
+    const cached = readPersistedEvents(user?.userId)
+    return cached ? { status: 'ok', events: cached } : { status: 'loading' }
+  })
   const [refreshKey, setRefreshKey] = useState(0)
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
@@ -106,6 +137,7 @@ export default function LeaderHomeScreen() {
         const events = await listAllEvents(activeUser ?? undefined)
         if (cancelled) return
         setState({ status: 'ok', events })
+        writePersistedEvents(activeUser?.userId, events)
 
         // Re-fetch ONLY when hydration actually widened the scope set.
         if (needsAncestors) {
@@ -118,6 +150,7 @@ export default function LeaderHomeScreen() {
               const events2 = await listAllEvents(freshUser ?? undefined)
               if (cancelled) return
               setState({ status: 'ok', events: events2 })
+              writePersistedEvents(freshUser?.userId, events2)
             } catch { /* keep the first-paint state */ }
           })
         }

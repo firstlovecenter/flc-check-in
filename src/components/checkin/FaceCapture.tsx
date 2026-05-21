@@ -21,14 +21,16 @@ interface Props {
 const MATCH_THRESHOLD = 0.55
 // EAR varies by camera angle and face shape, so blink detection uses a
 // rolling open-eye baseline with fallback fixed thresholds.
-const EAR_OPEN        = 0.23
-const EAR_CLOSED      = 0.19
-const EAR_DROP_RATIO  = 0.82
-const EAR_RISE_RATIO  = 0.90
+const EAR_OPEN        = 0.24
+const EAR_CLOSED      = 0.21
+const EAR_DROP_RATIO  = 0.86
+const EAR_RISE_RATIO  = 0.92
 const BASELINE_ALPHA  = 0.14
 const ENROLL_FRAMES   = 3
-const RECOGNITION_INTERVAL = 120
-const LIVENESS_INTERVAL    = 35
+// Polling cadence. Recognition includes the heavy descriptor net, so it
+// runs less often than liveness which only needs landmarks.
+const RECOGNITION_INTERVAL = 80
+const LIVENESS_INTERVAL    = 0
 
 type Status = 'idle' | 'loading-models' | 'starting-camera' | 'ready' | 'capturing' | 'complete' | 'error'
 

@@ -23,8 +23,11 @@ export function loadFaceModels(): Promise<void> {
   return loadPromise
 }
 
+// The on-screen camera capture is 320×320, so a 160 input size matches the
+// source resolution with a 2× downscale and runs the TinyFaceDetector roughly
+// 2× faster than 224. Score threshold unchanged.
 const TINY_OPTIONS = new faceapi.TinyFaceDetectorOptions({
-  inputSize: 224,
+  inputSize: 160,
   scoreThreshold: 0.5,
 })
 
@@ -32,7 +35,20 @@ const TINY_OPTIONS = new faceapi.TinyFaceDetectorOptions({
 // lit faces still register. Descriptor distance threshold in FaceCapture is
 // unchanged, so security is not compromised.
 const TINY_OPTIONS_LOWLIGHT = new faceapi.TinyFaceDetectorOptions({
-  inputSize: 224,
+  inputSize: 160,
+  scoreThreshold: 0.35,
+})
+
+// Liveness loop only needs landmarks, not descriptors, and benefits from the
+// largest possible frame rate. Drop to 128 here so we can hit ~25 fps even
+// on mid-range phones while keeping enough resolution for reliable 68-point
+// landmarks (which only need eye geometry).
+const TINY_OPTIONS_LIVENESS = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 128,
+  scoreThreshold: 0.5,
+})
+const TINY_OPTIONS_LIVENESS_LOWLIGHT = new faceapi.TinyFaceDetectorOptions({
+  inputSize: 128,
   scoreThreshold: 0.35,
 })
 
@@ -117,6 +133,8 @@ export async function captureDescriptor(
 
 // Faster frame capture for liveness. This skips the recognition network so
 // blink detection can sample many more frames after the face has matched.
+// Uses a smaller input size (128) than recognition for an extra speed boost —
+// blink only needs eye-aspect-ratio, not identity-grade features.
 export async function captureLandmarks(
   video: HTMLVideoElement,
   lowLight?: boolean,
@@ -124,7 +142,7 @@ export async function captureLandmarks(
   const input: HTMLVideoElement | HTMLCanvasElement = lowLight
     ? preprocessVideoFrame(video, 1.8)
     : video
-  const opts = lowLight ? TINY_OPTIONS_LOWLIGHT : TINY_OPTIONS
+  const opts = lowLight ? TINY_OPTIONS_LIVENESS_LOWLIGHT : TINY_OPTIONS_LIVENESS
   const result = await faceapi
     .detectSingleFace(input, opts)
     .withFaceLandmarks()

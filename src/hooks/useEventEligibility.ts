@@ -32,6 +32,12 @@ import type { AppUser, CheckinEventRow, ScopeLevel } from '../types/app'
 
 // ─── Module-level SWR cache ──────────────────────────────────────────────
 const ELIGIBILITY_TTL = 4 * 60 * 1000  // 4 min
+// Persisted cache survives full reloads / tab restores; only used for instant
+// first-paint while the fresh fetch is in flight.
+const ELIGIBILITY_PERSIST_TTL = 30 * 60 * 1000  // 30 min sanity cap
+const ELIGIBILITY_STORAGE_PREFIX = 'flc:elig:v1:'
+// Cap stored event/records snapshots to avoid pathological localStorage usage.
+const PERSIST_EVENTS_MAX = 6
 
 interface CachedEligibility {
   eligible: any[]
@@ -40,10 +46,61 @@ interface CachedEligibility {
   viewerSlice: any[]
   adminScopes: any[]
   childCount: number | null
+  event?: CheckinEventRow | null
+  records?: any[]
   ts: number
 }
 
 const eligibilityCache = new Map<string, CachedEligibility>()
+
+function persistKey(cacheKey: string) { return ELIGIBILITY_STORAGE_PREFIX + cacheKey }
+
+function readPersistedEligibility(cacheKey: string): CachedEligibility | null {
+  try {
+    const raw = localStorage.getItem(persistKey(cacheKey))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as any
+    if (!parsed || Date.now() - parsed.ts > ELIGIBILITY_PERSIST_TTL) return null
+    return {
+      ...parsed,
+      eligibleIds: new Set<string>(parsed.eligibleIds || []),
+    }
+  } catch { return null }
+}
+
+function writePersistedEligibility(cacheKey: string, entry: CachedEligibility) {
+  try {
+    const serialisable = {
+      ...entry,
+      eligibleIds: [...entry.eligibleIds],
+    }
+    localStorage.setItem(persistKey(cacheKey), JSON.stringify(serialisable))
+    pruneOldPersistedEligibility()
+  } catch { /* quota / disabled storage */ }
+}
+
+// Keep the persisted cache small. If more than PERSIST_EVENTS_MAX entries
+// exist, drop the oldest. Best-effort — failures are silent.
+function pruneOldPersistedEligibility() {
+  try {
+    const entries: Array<{ key: string; ts: number }> = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (!k || !k.startsWith(ELIGIBILITY_STORAGE_PREFIX)) continue
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+      try {
+        const ts = JSON.parse(raw)?.ts ?? 0
+        entries.push({ key: k, ts })
+      } catch { localStorage.removeItem(k) }
+    }
+    if (entries.length <= PERSIST_EVENTS_MAX) return
+    entries.sort((a, b) => a.ts - b.ts)
+    for (const e of entries.slice(0, entries.length - PERSIST_EVENTS_MAX)) {
+      localStorage.removeItem(e.key)
+    }
+  } catch { /* ignore */ }
+}
 
 // ─── Public interface ────────────────────────────────────────────────────
 export interface EventEligibilityResult {
@@ -87,18 +144,28 @@ export function useEventEligibility(
 
     // When refreshKey increases, drop the cached entry so the load below
     // hits the network even if the previous entry is still fresh.
-    if (refreshKey > 0) eligibilityCache.delete(cacheKey)
+    if (refreshKey > 0) {
+      eligibilityCache.delete(cacheKey)
+      try { localStorage.removeItem(persistKey(cacheKey)) } catch { /* ignore */ }
+    }
 
     // Stale-while-revalidate: serve cached result immediately so the UI
     // renders with real data before any network request completes.
-    const hit = eligibilityCache.get(cacheKey)
-    if (hit && Date.now() - hit.ts < ELIGIBILITY_TTL) {
+    // Layer 1: in-memory cache (this tab session only).
+    // Layer 2: localStorage cache (survives reloads / tab restores).
+    const memHit = eligibilityCache.get(cacheKey)
+    const hit = memHit && Date.now() - memHit.ts < ELIGIBILITY_TTL
+      ? memHit
+      : readPersistedEligibility(cacheKey)
+    if (hit) {
       setEligible(hit.eligible)
       setEligibleIds(hit.eligibleIds)
       setViewerCaps(hit.viewerCaps)
       setViewerSlice(hit.viewerSlice)
       setAdminScopes(hit.adminScopes)
       setChildCount(hit.childCount)
+      if (hit.event) setEvent(hit.event)
+      if (hit.records) setRecords(hit.records)
       setInitialLoading(false)
       // Still revalidate in background — don't return early.
     }
@@ -297,15 +364,19 @@ export function useEventEligibility(
           setChildCount(childTotal)
           setInitialLoading(false)
           // Update cache so the next navigation is instant.
-          eligibilityCache.set(cacheKey, {
+          const entry: CachedEligibility = {
             eligible: eligibleRows,
             eligibleIds: eligibleIdSet,
             viewerCaps: caps,
             viewerSlice: slice,
             adminScopes: scopes,
             childCount: childTotal,
+            event: evt,
+            records: recs,
             ts: Date.now(),
-          })
+          }
+          eligibilityCache.set(cacheKey, entry)
+          writePersistedEligibility(cacheKey, entry)
         }
       } catch (err: any) {
         if (!cancelled) {
