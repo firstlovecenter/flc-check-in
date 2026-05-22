@@ -14,9 +14,27 @@ export default function QRScanner({ onDecode, onError }) {
     const reader = new BrowserMultiFormatReader()
     let stopped = false
     let controls = null
+    let stream: MediaStream | null = null
     ;(async () => {
       try {
-        controls = await reader.decodeFromVideoDevice(undefined, videoRef.current, (result, err) => {
+        // Explicitly request the rear-facing camera. Letting
+        // decodeFromVideoDevice pick (deviceId=undefined) lands on the front
+        // camera on iOS Safari, so the user films themselves and nothing
+        // decodes. `ideal` (not `exact`) keeps desktops/laptops working
+        // where only a front camera exists.
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        })
+        if (stopped) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        const video = videoRef.current
+        if (!video) return
+        video.srcObject = stream
+        await video.play().catch(() => {/* autoplay may need a gesture; ignore */})
+        controls = await reader.decodeFromVideoElement(video, (result, err) => {
           if (stopped) return
           if (result) {
             onDecodeRef.current?.(result.getText())
@@ -35,8 +53,9 @@ export default function QRScanner({ onDecode, onError }) {
       stopped = true
       try { controls?.stop?.() } catch (_) { /* ignore */ }
       try {
-        const stream = videoRef.current?.srcObject
-        if (stream) stream.getTracks?.().forEach((t) => t.stop())
+        if (stream) stream.getTracks().forEach((t) => t.stop())
+        const elStream = videoRef.current?.srcObject as MediaStream | null
+        if (elStream && elStream !== stream) elStream.getTracks?.().forEach((t) => t.stop())
       } catch (_) { /* ignore */ }
     }
   }, [])
