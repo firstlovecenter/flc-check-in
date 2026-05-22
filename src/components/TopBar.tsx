@@ -93,6 +93,7 @@ function Avatar({ pictureUrl, initials }: { pictureUrl: string | null; initials:
         alt={initials}
         width={size}
         height={size}
+        decoding='async'
         style={{ ...common, objectFit: 'cover' }}
         // If the picture URL goes 404 mid-session (CDN churn, expired token),
         // hide the broken image so the layout doesn't show a torn-image icon.

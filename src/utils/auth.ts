@@ -275,7 +275,7 @@ export function enrichUser(payload) {
     payload.denomination?.name || '';
   const churchContexts = localFallbackChurchContexts(payload)
   const activeChurch = churchContexts[0] || null
-  const title = payload.title || localStorage.getItem('memberTitle') || undefined
+  const title = localStorage.getItem('memberTitle') || payload.title || undefined
   return {
     ...payload,
     title,

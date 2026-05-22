@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ScreenHeader from '../components/ScreenHeader'
+import Spinner from '../components/Spinner'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
 import FaceCapture from '../components/checkin/FaceCapture'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
+import LocationPreWarmer from '../components/LocationPreWarmer'
 import { getCurrentUser, formatName, logout } from '../utils/auth'
 import {
   getEvent, submitCheckIn, getMyRecord,
@@ -152,7 +154,7 @@ export default function CheckInFormScreen() {
   }
   // Still loading event or existing-record lookup
   if (!event || existingRecord === undefined) {
-    return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading event…</p></CenterCard>
+    return <Spinner fullPage />
   }
 
   // Time window check — client only blocks UI for events more than 1 hour
@@ -266,6 +268,10 @@ export default function CheckInFormScreen() {
     <GeofenceGuard event={event} initialPosition={initialPosition}>
       {(position) => (
         <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+          {/* Warm GPS here (scoped to check-in). It used to live globally in
+              RequireAuth, which fired a 20s getCurrentPosition + a 3-min watch
+              on every authed page. */}
+          <LocationPreWarmer />
           <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
           <main className='max-w-md mx-auto px-4 py-6'>
             <p className='eyebrow mb-4'>{event.scope_level} · {event.scope_church_name}</p>
@@ -329,7 +335,7 @@ export default function CheckInFormScreen() {
             {activeTab === 'FACE_ID' && (
               <div className='flex flex-col gap-3'>
                 {faceDescriptor === null && (
-                  <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>Loading face profile…</p>
+                  <Spinner />
                 )}
 
                 {faceDescriptor === false && (

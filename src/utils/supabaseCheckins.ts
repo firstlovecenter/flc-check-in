@@ -8,12 +8,48 @@ import { pointInGeofence } from './geo'
 import { getUserChurchRefs } from './userScope'
 import type { AppUser } from '../types/app'
 
+// ─── Column projections (Phase 2.1) ──────────────────────────────────────
+// Explicit column lists keep transferred-bytes small. The biggest wins:
+//   • MEMBER_PROFILE_LIST_COLUMNS — drops face_descriptor (~1 KB / row)
+//     from every dashboard / scope-member fetch. Multiplied across a 500-
+//     member scope this saves ~500 KB per call.
+//   • CHECKIN_EVENT_LIST_COLUMNS — drops geofence_polygon (jsonb, can be
+//     large) from list queries that only need to render an event card.
+//     Detail/edit screens use CHECKIN_EVENT_FULL_COLUMNS = '*'.
+const MEMBER_PROFILE_LIST_COLUMNS =
+  'id, email, title, first_name, last_name, phone, picture_url, roles, ' +
+  'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+  'council_id, council_name, stream_id, stream_name, ' +
+  'campus_id, campus_name, oversight_id, oversight_name, ' +
+  'denomination_id, denomination_name, has_face_id, updated_at'
+
+const CHECKIN_EVENT_LIST_COLUMNS =
+  'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
+  'venue_name, starts_at, ends_at, grace_period_min, auto_checkout_min, ' +
+  'allowed_check_in_methods, allowed_roles, ' +
+  'geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, ' +
+  'qr_secret, created_by_id, created_by_name, created_at, ' +
+  'series_id, series_index, is_public'
+
+// Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
+const CHECKIN_EVENT_FULL_COLUMNS = '*'
+
+const CHECKIN_RECORD_COLUMNS =
+  'id, event_id, member_id, member_name, member_role, member_unit_name, ' +
+  'checked_in_at, checked_out_at, auto_checked_out, outside_since, is_late, ' +
+  'method, geo_verified, check_in_lat, check_in_lng, device_fingerprint, ' +
+  'manual_reason, verified_by'
+
+const AUDIT_LOG_COLUMNS =
+  'id, action, actor_id, actor_name, event_id, target_id, target_name, details, created_at'
+
 // ─── Module-level SWR cache for event listings ───────────────────────────
 // Keyed by the scope filter string so different users get separate cache
 // buckets (relevant when multiple users share a device / test session).
 const EVENTS_LIST_TTL = 30 * 1000  // 30 s
 const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
+const _allEventsCaches    = new Map<string, { data: any[]; ts: number }>()
 
 // Throttle: fire the auto-end RPC at most once per minute client-side.
 let _lastAutoEndTs = 0
@@ -26,10 +62,14 @@ function triggerAutoEnd() {
   const now = Date.now()
   if (now - _lastAutoEndTs < AUTO_END_INTERVAL) return
   _lastAutoEndTs = now
-  supabase.rpc('auto_checkout_expired_events').then(() => {
-    // Invalidate caches so the next read picks up the updated statuses.
-    invalidateEventListCache()
-  }).catch(() => {/* best-effort */})
+  // Wrap in a real Promise so `.catch` is reachable — supabase-js's builder
+  // is a PromiseLike whose `.then` returns PromiseLike<void> without `.catch`.
+  Promise.resolve(supabase.rpc('auto_checkout_expired_events'))
+    .then(() => {
+      // Invalidate caches so the next read picks up the updated statuses.
+      invalidateEventListCache()
+    })
+    .catch(() => {/* best-effort */})
 }
 
 // Sentinel returned when a non-superadmin has no resolvable church ID.
@@ -83,6 +123,7 @@ export async function upsertMemberProfile(user) {
     first_name: user.firstName || user.first_name || null,
     last_name: user.lastName || user.last_name || null,
     phone: user.phone || user.phoneNumber || null,
+    picture_url: user.picture_url || user.pictureUrl || null,
     roles: user.roles || [],
     bacenta_id:      user.bacenta?.id      || user.bacenta_id      || null,
     bacenta_name:    user.bacenta?.name    || user.bacenta_name    || null,
@@ -130,7 +171,7 @@ export async function bulkUpsertMemberProfiles(rows) {
 export async function getMemberProfile(memberId) {
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, email, title, first_name, last_name, phone, roles, ' +
+    .select('id, email, title, first_name, last_name, phone, picture_url, roles, ' +
             'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
             'council_id, council_name, stream_id, stream_name, ' +
             'campus_id, campus_name, oversight_id, oversight_name, ' +
@@ -152,6 +193,19 @@ export async function getMyFaceDescriptor(memberId: string): Promise<Float32Arra
   const arr = data?.face_descriptor
   if (!Array.isArray(arr) || arr.length === 0) return null
   return new Float32Array(arr)
+}
+
+/** Lightweight enrollment check — reads the boolean generated column instead
+ *  of fetching the full face_descriptor blob. Used by BiometricEnrolGate to
+ *  skip the enrolment prompt for users who have already set up Face ID. */
+export async function checkHasFaceId(memberId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('member_profiles')
+    .select('has_face_id')
+    .eq('id', memberId)
+    .maybeSingle()
+  if (error) throw error
+  return !!data?.has_face_id
 }
 
 // Self-service first-time enrolment. Refuses to overwrite an existing
@@ -202,20 +256,78 @@ export async function adminClearFaceDescriptor(memberId: string): Promise<void> 
 // Uses the `has_face_id` generated column (migration 009) instead of pulling
 // the 128-float face_descriptor over the wire. For large scopes this turns a
 // multi-MB payload into a few KB.
+const MEMBER_PROFILE_BIOMETRICS_COLUMNS =
+  'id, first_name, last_name, email, roles, picture_url, ' +
+  'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
+  'council_id, council_name, stream_id, stream_name, ' +
+  'campus_id, campus_name, oversight_id, oversight_name, ' +
+  'denomination_id, denomination_name, has_face_id'
+
+// Only leaders/admins — rows where roles[] contains at least one leader/admin role.
+const LEADER_ADMIN_ROLES = [
+  'leaderBacenta','leaderGovernorship','leaderCouncil','leaderStream',
+  'leaderCampus','leaderOversight','leaderDenomination',
+  'adminGovernorship','adminCouncil','adminStream',
+  'adminCampus','adminOversight','adminDenomination',
+]
+
+export async function getBiometricsTotals(
+  scopes?: Array<{ level: string; id: string }>
+): Promise<{ total: number; enrolled: number }> {
+  const orFilter = scopes?.length ? scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',') : null
+
+  const totalQ = supabase
+    .from('member_profiles')
+    .select('id', { count: 'exact', head: true })
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+  const enrolledQ = supabase
+    .from('member_profiles')
+    .select('id', { count: 'exact', head: true })
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+    .eq('has_face_id', true)
+
+  const [totalRes, enrolledRes] = await Promise.all([
+    orFilter ? totalQ.or(orFilter) : totalQ,
+    orFilter ? enrolledQ.or(orFilter) : enrolledQ,
+  ])
+
+  return {
+    total: totalRes.count ?? 0,
+    enrolled: enrolledRes.count ?? 0,
+  }
+}
+
+export async function listAllMembersForBiometrics(search?: string): Promise<Array<any>> {
+  let query = supabase
+    .from('member_profiles')
+    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
+    .overlaps('roles', LEADER_ADMIN_ROLES)
+    .order('first_name', { ascending: true })
+    .limit(5000)
+
+  if (search && search.trim().length >= 2) {
+    const q = search.trim()
+    query = query.or(
+      `first_name.ilike.%${q}%,last_name.ilike.%${q}%`
+    )
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
 export async function listMembersForBiometricsAdmin(
   scopes: Array<{ level: string; id: string }>
 ): Promise<Array<any>> {
   if (!scopes?.length) return []
-  // OR over (<level>_id eq <id>) pairs.
   const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('id, first_name, last_name, email, roles, ' +
-            'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
-            'council_id, council_name, stream_id, stream_name, ' +
-            'campus_id, campus_name, oversight_id, oversight_name, ' +
-            'denomination_id, denomination_name, has_face_id')
+    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
+    .overlaps('roles', LEADER_ADMIN_ROLES)
     .or(orFilter)
+    .order('first_name', { ascending: true })
   if (error) throw error
   return data || []
 }
@@ -272,16 +384,25 @@ export async function createEvent(input) {
     p_qr_secret_hex: qrSecretHex,
     p_created_by_id: input.createdBy.id,
     p_created_by_name: input.createdBy.name,
+    p_is_public: input.isPublic ?? true,
   }
   const { data, error } = await supabase.rpc('create_checkin_event', params)
   if (error) throw error
+  if (input.seriesId) {
+    // Non-critical — best-effort tag; series linkage doesn't affect check-in.
+    await supabase
+      .from('checkin_events')
+      .update({ series_id: input.seriesId, series_index: input.seriesIndex ?? 1 })
+      .eq('id', data)
+  }
   invalidateEventListCache()
   return { eventId: data, qrSecretHex, pin: input.pin || null }
 }
 
 export async function getEvent(eventId) {
+  // Detail/edit screen — need geofence_polygon and pin_hash.
   const { data, error } = await supabase
-    .from('checkin_events').select('*').eq('id', eventId).single()
+    .from('checkin_events').select(CHECKIN_EVENT_FULL_COLUMNS).eq('id', eventId).single()
   if (error) throw error
   return mapEventRow(data)
 }
@@ -296,7 +417,10 @@ export async function listActiveEvents(user?: AppUser) {
 
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
-  const cacheKey    = scopeFilter ?? 'all'
+  // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
+  // and each scoped user (their orFilter string). Without this, a public-page
+  // fetch (which strips special_group events) would poison the superadmin cache.
+  const cacheKey = user?.isSuperAdmin ? 'superadmin' : (scopeFilter ?? 'public')
   const cached = _activeEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -304,11 +428,17 @@ export async function listActiveEvents(user?: AppUser) {
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   let query = supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
     .order('ends_at', { ascending: true })
+  // Never expose special_group events on the public QR page or to non-superadmins
+  // via this function. Member-scoped special group events are fetched separately
+  // via listActiveSpecialGroupEventsForUser and merged by the caller.
+  if (!user || !user.isSuperAdmin) query = query.neq('scope_level', 'special_group')
+  // Public QR page (no user): only show events the creator flagged as public.
+  if (!user) query = query.eq('is_public', true)
   if (scopeFilter) query = query.or(scopeFilter)
   const { data, error } = await query
   if (error) throw error
@@ -316,6 +446,37 @@ export async function listActiveEvents(user?: AppUser) {
   const result = user ? mapped.filter((evt) => isEventRelevantToUser(evt, user)) : mapped
   _activeEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
+}
+
+/** Active special-group events scoped to groups the given member belongs to.
+ *  Used by the QR display page to show special meeting QR codes only to
+ *  members who are actually in that group — other authenticated users won't
+ *  see them, and anonymous visitors never see them at all. */
+export async function listActiveSpecialGroupEventsForUser(memberId: string) {
+  // Step 1: resolve which special groups this member belongs to.
+  const { data: memberships, error: me } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .eq('member_id', memberId)
+  if (me) throw me
+  const groupIds = (memberships || []).map((m: { group_id: string }) => m.group_id)
+  if (!groupIds.length) return []
+
+  // Step 2: fetch active events scoped to those groups.
+  triggerAutoEnd()
+  const nowIso          = new Date().toISOString()
+  const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .eq('status', 'ACTIVE')
+    .eq('scope_level', 'special_group')
+    .in('scope_church_id', groupIds)
+    .lte('starts_at', oneHourLaterIso)
+    .gte('ends_at', nowIso)
+    .order('ends_at', { ascending: true })
+  if (error) throw error
+  return (data || []).map(mapEventRow)
 }
 
 /** Recent past events (ENDED or time-expired ACTIVE), within `daysBack` days,
@@ -333,7 +494,7 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   // passed (not yet auto-ended by the server cron).
   let query = supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('status', ['ENDED', 'ACTIVE'])
     .lte('ends_at', nowIso)
     .gte('ends_at', cutoff)
@@ -348,15 +509,84 @@ export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?:
   return result
 }
 
+/** All special-group events (any status) for the groups a member belongs to.
+ *  Parallel sibling of listActiveSpecialGroupEventsForUser — no time filter. */
+async function listAllSpecialGroupEventsForUser(memberId: string) {
+  const { data: memberships, error: me } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .eq('member_id', memberId)
+  if (me) throw me
+  const groupIds = (memberships || []).map((m: { group_id: string }) => m.group_id)
+  if (!groupIds.length) return []
+
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .eq('scope_level', 'special_group')
+    .in('scope_church_id', groupIds)
+    .order('starts_at', { ascending: false })
+    .limit(20)
+  if (error) throw error
+  return (data || []).map(mapEventRow)
+}
+
+/** All events (past, active, future) for the user's scope, newest-first.
+ *  Used by the home screen so leaders always see their events.
+ *  Special-group events are merged in separately because buildScopeOrFilter
+ *  never generates special_group clauses. */
+export async function listAllEvents(user?: AppUser) {
+  triggerAutoEnd()
+  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  if (scopeFilter === _NO_SCOPE) return []
+  // Include userId in the cache key so two users with identical church
+  // hierarchies but different group memberships get separate buckets.
+  const cacheKey = user?.userId ? `all:${user.userId}` : `all:${scopeFilter ?? 'all'}`
+  const cached = _allEventsCaches.get(cacheKey)
+  if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+
+  let query = supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .order('starts_at', { ascending: false })
+    .limit(50)
+  if (scopeFilter) query = query.or(scopeFilter)
+  const [{ data, error }, groupEvents] = await Promise.all([
+    query,
+    user?.userId && !user.isSuperAdmin
+      ? listAllSpecialGroupEventsForUser(user.userId)
+      : Promise.resolve([] as any[]),
+  ])
+  if (error) throw error
+  const mapped = (data || []).map(mapEventRow)
+
+  // Merge special-group events, deduplicating by id, then re-sort by starts_at.
+  let merged = mapped
+  if (groupEvents.length > 0) {
+    const seen = new Set(mapped.map((e) => e.id))
+    const fresh = groupEvents.filter((e) => !seen.has(e.id))
+    if (fresh.length > 0) {
+      merged = [...mapped, ...fresh].sort(
+        (a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime(),
+      )
+    }
+  }
+
+  const result = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
+  _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+  return result
+}
+
 /** Active events filtered to the caller's GPS position (geofence check).
  *  Used by the QR display screen at the venue.
  *  Includes events starting within the next hour. */
 export async function listActiveEventsAtLocation(lat, lng) {
   const nowIso          = new Date().toISOString()
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_FULL_COLUMNS)
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
@@ -370,9 +600,10 @@ export async function listActiveEventsAtLocation(lat, lng) {
  *  Kept for any future location-aware past-event views. */
 export async function listRecentPastEventsAtLocation(lat, lng, { daysBack = 30 } = {}) {
   const cutoff = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString()
+  // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_FULL_COLUMNS)
     .eq('status', 'ENDED')
     .gte('ends_at', cutoff)
     .order('ends_at', { ascending: false })
@@ -387,14 +618,19 @@ export async function listRecentPastEventsAtLocation(lat, lng, { daysBack = 30 }
  *  scopes: array of { level, id } — typically from getAdminScopes(member). */
 export async function listEventsForAdminScopes(
   scopes: Array<{ level: string; id: string }>,
-  { statuses }: { statuses?: string[] } = {}
+  { statuses, user }: { statuses?: string[]; user?: AppUser } = {}
 ) {
-  if (!scopes?.length) return []
-  // OR over (scope_level + scope_church_id) pairs.
-  const orFilter = scopes
-    .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
-    .join(',')
-  let q = supabase.from('checkin_events').select('*').or(orFilter)
+  let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
+  if (user?.isSuperAdmin) {
+    // Superadmins see every event — no scope restriction.
+  } else {
+    if (!scopes?.length) return []
+    // OR over (scope_level + scope_church_id) pairs.
+    const orFilter = scopes
+      .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
+      .join(',')
+    q = q.or(orFilter)
+  }
   if (statuses?.length) q = q.in('status', statuses)
   const { data, error } = await q.order('starts_at', { ascending: false })
   if (error) throw error
@@ -415,7 +651,7 @@ export async function listEventsAttendedByMember(memberId: string) {
   if (!ids.length) return []
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('id', ids)
     .order('starts_at', { ascending: false })
   if (error) throw error
@@ -441,6 +677,17 @@ export async function snapshotEventScopeMembers(
   if (error) throw error
 }
 
+/** Add a single member to an event's scope snapshot and upsert their profile.
+ *  Used by superadmins to include a member who was added to the graph after
+ *  the snapshot was taken. profileRow must be the output of memberToProfileRow(). */
+export async function addMemberToEventScope(
+  eventId: string,
+  profileRow: any,
+): Promise<void> {
+  await bulkUpsertMemberProfiles([profileRow])
+  await snapshotEventScopeMembers(eventId, [profileRow.id])
+}
+
 /** Load the scope snapshot for an event joined with current member_profiles.
  *  Returns member_profiles rows for every snapshotted member that has a
  *  profile row. Members who have never logged in are omitted from the join
@@ -455,12 +702,23 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   if (se) throw se
   const ids = (snap || []).map((r: any) => r.member_id)
   if (!ids.length) return []
-  const { data: profiles, error: pe } = await supabase
-    .from('member_profiles')
-    .select('*')
-    .in('id', ids)
-  if (pe) throw pe
-  return profiles || []
+
+  // Batch into groups of 50 to stay well under Supabase's URL length limit.
+  // 500 UUIDs in one .in() call ≈ 18 KB URL → 400 Bad Request.
+  const BATCH = 50
+  const batches: string[][] = []
+  for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH))
+
+  const results = await Promise.all(
+    batches.map((batch) =>
+      supabase
+        .from('member_profiles')
+        .select(MEMBER_PROFILE_LIST_COLUMNS)
+        .in('id', batch),
+    ),
+  )
+  for (const { error } of results) if (error) throw error
+  return results.flatMap((r) => r.data || [])
 }
 
 /** Events where the given graph member ID appears in the scope snapshot.
@@ -477,7 +735,7 @@ export async function listScopedEventsForMember(graphMemberId: string): Promise<
   if (!ids.length) return []
   const { data, error } = await supabase
     .from('checkin_events')
-    .select('*')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('id', ids)
     .order('starts_at', { ascending: false })
   if (error) throw error
@@ -497,9 +755,10 @@ export async function listMemberProfilesByScope(
   scopeChurchId: string,
 ): Promise<any[]> {
   const col = `${scopeLevel}_id`
+  // Exclude face_descriptor (~1KB / row) — fallback path never needs it.
   const { data, error } = await supabase
     .from('member_profiles')
-    .select('*')
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .eq(col, scopeChurchId)
   if (error) throw error
   return data || []
@@ -700,10 +959,10 @@ export async function reportLocation(eventId, memberId, lat, lng) {
 
 // ─── Dashboard reads ────────────────────────────────────────────────────────
 
-export async function listCheckedIn(eventId) {
+export async function listCheckedIn(eventId): Promise<any[]> {
   const { data, error } = await supabase
     .from('checkin_records')
-    .select('*')
+    .select(CHECKIN_RECORD_COLUMNS)
     .eq('event_id', eventId)
     .order('checked_in_at', { ascending: false })
   if (error) throw error
@@ -722,9 +981,10 @@ export async function listDefaulted(eventId, eligibleMemberIds) {
   const checkedIn = new Set((records || []).map((r) => r.member_id))
   const defaultedIds = eligibleMemberIds.filter((id) => !checkedIn.has(id))
   if (!defaultedIds.length) return []
+  // Defaulted-list rendering never needs face_descriptor.
   const { data: profiles, error: pe } = await supabase
     .from('member_profiles')
-    .select('*')
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .in('id', defaultedIds)
   if (pe) throw pe
   return profiles || []
@@ -734,7 +994,7 @@ export async function listDefaulted(eventId, eligibleMemberIds) {
 export async function getMyRecord(eventId, memberId) {
   const { data, error } = await supabase
     .from('checkin_records')
-    .select('*')
+    .select(CHECKIN_RECORD_COLUMNS)
     .eq('event_id', eventId)
     .eq('member_id', memberId)
     .maybeSingle()
@@ -845,7 +1105,7 @@ export async function listAuditLogForEvent(eventId: string): Promise<any[]> {
   if (!eventId) return []
   const { data, error } = await supabase
     .from('audit_log')
-    .select('*')
+    .select(AUDIT_LOG_COLUMNS)
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
     .limit(100)
@@ -908,4 +1168,149 @@ function mapEventRow(row) {
       ? 'ENDED'
       : row.status
   return { ...row, status, qr_secret_hex: qrSecretHex }
+}
+
+
+// ─── Special Groups ───────────────────────────────────────────────────────────
+// Cross-scope groups of members managed by superadmins. Used for special
+// meetings that span multiple church scopes without following the hierarchy.
+
+export interface SpecialGroup {
+  id: string
+  name: string
+  description: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+  member_count?: number
+}
+
+export interface SpecialGroupMember {
+  group_id: string
+  member_id: string
+  member_name: string | null
+  added_at: string
+  picture_url?: string | null
+}
+
+export async function listSpecialGroups(): Promise<SpecialGroup[]> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .select('id, name, description, created_by, created_at, updated_at')
+    .order('name', { ascending: true })
+  if (error) throw error
+  // Attach member counts via a second query (Supabase doesn't support
+  // COUNT in select without an RPC, so we do a lightweight aggregate).
+  const groups = data || []
+  if (!groups.length) return []
+  const ids = groups.map((g) => g.id)
+  const { data: counts, error: ce } = await supabase
+    .from('special_group_members')
+    .select('group_id')
+    .in('group_id', ids)
+  if (ce) throw ce
+  const countMap = new Map<string, number>()
+  for (const row of counts || []) {
+    countMap.set(row.group_id, (countMap.get(row.group_id) ?? 0) + 1)
+  }
+  return groups.map((g) => ({ ...g, member_count: countMap.get(g.id) ?? 0 }))
+}
+
+export async function getSpecialGroup(groupId: string): Promise<SpecialGroup | null> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .select('*')
+    .eq('id', groupId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function createSpecialGroup(input: {
+  name: string
+  description?: string
+  createdBy: string
+}): Promise<SpecialGroup> {
+  const { data, error } = await supabase
+    .from('special_groups')
+    .insert({
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      created_by: input.createdBy,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSpecialGroup(groupId: string, input: {
+  name: string
+  description?: string
+}): Promise<void> {
+  const { error } = await supabase
+    .from('special_groups')
+    .update({
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', groupId)
+  if (error) throw error
+}
+
+export async function deleteSpecialGroup(groupId: string): Promise<void> {
+  const { error } = await supabase
+    .from('special_groups')
+    .delete()
+    .eq('id', groupId)
+  if (error) throw error
+}
+
+export async function listSpecialGroupMembers(groupId: string): Promise<SpecialGroupMember[]> {
+  const { data, error } = await supabase
+    .from('special_group_members')
+    .select('group_id, member_id, member_name, added_at')
+    .eq('group_id', groupId)
+    .order('member_name', { ascending: true })
+  if (error) throw error
+  const members = data || []
+  if (!members.length) return []
+  // Enrich with picture_url from member_profiles (member_id == member_profiles.id)
+  const ids = members.map((m) => m.member_id)
+  const { data: profiles } = await supabase
+    .from('member_profiles')
+    .select('id, picture_url')
+    .in('id', ids)
+  const picMap = new Map<string, string | null>()
+  for (const p of profiles || []) picMap.set(p.id, p.picture_url)
+  return members.map((m) => ({ ...m, picture_url: picMap.get(m.member_id) ?? null }))
+}
+
+export async function addMembersToSpecialGroup(
+  groupId: string,
+  members: { id: string; name: string }[],
+): Promise<void> {
+  if (!members.length) return
+  const rows = members.map((m) => ({
+    group_id: groupId,
+    member_id: m.id,
+    member_name: m.name,
+  }))
+  const { error } = await supabase
+    .from('special_group_members')
+    .upsert(rows, { onConflict: 'group_id,member_id' })
+  if (error) throw error
+}
+
+export async function removeMemberFromSpecialGroup(
+  groupId: string,
+  memberId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('special_group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('member_id', memberId)
+  if (error) throw error
 }

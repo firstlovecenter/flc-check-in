@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import Spinner from '../Spinner'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
@@ -251,7 +252,7 @@ export default function FullReport({ eventId }) {
   }
 
   if (displayError) return <CenterCard><p style={{ color: 'var(--coral)' }}>{displayError}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
+  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
   }
@@ -400,7 +401,7 @@ export default function FullReport({ eventId }) {
                 entry={b}
                 tab={activeTab}
                 canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
-                canResetFaceId={adminCoversMember(adminScopes, b.member)}
+                canResetFaceId={!!user?.isSuperAdmin || adminCoversMember(adminScopes, b.member)}
                 resetting={resetting === b.member.id}
                 isRisky={riskyIds.has(b.member.id)}
                 absenceNote={activeTab === 'defaulted' ? absenceNotes.get(b.member.id) : undefined}

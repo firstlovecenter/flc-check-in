@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 import BiometricEnrolGate from './BiometricEnrolGate'
-import LocationPreWarmer from './LocationPreWarmer'
 import LocationPermissionBanner from './LocationPermissionBanner'
 
 type State = 'checking' | 'ok' | 'redirect'
@@ -31,9 +30,13 @@ export default function RequireAuth({ children }) {
   if (state === 'redirect') return <Navigate to='/' replace />
   if (state === 'checking') return null  // brief blank while refreshing
   if (!getCurrentUser()) return <Navigate to='/' replace />
+  // LocationPreWarmer is intentionally NOT mounted here. Most authed routes
+  // (home, history, reports, biometrics, profile, etc.) never need GPS, so a
+  // 20-second getCurrentPosition() + 3-minute watch on every authed page was
+  // a lot of wasted radio time. It is now mounted directly inside the screens
+  // that actually use the cached position (check-in, geofence picker).
   return (
     <>
-      <LocationPreWarmer />
       <LocationPermissionBanner />
       <BiometricEnrolGate>{children}</BiometricEnrolGate>
     </>

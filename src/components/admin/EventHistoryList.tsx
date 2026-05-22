@@ -42,7 +42,7 @@ export default function EventHistoryList() {
         //  3. Scoped       — events the user was in scope for at creation time
         //                    (captured by stable graph ID even if they moved)
         const [adminEvts, attendedEvts, scopedEvts] = await Promise.all([
-          listEventsForAdminScopes(scopes),
+          listEventsForAdminScopes(scopes, { user }),
           listEventsAttendedByMember(user.userId),
           member?.id ? listScopedEventsForMember(member.id) : Promise.resolve([]),
         ])

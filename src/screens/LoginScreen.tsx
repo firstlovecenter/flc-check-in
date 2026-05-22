@@ -64,11 +64,11 @@ export default function LoginScreen() {
         {/* Logo / wordmark */}
         <div className='flex flex-col items-center gap-3'>
           <img
-            src='/flc-logo-circle.jpeg'
+            src='/apple-touch-icon.png'
             alt='First Love Church'
             width={72}
             height={72}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
+            className='app-logo'
           />
           <h1
             className='m-0 leading-tight text-center'
@@ -115,6 +115,9 @@ export default function LoginScreen() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
+          <p className='text-xs text-center m-0' style={{ color: 'var(--muted)' }}>
+            Use the same credentials as the <strong>Synago App</strong>.
+          </p>
           <div className='flex flex-col gap-2'>
             <label
               className='eyebrow'
@@ -193,6 +196,7 @@ export default function LoginScreen() {
             View Meetings At This Location
           </Link>
         </form>
+
       </div>
     </div>
   )

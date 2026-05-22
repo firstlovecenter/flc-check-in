@@ -266,6 +266,19 @@ export const SCOPE_QUERIES = {
   denomination: GET_MEMBERS_FOR_DENOMINATION,
 }
 
+// ─── GET_ALL_MEMBERS_PAGE ───────────────────────────────────────────────────
+// Unscoped, paginated dump of every Member in the graph. Used by the super-
+// admin "Sync Members" tool to pre-populate Supabase before users log in.
+// The client filters down to leaders/admins via isLeaderOrAdmin().
+export const GET_ALL_MEMBERS_PAGE = gql`
+  ${MEMBER_FIELDS}
+  query GetAllMembersPage($limit: Int!, $offset: Int!) {
+    members(limit: $limit, offset: $offset) {
+      ...MemberFields
+    }
+  }
+`
+
 // ─── Hierarchy walks ────────────────────────────────────────────────────────
 // One query per starting level; each walks up to denomination so we can
 // build the full ancestor chain for any church node.
@@ -464,3 +477,47 @@ export const CHILD_LIST_QUERIES = {
   oversight:    LIST_CAMPUSES_IN_OVERSIGHT,
   denomination: LIST_OVERSIGHTS_IN_DENOMINATION,
 }
+
+
+// ─── SEARCH_CHURCHES ─────────────────────────────────────────────────────
+// Used by the superadmin's "create event for any church" picker. Runs one
+// filtered list per level in a single GraphQL document; client filters out
+// empty arrays and tags each result with its level.
+// Uses OR of _CONTAINS (title-case) + _CONTAINS (lowercase) because the
+// schema only exposes case-sensitive _CONTAINS (not _CONTAINS_INSENSITIVE).
+// We don't include bacentas because superadmin event creation typically
+// targets council level and above; opening that list would also balloon
+// the response (~1700 rows on prod).
+export const SEARCH_CHURCHES = gql`
+  query SearchChurches($q: String!, $qLower: String!, $limit: Int!) {
+    denominations(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    oversights(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    campuses(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    streams(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    councils(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+    governorships(where: { OR: [{ name_CONTAINS: $q }, { name_CONTAINS: $qLower }] }, limit: $limit) { id name }
+  }
+`
+
+export const SEARCH_MEMBERS_BY_NAME = gql`
+  ${MEMBER_FIELDS}
+  query SearchMembersByName($q: String!, $qLower: String!, $limit: Int!) {
+    members(
+      where: {
+        OR: [
+          { firstName_CONTAINS: $q }
+          { firstName_CONTAINS: $qLower }
+          { lastName_CONTAINS: $q }
+          { lastName_CONTAINS: $qLower }
+          { firstName_STARTS_WITH: $q }
+          { firstName_STARTS_WITH: $qLower }
+          { lastName_STARTS_WITH: $q }
+          { lastName_STARTS_WITH: $qLower }
+        ]
+      }
+      limit: $limit
+    ) {
+      ...MemberFields
+    }
+  }
+`

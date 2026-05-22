@@ -25,7 +25,7 @@ export default function ReportsList() {
         const ownLevel = user.level
         const ownId    = ownLevel ? (user as any)[ownLevel]?.id : null
         const scopes   = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
-        const evs = await listEventsForAdminScopes(scopes)
+        const evs = await listEventsForAdminScopes(scopes, { user })
         if (!cancelled) setEvents(evs)
       } catch (err: any) {
         if (!cancelled) setError(err.message)

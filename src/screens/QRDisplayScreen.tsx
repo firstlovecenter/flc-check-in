@@ -7,10 +7,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
-import { listActiveEvents } from '../utils/supabaseCheckins'
+import { listActiveEvents, listActiveSpecialGroupEventsForUser } from '../utils/supabaseCheckins'
+import Spinner from '../components/Spinner'
 import { generateQrToken, currentBucket, generateRotatingPin } from '../utils/checkinsCrypto'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
+import { getCurrentUser } from '../utils/auth'
 
 type QRState =
   | { status: 'loading' }
@@ -50,7 +52,25 @@ export default function QRDisplayScreen() {
     let cancelled = false
     ;(async () => {
       try {
-        const events = await listActiveEvents()
+        const user = isSignedIn() ? getCurrentUser() : null
+        // Superadmins see all events (including all special-group events) via
+        // listActiveEvents(user). Everyone else gets public events + only the
+        // special-group events for groups they personally belong to.
+        let events: any[]
+        if (user?.isSuperAdmin) {
+          events = await listActiveEvents(user)
+        } else {
+          const [publicEvents, groupEvents] = await Promise.all([
+            listActiveEvents(),
+            user?.userId ? listActiveSpecialGroupEventsForUser(user.userId) : Promise.resolve([]),
+          ])
+          const seen = new Set<string>()
+          events = [...publicEvents, ...groupEvents].filter((e) => {
+            if (seen.has(e.id)) return false
+            seen.add(e.id)
+            return true
+          })
+        }
         if (cancelled) return
         setState({ status: 'ok', events })
         // Auto-select when there's exactly one event
@@ -151,7 +171,7 @@ export default function QRDisplayScreen() {
       {header}
       <main className='w-full max-w-6xl mx-auto px-3 sm:px-4 lg:px-6 py-5 sm:py-6'>
         {state.status === 'loading' && (
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>Loading events…</p>
+          <Spinner />
         )}
 
         {state.status === 'error' && (
@@ -244,6 +264,7 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
   const [secsLeft, setSecsLeft] = useState(() => 15 - (Math.floor(Date.now() / 1000) % 15))
   const [pinTick, setPinTick] = useState(0)
   const [qrSize, setQrSize] = useState(260)
+  const showQr  = event.allowed_check_in_methods.includes('QR')
   const showPin = event.allowed_check_in_methods.includes('PIN')
 
   useEffect(() => {
@@ -257,15 +278,17 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
     return () => window.removeEventListener('resize', updateSize)
   }, [])
 
-  // QR token — regenerates on parent tick (every 30 s covers the 60-second QR bucket)
+  // QR token — regenerates on parent tick (every 30 s covers the 60-second QR bucket).
+  // Skip token generation entirely when QR is not an allowed method for this event.
   useEffect(() => {
+    if (!showQr) return
     let cancelled = false
     ;(async () => {
       const t = await generateQrToken({ secretHex: event.qr_secret_hex, eventId: event.id, bucket: currentBucket() })
       if (!cancelled) setToken(t)
     })()
     return () => { cancelled = true }
-  }, [event.id, event.qr_secret_hex, tick])
+  }, [event.id, event.qr_secret_hex, tick, showQr])
 
   // PIN — regenerates on its own 15-second cycle
   useEffect(() => {
@@ -298,7 +321,28 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
         {event.scope_level} · {event.scope_church_name}
       </p>
       <h3 className='text-base font-semibold mb-4 m-0' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{event.name}</h3>
-      {token ? <QRCodeDisplay value={token} size={qrSize} /> : <p style={{ color: 'var(--muted)' }}>Loading QR…</p>}
+      {showQr ? (
+        token ? <QRCodeDisplay value={token} size={qrSize} /> : <Spinner />
+      ) : (
+        <div
+          className='mx-auto p-6 text-center'
+          style={{
+            background: 'var(--bg2)',
+            border: '1px dashed var(--border)',
+            borderRadius: 'var(--radius-card)',
+            maxWidth: qrSize,
+          }}
+        >
+          <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>
+            QR check-in is not enabled for this event
+          </p>
+          <p className='text-xs mt-2 m-0' style={{ color: 'var(--muted)' }}>
+            {showPin
+              ? 'Use the PIN below to check in.'
+              : 'Check in through the app instead.'}
+          </p>
+        </div>
+      )}
       {showPin && pin && (
         <div className='mt-5' style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
           <p className='eyebrow m-0 mb-2 justify-center'>PIN</p>
@@ -312,7 +356,7 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
       )}
       <p className='text-xs mt-4 m-0' style={{ color: 'var(--muted)' }}>
         Ends in {formatDistanceToNowStrict(new Date(event.ends_at))}
-        {' · '}rotates in {secsLeft}s
+        {(showQr || showPin) && <> {' · '}rotates in {secsLeft}s</>}
       </p>
     </div>
   )

@@ -1,10 +1,5 @@
-import RequireAdmin from '../../components/admin/RequireAdmin'
-import MemberBiometrics from '../../components/admin/MemberBiometrics'
+import { Navigate } from 'react-router-dom'
 
 export default function MemberBiometricsScreen() {
-  return (
-    <RequireAdmin>
-      <MemberBiometrics />
-    </RequireAdmin>
-  )
+  return <Navigate to='/admin/members' replace />
 }

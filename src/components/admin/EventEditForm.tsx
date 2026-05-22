@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import CheckInAdminControls from './CheckInAdminControls'
 import { getEvent, updateEvent, resetPin } from '../../utils/supabaseCheckins'
@@ -146,7 +147,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
   }
 
   if (error && !event) return <Centered><p style={{ color: 'var(--coral)' }}>{error}</p></Centered>
-  if (!event) return <Centered><p style={{ color: 'var(--muted)' }}>Loading…</p></Centered>
+  if (!event) return <Spinner fullPage />
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>

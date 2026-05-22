@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
               src: '/icon-192x192.png',
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any',
+              purpose: 'any maskable',
             },
             {
               src: '/icon-512x512.png',
@@ -55,21 +55,32 @@ export default defineConfig(({ mode }) => {
           // Cache the app shell and static assets.
           // Include json (model manifests) and jpeg (logo).
           globPatterns: ['**/*.{js,css,html,svg,png,webp,jpeg,jpg,woff2,json}'],
-          // face-api.js model shards have no file extension so they won't
-          // match any glob. Precache them explicitly with a revision hash
-          // derived from their path (content is immutable — models never change).
-          additionalManifestEntries: [
-            { url: '/models/tiny_face_detector_model-shard1',           revision: 'v1' },
-            { url: '/models/face_landmark_68_model-shard1',             revision: 'v1' },
-            { url: '/models/face_recognition_model-shard1',             revision: 'v1' },
-            { url: '/models/face_recognition_model-shard2',             revision: 'v1' },
-          ],
+          // face-api.js model shards (~7MB total) are no longer precached.
+          // Most users only check in via QR/PIN and never touch face-id, so
+          // shipping 7MB to every PWA install is wasteful. We cache them at
+          // RUNTIME the first time someone opens biometrics or face enrol —
+          // see the /models/* runtimeCaching rule below.
           runtimeCaching: [
-            // Network-first for Supabase — never serve stale auth or event data
+            // Supabase — stale-while-revalidate so reloads paint from cache
+            // INSTANTLY, then refresh in the background. Realtime channels in
+            // the dashboard push live updates separately, so brief staleness
+            // on screen open is fine. Previously NetworkFirst with a 10-second
+            // timeout, which made every reload on a slow network wait ~10s.
             {
               urlPattern: /^https:\/\/.*\.supabase\.co\//,
-              handler: 'NetworkFirst',
-              options: { cacheName: 'supabase-api', networkTimeoutSeconds: 10 },
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'supabase-api' },
+            },
+            // face-api.js model shards — pinned content; CacheFirst is safe
+            // and means the first user to open a face-related screen pays
+            // the ~7MB download once, everyone else reuses the cache.
+            {
+              urlPattern: /\/models\//,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'face-api-models',
+                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              },
             },
             // CARTO map tiles — cache-first; tiles are content-addressed by
             // z/x/y so a cached tile is always correct.
@@ -91,6 +102,28 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     optimizeDeps: { include: ['tslib'] },
+    build: {
+      rollupOptions: {
+        output: {
+          // Split heavy vendor deps into their own chunks so they only load
+          // when a route that uses them is reached. Combined with React.lazy
+          // route boundaries in App.tsx, this means a leader who only does
+          // QR check-in never downloads leaflet/face-api/papaparse.
+          // Function form (object form is not supported by Vite 8 / rolldown).
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id))
+              return 'vendor-react'
+            if (/[\\/]node_modules[\\/](leaflet|react-leaflet|leaflet-draw|@react-leaflet)[\\/]/.test(id))
+              return 'vendor-maps'
+            if (/[\\/]node_modules[\\/](face-api\.js|@zxing|qrcode)[\\/]/.test(id))
+              return 'vendor-vision'
+            if (/[\\/]node_modules[\\/](@supabase|graphql-request|papaparse|date-fns)[\\/]/.test(id))
+              return 'vendor-data'
+          },
+        },
+      },
+    },
     server: {
       port: 3000,
       strictPort: true,

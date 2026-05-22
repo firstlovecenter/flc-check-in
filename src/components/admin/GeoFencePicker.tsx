@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { loadGoogleMaps } from '../../utils/googleMaps'
 import { PRESET_VENUES } from '../../data/venues'
+import LocationPreWarmer from '../LocationPreWarmer'
 import type { GeofenceInput } from '../../types/app'
 
 function useThemeMode() {
@@ -215,6 +216,10 @@ export default function GeoFencePicker({ value, onChange }: Props) {
 
   return (
     <div className='flex flex-col gap-3'>
+      {/* Warm GPS — admin will likely click "Use my location" momentarily.
+          Scoped to the picker so it only fires on event create/edit, not on
+          every authed page. */}
+      <LocationPreWarmer />
       <div style={{ position: 'relative' }}>
         <input
           type='text'

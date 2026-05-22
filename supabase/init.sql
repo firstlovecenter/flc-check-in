@@ -60,6 +60,9 @@ create table if not exists public.member_profiles (
   campus_id           text, campus_name       text,
   oversight_id        text, oversight_name    text,
   denomination_id     text, denomination_name text,
+  -- Cached profile picture URL from the FLC member graph. Synced at login
+  -- and on bulk upserts. See migration 015.
+  picture_url         text,
   face_descriptor     double precision[],
   -- Generated boolean so admin biometrics screens can read enrolment status
   -- without pulling the full 128-float face_descriptor over the wire. STORED
@@ -100,7 +103,7 @@ create table if not exists public.checkin_events (
   status                      text not null default 'ACTIVE'
     check (status in ('ACTIVE', 'PAUSED', 'ENDED')),
   scope_level                 text not null
-    check (scope_level in ('bacenta','governorship','council','stream','campus','oversight','denomination')),
+    check (scope_level in ('bacenta','governorship','council','stream','campus','oversight','denomination','special_group')),
   scope_church_id             text not null,
   scope_church_name           text not null,
   venue_name                  text,
@@ -122,6 +125,9 @@ create table if not exists public.checkin_events (
   created_by_id               text not null references public.member_profiles(id),
   created_by_name             text,
   created_at                  timestamptz not null default now(),
+  series_id                   uuid,
+  series_index                integer,
+  is_public                   boolean not null default true,
   check (
     (geofence_type = 'circle'  and geofence_center_lat is not null and geofence_center_lng is not null and geofence_radius_m is not null)
     or
@@ -132,6 +138,7 @@ create table if not exists public.checkin_events (
 
 create index if not exists checkin_events_status_ends_at_idx on public.checkin_events (status, ends_at);
 create index if not exists checkin_events_scope_idx          on public.checkin_events (scope_level, scope_church_id);
+create index if not exists checkin_events_series_id_idx      on public.checkin_events (series_id) where series_id is not null;
 
 
 -- ─── checkin_records ────────────────────────────────────────────────────────
@@ -243,9 +250,36 @@ create table if not exists public.audit_log (
 create index if not exists audit_log_event_idx on public.audit_log(event_id, created_at desc);
 
 
+-- ─── special_groups ──────────────────────────────────────────────────────────
+-- Named cross-scope groups managed by superadmins. A group is a reusable list
+-- of member IDs that cuts across the church hierarchy — used for special
+-- meetings that don't map to a single council/stream/campus scope.
+create table if not exists public.special_groups (
+  id           uuid        primary key default gen_random_uuid(),
+  name         text        not null,
+  description  text,
+  created_by   text        not null,  -- member graph ID of creating superadmin
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+create table if not exists public.special_group_members (
+  group_id    uuid  not null references public.special_groups(id) on delete cascade,
+  member_id   text  not null,          -- stable FLC graph ID
+  member_name text,                    -- cached display name
+  added_at    timestamptz not null default now(),
+  primary key (group_id, member_id)
+);
+
+create index if not exists special_group_members_group_idx  on public.special_group_members (group_id);
+create index if not exists special_group_members_member_idx on public.special_group_members (member_id);
+
+
 -- ─── RLS enabled with minimum-required policies ─────────────────────────────
 -- checkin_attempts, checkin_devices, face_match_claims have no policy
 -- (deny-all for direct access) — they are only written via security-definer RPCs.
+alter table public.special_groups        enable row level security;
+alter table public.special_group_members enable row level security;
 alter table public.member_profiles   enable row level security;
 alter table public.checkin_events    enable row level security;
 alter table public.checkin_records   enable row level security;
@@ -261,6 +295,8 @@ create policy "anon_all_member_profiles"       on public.member_profiles       f
 create policy "anon_all_checkin_events"        on public.checkin_events        for all to anon using (true) with check (true);
 create policy "anon_all_checkin_records"       on public.checkin_records       for all to anon using (true) with check (true);
 create policy "anon_all_event_scope_members"   on public.event_scope_members   for all to anon using (true) with check (true);
+create policy "anon_all_special_groups"        on public.special_groups        for all to anon using (true) with check (true);
+create policy "anon_all_special_group_members" on public.special_group_members for all to anon using (true) with check (true);
 create policy "anon_all_absence_notes"         on public.absence_notes         for all to anon using (true) with check (true);
 create policy "anon_insert_audit_log"          on public.audit_log             for insert to anon with check (true);
 create policy "anon_read_audit_log"            on public.audit_log             for select to anon using (true);
@@ -729,7 +765,8 @@ create or replace function public.create_checkin_event(
   p_pin_plain                text,
   p_qr_secret_hex            text,
   p_created_by_id            text,
-  p_created_by_name          text
+  p_created_by_name          text,
+  p_is_public                boolean default true
 ) returns uuid
 language plpgsql
 security definer
@@ -749,14 +786,14 @@ begin
     allowed_check_in_methods, allowed_roles,
     geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, geofence_polygon,
     pin_hash, pin_set_at, qr_secret,
-    created_by_id, created_by_name
+    created_by_id, created_by_name, is_public
   ) values (
     p_name, p_event_type, p_scope_level, p_scope_church_id, p_scope_church_name, p_venue_name,
     p_starts_at, p_ends_at, p_grace_period_min, p_auto_checkout_min,
     p_allowed_check_in_methods, p_allowed_roles,
     p_geofence_type, p_geofence_center_lat, p_geofence_center_lng, p_geofence_radius_m, p_geofence_polygon,
     v_pin_hash, case when p_pin_plain is not null then now() else null end, decode(p_qr_secret_hex, 'hex'),
-    p_created_by_id, p_created_by_name
+    p_created_by_id, p_created_by_name, p_is_public
   ) returning id into v_id;
 
   return v_id;
@@ -1143,7 +1180,7 @@ grant execute on function
     timestamptz, timestamptz, int, int,
     text[], text[],
     text, double precision, double precision, int, jsonb,
-    text, text, text, text
+    text, text, text, text, boolean
   ),
   public.reset_event_pin(uuid, text),
   public.submit_checkin(

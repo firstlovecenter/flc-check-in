@@ -14,6 +14,7 @@ export const SCOPE_LEVELS = [
   'campus',
   'oversight',
   'denomination',
+  'special_group',
 ] as const
 export type ScopeLevel = typeof SCOPE_LEVELS[number]
 
@@ -112,6 +113,9 @@ export interface CheckinEventRow {
   created_by_id: string
   created_by_name: string | null
   created_at: string
+  series_id: string | null
+  series_index: number | null
+  is_public: boolean
 }
 
 export interface CheckinRecordRow {

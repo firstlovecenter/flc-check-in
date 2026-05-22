@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { formatDistanceToNowStrict, format } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
+import Spinner from '../Spinner'
 import { listAuditLogForEvent } from '../../utils/supabaseCheckins'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
@@ -36,13 +37,7 @@ export default function AuditLog({ eventId }: { eventId: string }) {
       .finally(() => setLoading(false))
   }, [eventId, refreshKey])
 
-  if (initialLoading || !event) {
-    return (
-      <div className='min-h-dvh flex items-center justify-center' style={{ background: 'var(--bg)' }}>
-        <p style={{ color: 'var(--muted)' }}>Loading…</p>
-      </div>
-    )
-  }
+  if (initialLoading || !event) return <Spinner fullPage />
 
   if (viewerCaps && !viewerCaps.canManage) {
     return (
@@ -68,7 +63,7 @@ export default function AuditLog({ eventId }: { eventId: string }) {
         )}
 
         {loading ? (
-          <p style={{ color: 'var(--muted)' }}>Loading log…</p>
+          <Spinner />
         ) : entries.length === 0 ? (
           <p style={{ color: 'var(--muted)' }}>No audit entries yet.</p>
         ) : (

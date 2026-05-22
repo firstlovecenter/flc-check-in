@@ -17,6 +17,9 @@ import {
   ANCESTOR_QUERIES,
   CHILD_COUNT_QUERIES,
   CHILD_LIST_QUERIES,
+  GET_ALL_MEMBERS_PAGE,
+  SEARCH_CHURCHES,
+  SEARCH_MEMBERS_BY_NAME,
 } from './membersApi.queries.js'
 
 function graphqlEndpoint() {
@@ -117,6 +120,7 @@ export function memberToProfileRow(m) {
     first_name: m.firstName || null,
     last_name: m.lastName || null,
     phone: m.phoneNumber || m.whatsappNumber || null,
+    picture_url: m.pictureUrl || null,
     roles: derivedRoles(m),
     bacenta_id:      bacenta?.id      || null,  bacenta_name:      bacenta?.name      || null,
     governorship_id: governorship?.id || null,  governorship_name: governorship?.name || null,
@@ -248,6 +252,40 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
     })
   scopeMembersPending.set(key, p)
   return p
+}
+
+// ─── getAllLeadersAndAdmins(onProgress?) ────────────────────────────────────
+// Pages through every Member in the FLC graph (no scope filter) and returns
+// just the leaders/admins. Used by the super-admin "Sync Members" tool to
+// pre-populate Supabase with everyone who could log in or appear in a
+// dashboard — independent of any single denomination/stream/etc.
+//
+// `onProgress` is called after each page with the running totals so the UI
+// can show "Fetched N so far…". Bypasses caching — this is an explicit
+// admin action that should always read the graph fresh.
+export async function getAllLeadersAndAdmins(
+  onProgress?: (fetched: number, kept: number) => void,
+): Promise<any[]> {
+  const PAGE_SIZE = 500
+  const kept: any[] = []
+  let offset = 0
+  let fetched = 0
+  // Hard cap to avoid runaway loops if the server ignores offset.
+  const MAX_PAGES = 200
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data: any = await client().request(GET_ALL_MEMBERS_PAGE, {
+      limit: PAGE_SIZE, offset,
+    })
+    const batch: any[] = data?.members || []
+    fetched += batch.length
+    for (const m of batch) {
+      if (isLeaderOrAdmin(m)) kept.push(m)
+    }
+    onProgress?.(fetched, kept.length)
+    if (batch.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return kept
 }
 
 // ─── getAdminScopes(member, user?) ─────────────────────────────────────────
@@ -563,6 +601,56 @@ export async function getChildChurches({ level, id }: { level: string; id: strin
   return Array.isArray(list) ? list : []
 }
 
+// ─── searchChurches(q, limit?) ───────────────────────────────────────────
+// Substring-search churches across every level (denomination → governorship).
+// Bacentas are intentionally excluded — superadmin event creation targets
+// council level and above, and a denomination has ~1700 bacentas which
+// would dwarf the result list. If you ever need bacenta search, add a
+// separate paged query.
+//
+// Returns a flat list, level-tagged, deduped by (level, id). Ordered with
+// highest scope first so a search for "Test" surfaces "Test Denomination"
+// before "Test Council" / "Test Stream" / etc.
+const SEARCH_LEVEL_ORDER: Record<string, number> = {
+  denomination: 0, oversight: 1, campus: 2, stream: 3, council: 4, governorship: 5,
+}
+
+export interface ChurchSearchResult {
+  level: 'denomination' | 'oversight' | 'campus' | 'stream' | 'council' | 'governorship'
+  id: string
+  name: string
+}
+
+export async function searchChurches(q: string, limit = 8): Promise<ChurchSearchResult[]> {
+  const query = (q || '').trim()
+  if (query.length < 2) return []
+  const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
+  const data = await client().request<Record<string, { id: string; name: string }[]>>(
+    SEARCH_CHURCHES, { q: titleCase, qLower: query.toLowerCase(), limit },
+  )
+  const buckets: Array<[ChurchSearchResult['level'], { id: string; name: string }[] | undefined]> = [
+    ['denomination', data?.denominations],
+    ['oversight',    data?.oversights],
+    ['campus',       data?.campuses],
+    ['stream',       data?.streams],
+    ['council',      data?.councils],
+    ['governorship', data?.governorships],
+  ]
+  const seen = new Set<string>()
+  const out: ChurchSearchResult[] = []
+  for (const [level, list] of buckets) {
+    for (const row of list || []) {
+      if (!row?.id) continue
+      const k = `${level}:${row.id}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push({ level, id: row.id, name: row.name })
+    }
+  }
+  out.sort((a, b) => (SEARCH_LEVEL_ORDER[a.level] ?? 9) - (SEARCH_LEVEL_ORDER[b.level] ?? 9))
+  return out
+}
+
 // ─── isLeaderOrAdmin(member) ────────────────────────────────────────────────
 // Returns true iff the member has at least one leads* or isAdminFor* edge.
 // Used at login time to gate access — non-leaders bounce back to login.
@@ -574,4 +662,20 @@ export function isLeaderOrAdmin(member) {
     member.isAdminForGovernorship, member.isAdminForCouncil, member.isAdminForStream,
     member.isAdminForCampus, member.isAdminForOversight, member.isAdminForDenomination,
   ].some((arr) => Array.isArray(arr) && arr.length > 0)
+}
+
+// ─── searchMembersByName ────────────────────────────────────────────────────
+// Case-insensitive substring search across firstName and lastName.
+// Returns full MemberFields so callers can pass results to memberToProfileRow().
+export async function searchMembersByName(q: string, limit = 10): Promise<any[]> {
+  const query = (q || '').trim()
+  if (query.length < 2) return []
+  // Schema only has case-sensitive _CONTAINS/_STARTS_WITH, so pass both the
+  // original and a title-cased version to catch "samuel" → "Samuel" mismatches.
+  const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
+  const data = await client().request<{ members: any[] }>(
+    SEARCH_MEMBERS_BY_NAME,
+    { q: titleCase, qLower: query.toLowerCase(), limit },
+  )
+  return data?.members || []
 }

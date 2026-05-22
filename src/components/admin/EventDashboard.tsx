@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import Spinner from '../Spinner'
 import { formatDistanceToNowStrict } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
 import { getCurrentUser } from '../../utils/auth'
@@ -9,6 +10,7 @@ import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { supabase } from '../../utils/supabase'
 import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
+import AddMemberModal from './AddMemberModal'
 
 // Records arrive via Realtime; poll only needs to refresh event status.
 const POLL_MS = 60_000
@@ -86,6 +88,8 @@ export default function EventDashboard({ eventId }) {
   const [viewerScopeChildCount, setViewerScopeChildCount] = useState<number | null>(null)
   // Risk flags — count of members whose device fingerprint was shared.
   const [riskyCount, setRiskyCount] = useState(0)
+  const [showAddMember, setShowAddMember] = useState(false)
+  const isSuperAdmin = !!user?.isSuperAdmin
 
   // Refresh risk count whenever records change (admin only).
   useEffect(() => {
@@ -114,15 +118,17 @@ export default function EventDashboard({ eventId }) {
     return () => { cancelled = true }
   }, [viewerCaps?.viewerScope?.id, viewerCaps?.canManage, scopeLevel]) // eslint-disable-line
 
-  // Bacenta leaders have no sub-scope to manage — skip the dashboard entirely.
-  // Admin roles start from governorship upwards; bacenta viewerScope means pure leader.
+  // Bacenta leaders and special-group members have no sub-scope to manage —
+  // skip the dashboard entirely.
   // Active event → go straight to check-in. Ended event → go home.
   useEffect(() => {
     if (!viewerCaps || !event) return
-    if (viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage) {
+    const isBacentaLeader = viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage
+    const isSpecialGroupMember = event.scope_level === 'special_group' && !user?.isSuperAdmin
+    if (isBacentaLeader || isSpecialGroupMember) {
       navigate(event.status === 'ACTIVE' ? `/checkin/${eventId}` : '/home', { replace: true })
     }
-  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status]) // eslint-disable-line
+  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status, event?.scope_level]) // eslint-disable-line
 
   // Members that belong to the active child-scope filter (null = no filter).
   const scopedMembers = useMemo(() => {
@@ -169,7 +175,7 @@ export default function EventDashboard({ eventId }) {
   }, [records, viewerCaps?.canCheckIn, user.userId])
 
   if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <CenterCard><p style={{ color: 'var(--muted)' }}>Loading…</p></CenterCard>
+  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
@@ -370,7 +376,28 @@ export default function EventDashboard({ eventId }) {
           )}
         </div>
 
+        {/* Superadmin: manually add a member to the event scope */}
+        {isSuperAdmin && !scopeChurchName && (
+          <button
+            type='button'
+            onClick={() => setShowAddMember(true)}
+            className='w-full py-2.5 text-sm font-semibold cursor-pointer mt-1'
+            style={{
+              background: 'transparent',
+              border: '1.5px dashed var(--border)',
+              borderRadius: 'var(--radius-btn)',
+              color: 'var(--muted)',
+            }}
+          >
+            + Add member to event scope
+          </button>
+        )}
+
       </main>
+
+      {showAddMember && (
+        <AddMemberModal eventId={eventId} onClose={() => setShowAddMember(false)} />
+      )}
     </div>
   )
 }

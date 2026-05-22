@@ -1,23 +1,39 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import LoginScreen from './screens/LoginScreen'
 import LeaderHomeScreen from './screens/LeaderHomeScreen'
-import QRDisplayScreen from './screens/QRDisplayScreen'
-import CheckInFormScreen from './screens/CheckInFormScreen'
-import EventDashboardScreen from './screens/admin/EventDashboardScreen'
-import EventEditScreen from './screens/admin/EventEditScreen'
-import FullReportScreen from './screens/admin/FullReportScreen'
-import ScopeBreakdownScreen from './screens/admin/ScopeBreakdownScreen'
-import AuditLogScreen from './screens/admin/AuditLogScreen'
-import CreateEventScreen from './screens/admin/CreateEventScreen'
-import ReportsScreen from './screens/admin/ReportsScreen'
-import EventHistoryScreen from './screens/admin/EventHistoryScreen'
-import MemberBiometricsScreen from './screens/admin/MemberBiometricsScreen'
 import RequireAuth from './components/RequireAuth'
 import SplashScreen from './components/SplashScreen'
-import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
-import ResetPasswordScreen from './screens/ResetPasswordScreen'
-import ProfileScreen from './screens/ProfileScreen'
 import UpdatePrompt from './components/UpdatePrompt'
+import Spinner from './components/Spinner'
+
+// Lazy-load route screens so vendor chunks (leaflet, face-api, zxing, qrcode,
+// papaparse) only download when the user actually navigates to a screen that
+// needs them. Login + Home stay eager because they're on the cold-load path.
+const QRDisplayScreen        = lazy(() => import('./screens/QRDisplayScreen'))
+const CheckInFormScreen      = lazy(() => import('./screens/CheckInFormScreen'))
+const EventDashboardScreen   = lazy(() => import('./screens/admin/EventDashboardScreen'))
+const EventEditScreen        = lazy(() => import('./screens/admin/EventEditScreen'))
+const FullReportScreen       = lazy(() => import('./screens/admin/FullReportScreen'))
+const ScopeBreakdownScreen   = lazy(() => import('./screens/admin/ScopeBreakdownScreen'))
+const AuditLogScreen         = lazy(() => import('./screens/admin/AuditLogScreen'))
+const CreateEventScreen      = lazy(() => import('./screens/admin/CreateEventScreen'))
+const ReportsScreen          = lazy(() => import('./screens/admin/ReportsScreen'))
+const EventHistoryScreen     = lazy(() => import('./screens/admin/EventHistoryScreen'))
+const MemberBiometricsScreen = lazy(() => import('./screens/admin/MemberBiometricsScreen'))
+const MemberDetailScreen     = lazy(() => import('./screens/admin/MemberDetailScreen'))
+const SyncMembersScreen      = lazy(() => import('./screens/admin/SyncMembersScreen'))
+const MemberSearchScreen     = lazy(() => import('./screens/admin/MemberSearchScreen'))
+const SpecialGroupsScreen    = lazy(() => import('./screens/admin/SpecialGroupsScreen'))
+const ForgotPasswordScreen   = lazy(() => import('./screens/ForgotPasswordScreen'))
+const ResetPasswordScreen    = lazy(() => import('./screens/ResetPasswordScreen'))
+const ProfileScreen          = lazy(() => import('./screens/ProfileScreen'))
+
+// Minimal fallback shown while a route chunk loads. Kept identical to the
+// app background so there's no visible flash between chunks.
+function RouteFallback() {
+  return <Spinner fullPage />
+}
 
 // Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
 function RedirectToReportTab({ tab }) {
@@ -34,6 +50,7 @@ function RedirectAdminEvent({ tail = '' }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path='/' element={<SplashScreen><LoginScreen /></SplashScreen>} />
         <Route path='/forgot-password' element={<ForgotPasswordScreen />} />
@@ -65,6 +82,10 @@ export default function App() {
         <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
         <Route path='/admin/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
         <Route path='/admin/biometrics' element={<RequireAuth><MemberBiometricsScreen /></RequireAuth>} />
+        <Route path='/admin/members' element={<RequireAuth><MemberSearchScreen /></RequireAuth>} />
+        <Route path='/admin/members/:memberId' element={<RequireAuth><MemberDetailScreen /></RequireAuth>} />
+        <Route path='/admin/sync-members' element={<RequireAuth><SyncMembersScreen /></RequireAuth>} />
+        <Route path='/admin/groups' element={<RequireAuth><SpecialGroupsScreen /></RequireAuth>} />
 
         {/* Old /admin/events/:id/* URLs redirect to /events/:id/* */}
         <Route path='/admin/events/:eventId' element={<RedirectAdminEvent />} />
@@ -74,6 +95,7 @@ export default function App() {
 
         <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
+      </Suspense>
       <UpdatePrompt />
     </BrowserRouter>
   )
