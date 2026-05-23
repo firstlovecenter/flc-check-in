@@ -423,10 +423,10 @@ function FaceRing({ videoRef, status, filledCount, softProgress, arrow }: RingPr
           let animation: string | undefined
           if (isFilled) {
             stroke = 'var(--green)'
-            glow = 'drop-shadow(0 0 4px rgba(52,211,153,0.8))'
+            glow = 'drop-shadow(0 0 4px color-mix(in oklab, var(--present) 80%, transparent))'
           } else if (softLit) {
-            stroke = 'rgba(52,211,153,0.6)'
-            glow = 'drop-shadow(0 0 3px rgba(52,211,153,0.45))'
+            stroke = 'color-mix(in oklab, var(--present) 60%, transparent)'
+            glow = 'drop-shadow(0 0 3px color-mix(in oklab, var(--present) 45%, transparent))'
           } else if (isActive) {
             stroke = 'rgba(243,240,238,0.55)'
             animation = `faceRingShimmer 1.6s ease-in-out ${wedgeIdx * 0.08}s infinite`

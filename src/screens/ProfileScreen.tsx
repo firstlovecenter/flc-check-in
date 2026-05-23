@@ -146,7 +146,7 @@ export default function ProfileScreen() {
                   className='text-xs font-bold uppercase tracking-wider px-3 py-1'
                   style={{
                     background: 'var(--accent)',
-                    color: 'var(--bg)',
+                    color: 'var(--badge-text)',
                     borderRadius: 'var(--radius-pill)',
                     letterSpacing: '0.06em',
                   }}
@@ -213,7 +213,7 @@ export default function ProfileScreen() {
                         <span
                           className='text-xs font-bold px-2.5 py-1'
                           style={{
-                            background: role === 'Leader' ? 'rgba(123,164,248,0.15)' : 'rgba(167,139,250,0.15)',
+                            background: role === 'Leader' ? 'color-mix(in oklab, var(--accent) 15%, transparent)' : 'color-mix(in oklab, var(--purple) 15%, transparent)',
                             color: role === 'Leader' ? 'var(--accent)' : 'var(--purple)',
                             borderRadius: 'var(--radius-pill)',
                             letterSpacing: '0.04em',
@@ -293,7 +293,7 @@ function StatBox({ label, value, color }: { label: string; value: string; color?
       }}
     >
       <p className='text-xs m-0 uppercase tracking-wider' style={{ color: 'var(--muted)' }}>{label}</p>
-      <p className='text-xl font-bold m-0' style={{ color: color || 'var(--text)', letterSpacing: '-0.02em' }}>{value}</p>
+      <p className='text-xl font-bold m-0 tnum' style={{ color: color || 'var(--text)', letterSpacing: '-0.02em' }}>{value}</p>
     </div>
   )
 }

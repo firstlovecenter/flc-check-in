@@ -323,8 +323,8 @@ export default function EventDashboard({ eventId }) {
               to={`/events/${event.id}/report?tab=checked-in`}
               className='flex items-center gap-2 mt-3 px-3 py-2 text-sm no-underline'
               style={{
-                background: 'rgba(248,112,96,0.08)',
-                border: '1px solid rgba(248,112,96,0.25)',
+                background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
+                border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
                 borderRadius: 'var(--radius-btn)',
                 color: 'var(--coral)',
               }}

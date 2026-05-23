@@ -83,9 +83,9 @@ export default function SyncMembersPanel() {
           <div
             className='p-3 text-sm'
             style={{
-              background: 'rgba(34,197,94,0.08)',
+              background: 'color-mix(in oklab, var(--present) 8%, transparent)',
               color: 'var(--green, #16a34a)',
-              border: '1px solid rgba(34,197,94,0.3)',
+              border: '1px solid color-mix(in oklab, var(--present) 30%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >

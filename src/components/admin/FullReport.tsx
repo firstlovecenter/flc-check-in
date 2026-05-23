@@ -567,7 +567,7 @@ function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, on
             <span
               title='Device fingerprint shared with another member — possible proxy check-in'
               className='text-[10px] font-bold px-1.5 py-0.5 leading-none'
-              style={{ background: 'rgba(248,112,96,0.15)', color: 'var(--coral)', border: '1px solid rgba(248,112,96,0.3)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
+              style={{ background: 'color-mix(in oklab, var(--absent) 15%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 30%, transparent)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
             >
               ⚠ Device shared
             </span>
