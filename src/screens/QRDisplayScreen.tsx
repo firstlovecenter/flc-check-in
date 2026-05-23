@@ -178,9 +178,9 @@ export default function QRDisplayScreen() {
           <div
             className='p-4 text-sm'
             style={{
-              background: 'rgba(232,96,74,0.08)',
+              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
               color: 'var(--coral)',
-              border: '1px solid rgba(232,96,74,0.25)',
+              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >

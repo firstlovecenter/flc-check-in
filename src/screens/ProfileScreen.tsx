@@ -163,8 +163,8 @@ export default function ProfileScreen() {
             className='text-sm px-4 py-3 m-0 text-center'
             style={{
               color: 'var(--coral)',
-              background: 'rgba(232,96,74,0.08)',
-              border: '1px solid rgba(232,96,74,0.25)',
+              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
+              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >

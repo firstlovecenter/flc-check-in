@@ -213,7 +213,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
             </button>
             <button type='button' onClick={handleDelete} disabled={deleting}
               className='text-xs px-3 py-1.5 cursor-pointer font-semibold disabled:opacity-50'
-              style={{ background: 'transparent', border: '1.5px solid rgba(232,96,74,0.4)', color: 'var(--coral)', borderRadius: 'var(--radius-btn)' }}>
+              style={{ background: 'transparent', border: '1.5px solid color-mix(in oklab, var(--absent) 40%, transparent)', color: 'var(--coral)', borderRadius: 'var(--radius-btn)' }}>
               {deleting ? '…' : 'Delete'}
             </button>
           </div>
@@ -434,7 +434,7 @@ function Field({ label, children }) {
 
 function ErrorBox({ children }) {
   return (
-    <div className='p-3 text-sm' style={{ background: 'rgba(232,96,74,0.1)', color: 'var(--coral)', border: '1px solid rgba(232,96,74,0.2)', borderRadius: 'var(--radius-btn)' }}>
+    <div className='p-3 text-sm' style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}>
       {children}
     </div>
   )

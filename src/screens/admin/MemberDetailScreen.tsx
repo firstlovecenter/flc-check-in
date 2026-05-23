@@ -215,7 +215,7 @@ export default function MemberDetailScreen() {
                     <span
                       className='text-[10px] px-2 py-0.5 uppercase font-bold shrink-0'
                       style={{
-                        background: evt.status === 'ACTIVE' ? 'rgba(46,203,143,0.12)' : 'var(--bg2)',
+                        background: evt.status === 'ACTIVE' ? 'color-mix(in oklab, var(--present) 12%, transparent)' : 'var(--bg2)',
                         color: evt.status === 'ACTIVE' ? 'var(--green)' : 'var(--muted)',
                         border: '1px solid var(--border)',
                         borderRadius: 'var(--radius-pill)',

@@ -600,7 +600,7 @@ export default function CreateEventForm() {
       {error && (
         <div
           className='p-3 text-sm text-center'
-          style={{ background: 'rgba(232,96,74,0.1)', color: 'var(--coral)', border: '1px solid rgba(232,96,74,0.2)', borderRadius: 'var(--radius-btn)' }}
+          style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
         >
           {error}
         </div>

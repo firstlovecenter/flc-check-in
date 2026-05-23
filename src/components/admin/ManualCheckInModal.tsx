@@ -107,7 +107,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
         {error && (
           <p
             className='text-sm px-3 py-2 text-center'
-            style={{ color: 'var(--coral)', background: 'rgba(232,96,74,0.1)', border: '1px solid rgba(232,96,74,0.2)', borderRadius: 'var(--radius-btn)' }}
+            style={{ color: 'var(--coral)', background: 'color-mix(in oklab, var(--absent) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
           >
             {error}
           </p>

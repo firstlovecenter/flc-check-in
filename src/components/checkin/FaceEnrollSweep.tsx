@@ -372,7 +372,7 @@ function FaceRing({ videoRef, status, filledCount, softProgress, arrow }: RingPr
         {isComplete && (
           <div
             className='absolute inset-0 flex items-center justify-center'
-            style={{ background: 'rgba(46,203,143,0.18)', animation: 'faceRingCheckIn 0.45s ease-out both' }}
+            style={{ background: 'color-mix(in oklab, var(--present) 18%, transparent)', animation: 'faceRingCheckIn 0.45s ease-out both' }}
           >
             <svg width='80' height='80' viewBox='0 0 80 80'>
               <circle cx='40' cy='40' r='34' fill='none' stroke='var(--green)' strokeWidth='4' />
@@ -389,7 +389,7 @@ function FaceRing({ videoRef, status, filledCount, softProgress, arrow }: RingPr
           style={{
             inset: 0,
             borderRadius: '50%',
-            boxShadow: '0 0 60px 8px rgba(46,203,143,0.55)',
+            boxShadow: '0 0 60px 8px color-mix(in oklab, var(--present) 55%, transparent)',
             animation: 'faceRingGlow 0.9s ease-out both',
           }}
         />

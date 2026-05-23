@@ -279,9 +279,9 @@ export default function CheckInFormScreen() {
               <div
                 className='p-3 mb-4 text-sm text-center'
                 style={{
-                  background: 'rgba(232,96,74,0.08)',
+                  background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
                   color: 'var(--coral)',
-                  border: '1px solid rgba(232,96,74,0.25)',
+                  border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
                   borderRadius: 'var(--radius-btn)',
                 }}
               >
