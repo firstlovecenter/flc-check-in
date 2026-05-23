@@ -469,7 +469,7 @@ export default function FullReport({ eventId }) {
                   onClick={() => confirmResetFaceId(confirmResetId)}
                   style={{
                     flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                    background: 'var(--coral)', color: '#fff', border: 'none', fontWeight: 600,
+                    background: 'var(--absent)', color: 'var(--badge-text)', border: 'none', fontWeight: 600,
                   }}
                 >
                   Reset
@@ -528,7 +528,7 @@ export default function FullReport({ eventId }) {
                 disabled={absenceSaving || !absenceInput.trim()}
                 style={{
                   flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent)', color: 'var(--badge-text)', border: 'none',
                   fontWeight: 600, cursor: 'pointer',
                   opacity: (absenceSaving || !absenceInput.trim()) ? 0.5 : 1,
                 }}
@@ -563,7 +563,7 @@ function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, on
   return (
     <div
       className='p-3 flex items-center justify-between gap-3'
-      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? '#f87060' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
+      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? 'var(--absent)' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
     >
       <div className='min-w-0'>
         <div className='flex items-center gap-1.5'>

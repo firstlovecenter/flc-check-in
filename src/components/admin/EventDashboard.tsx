@@ -349,7 +349,7 @@ export default function EventDashboard({ eventId }) {
             className='flex-[2] block py-3 text-center text-sm font-semibold'
             style={{
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--badge-text)',
               borderRadius: 'var(--radius-btn)',
               textDecoration: 'none',
               letterSpacing: '-0.01em',
