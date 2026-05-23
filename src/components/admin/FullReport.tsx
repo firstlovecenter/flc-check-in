@@ -311,24 +311,29 @@ export default function FullReport({ eventId }) {
           style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
         >
           <Stat value={total} label='Expected' />
-          <Stat value={counts['checked-in']}  label='Checked In'  color='var(--green)' />
-          <Stat value={counts['checked-out']} label='Checked Out' color='var(--amber)' />
-          <Stat value={counts['defaulted']}   label='Defaulted'   color='var(--coral)' />
+          <Stat value={counts['checked-in']}  label='Checked In'  color='var(--present)' />
+          <Stat value={counts['checked-out']} label='Checked Out' color='var(--out)' />
+          <Stat value={counts['defaulted']}   label='Defaulted'   color='var(--absent)' />
         </div>
 
-        {/* Attendance bar */}
-        <div
-          className='p-4'
-          style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-        >
-          <div className='flex items-center justify-between text-xs mb-2'>
-            <span style={{ color: 'var(--muted)' }}>Attendance</span>
-            <span style={{ color: 'var(--accent)' }}>{pct}%</span>
-          </div>
-          <div className='h-2 overflow-hidden' style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)' }}>
-            <div className='h-full' style={{ width: `${pct}%`, background: 'var(--coral)', borderRadius: 'var(--radius-pill)' }} />
-          </div>
-        </div>
+        {/* Attendance bar — fill colour tracks the rate */}
+        {(() => {
+          const rateColor = pct >= 80 ? 'var(--present)' : pct >= 50 ? 'var(--late)' : 'var(--absent)'
+          return (
+            <div
+              className='p-4'
+              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+            >
+              <div className='flex items-center justify-between text-xs mb-2'>
+                <span style={{ color: 'var(--muted)' }}>Attendance</span>
+                <span className='tnum font-semibold' style={{ color: rateColor }}>{pct}%</span>
+              </div>
+              <div className='h-2 overflow-hidden' style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)' }}>
+                <div className='h-full' style={{ width: `${pct}%`, background: rateColor, borderRadius: 'var(--radius-pill)', transition: 'width 0.4s var(--ease-out)' }} />
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Tabs — pill toggle */}
         <div
@@ -350,9 +355,9 @@ export default function FullReport({ eventId }) {
             >
               {t.label}
               <span
-                className='text-[10px] font-bold px-1.5 py-0.5'
+                className='text-[10px] font-bold px-1.5 py-0.5 tnum'
                 style={{
-                  background: activeTab === t.id ? 'rgba(255,255,255,0.2)' : 'var(--card)',
+                  background: activeTab === t.id ? 'color-mix(in oklab, var(--cta-text) 22%, transparent)' : 'var(--card)',
                   color: activeTab === t.id ? 'var(--cta-text)' : 'var(--muted)',
                   borderRadius: 'var(--radius-pill)',
                 }}
@@ -464,7 +469,7 @@ export default function FullReport({ eventId }) {
                   onClick={() => confirmResetFaceId(confirmResetId)}
                   style={{
                     flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                    background: 'var(--coral)', color: '#fff', border: 'none', fontWeight: 600,
+                    background: 'var(--absent)', color: 'var(--badge-text)', border: 'none', fontWeight: 600,
                   }}
                 >
                   Reset
@@ -523,7 +528,7 @@ export default function FullReport({ eventId }) {
                 disabled={absenceSaving || !absenceInput.trim()}
                 style={{
                   flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent)', color: 'var(--badge-text)', border: 'none',
                   fontWeight: 600, cursor: 'pointer',
                   opacity: (absenceSaving || !absenceInput.trim()) ? 0.5 : 1,
                 }}
@@ -545,7 +550,7 @@ function cap(s: string) {
 function Stat({ value, label, color = 'var(--text)' }) {
   return (
     <div>
-      <p className='text-2xl font-bold m-0' style={{ color }}>{value}</p>
+      <p className='text-2xl font-bold m-0 tnum' style={{ color, letterSpacing: '-0.02em' }}>{value}</p>
       <p className='text-[10px] uppercase tracking-widest m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{label}</p>
     </div>
   )
@@ -558,7 +563,7 @@ function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, on
   return (
     <div
       className='p-3 flex items-center justify-between gap-3'
-      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? '#f87060' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
+      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? 'var(--absent)' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
     >
       <div className='min-w-0'>
         <div className='flex items-center gap-1.5'>
@@ -567,7 +572,7 @@ function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, on
             <span
               title='Device fingerprint shared with another member — possible proxy check-in'
               className='text-[10px] font-bold px-1.5 py-0.5 leading-none'
-              style={{ background: 'rgba(248,112,96,0.15)', color: 'var(--coral)', border: '1px solid rgba(248,112,96,0.3)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
+              style={{ background: 'color-mix(in oklab, var(--absent) 15%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 30%, transparent)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
             >
               ⚠ Device shared
             </span>
@@ -676,9 +681,9 @@ function TimelineEntry({ entry, isLast }: { entry: { record: any; member: any };
 
 function StatusPill({ status }) {
   const colors = {
-    ACTIVE: { bg: 'rgba(46,203,143,0.12)', fg: 'var(--green)' },
-    PAUSED: { bg: 'rgba(240,165,0,0.12)', fg: 'var(--amber)' },
-    ENDED:  { bg: 'rgba(154,143,135,0.12)', fg: 'var(--muted)' },
+    ACTIVE: { bg: 'color-mix(in oklab, var(--present) 12%, transparent)', fg: 'var(--green)' },
+    PAUSED: { bg: 'color-mix(in oklab, var(--late) 12%, transparent)', fg: 'var(--amber)' },
+    ENDED:  { bg: 'color-mix(in oklab, var(--muted) 12%, transparent)', fg: 'var(--muted)' },
   }[status] || { bg: 'var(--bg2)', fg: 'var(--text)' }
   return (
     <span

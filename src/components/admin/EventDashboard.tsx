@@ -283,9 +283,9 @@ export default function EventDashboard({ eventId }) {
           <div
             className='w-full py-3 text-center font-semibold text-sm'
             style={{
-              background: 'rgba(46,203,143,0.1)',
+              background: 'color-mix(in oklab, var(--present) 10%, transparent)',
               color: 'var(--green)',
-              border: '1.5px solid rgba(46,203,143,0.3)',
+              border: '1.5px solid color-mix(in oklab, var(--present) 30%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >
@@ -323,8 +323,8 @@ export default function EventDashboard({ eventId }) {
               to={`/events/${event.id}/report?tab=checked-in`}
               className='flex items-center gap-2 mt-3 px-3 py-2 text-sm no-underline'
               style={{
-                background: 'rgba(248,112,96,0.08)',
-                border: '1px solid rgba(248,112,96,0.25)',
+                background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
+                border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
                 borderRadius: 'var(--radius-btn)',
                 color: 'var(--coral)',
               }}
@@ -349,7 +349,7 @@ export default function EventDashboard({ eventId }) {
             className='flex-[2] block py-3 text-center text-sm font-semibold'
             style={{
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--badge-text)',
               borderRadius: 'var(--radius-btn)',
               textDecoration: 'none',
               letterSpacing: '-0.01em',
@@ -459,9 +459,9 @@ function StatCard({ value, label, color, to }: StatCardProps) {
 
 function StatusPill({ status, className = '' }) {
   const colors = {
-    ACTIVE: { bg: 'rgba(46,203,143,0.12)', fg: 'var(--green)' },
-    PAUSED: { bg: 'rgba(240,165,0,0.12)', fg: 'var(--amber)' },
-    ENDED:  { bg: 'rgba(154,143,135,0.12)', fg: 'var(--muted)' },
+    ACTIVE: { bg: 'color-mix(in oklab, var(--present) 12%, transparent)', fg: 'var(--green)' },
+    PAUSED: { bg: 'color-mix(in oklab, var(--late) 12%, transparent)', fg: 'var(--amber)' },
+    ENDED:  { bg: 'color-mix(in oklab, var(--muted) 12%, transparent)', fg: 'var(--muted)' },
   }[status] || { bg: 'var(--bg2)', fg: 'var(--text)' }
   return (
     <span

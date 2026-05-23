@@ -158,7 +158,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
         <div
           style={{
             marginTop: '0.75rem', padding: '0.75rem 1rem',
-            background: 'rgba(79,127,255,0.08)', border: '1px solid rgba(79,127,255,0.3)',
+            background: 'color-mix(in oklab, var(--accent) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)',
             borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
           }}
         >
@@ -264,9 +264,9 @@ function Btn({ children, onClick, disabled, danger }: {
       type='button' onClick={onClick} disabled={disabled}
       className='px-3 py-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50'
       style={{
-        background: danger ? 'rgba(232,96,74,0.12)' : 'var(--bg2)',
+        background: danger ? 'color-mix(in oklab, var(--absent) 12%, transparent)' : 'var(--bg2)',
         color: danger ? 'var(--coral)' : 'var(--text)',
-        border: `1.5px solid ${danger ? 'rgba(232,96,74,0.3)' : 'var(--border)'}`,
+        border: `1.5px solid ${danger ? 'color-mix(in oklab, var(--absent) 30%, transparent)' : 'var(--border)'}`,
         borderRadius: 'var(--radius-btn)',
       }}
     >{children}</button>

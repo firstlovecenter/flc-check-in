@@ -61,9 +61,9 @@ export default function LocationPermissionBanner() {
       role='alert'
       className='px-4 py-2.5 text-xs'
       style={{
-        background: 'rgba(232,96,74,0.08)',
+        background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
         color: 'var(--coral)',
-        borderBottom: '1px solid rgba(232,96,74,0.25)',
+        borderBottom: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
         position: 'sticky',
         top: 0,
         zIndex: 40,

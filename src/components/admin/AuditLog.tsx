@@ -57,7 +57,7 @@ export default function AuditLog({ eventId }: { eventId: string }) {
         <p className='eyebrow m-0'>{event.name}</p>
 
         {error && (
-          <p className='text-sm px-3 py-2' style={{ color: 'var(--coral)', background: 'rgba(232,96,74,0.08)', borderRadius: 'var(--radius-btn)', border: '1px solid rgba(232,96,74,0.2)' }}>
+          <p className='text-sm px-3 py-2' style={{ color: 'var(--coral)', background: 'color-mix(in oklab, var(--absent) 8%, transparent)', borderRadius: 'var(--radius-btn)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)' }}>
             {error}
           </p>
         )}

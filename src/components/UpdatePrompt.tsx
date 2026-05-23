@@ -41,7 +41,7 @@ export default function UpdatePrompt() {
         className='text-xs font-semibold px-4 py-2 cursor-pointer'
         style={{
           background: 'var(--accent)',
-          color: '#fff',
+          color: 'var(--badge-text)',
           border: 'none',
           borderRadius: 'var(--radius-btn, 8px)',
           whiteSpace: 'nowrap',

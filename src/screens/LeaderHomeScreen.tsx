@@ -209,9 +209,9 @@ export default function LeaderHomeScreen() {
           <div
             className='p-4 text-sm'
             style={{
-              background: 'rgba(232,96,74,0.08)',
+              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
               color: 'var(--coral)',
-              border: '1px solid rgba(232,96,74,0.25)',
+              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >
@@ -229,8 +229,28 @@ export default function LeaderHomeScreen() {
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
-              <div className='p-8 text-center' style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}>
-                <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>No events found.</p>
+              <div className='flex flex-col items-center text-center px-6 py-14' style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}>
+                <div
+                  className='flex items-center justify-center mb-4'
+                  style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--bg2)', color: 'var(--muted)' }}
+                >
+                  <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>
+                    <path d='M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11z' />
+                  </svg>
+                </div>
+                <p className='text-base font-semibold m-0' style={{ color: 'var(--text)' }}>No events yet</p>
+                <p className='text-sm m-0 mt-1' style={{ color: 'var(--muted)', maxWidth: '24ch' }}>
+                  {isAdmin ? 'Create an event to start taking check-ins.' : 'Check-ins will appear here once a leader opens an event.'}
+                </p>
+                {isAdmin && (
+                  <button
+                    type='button'
+                    onClick={() => navigate('/admin/events/new')}
+                    className='btn-pill btn-primary mt-5 px-4 py-2.5 text-sm'
+                  >
+                    Create event
+                  </button>
+                )}
               </div>
             )
           }
@@ -304,48 +324,45 @@ export default function LeaderHomeScreen() {
 
 function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | 'upcoming' | 'past' }) {
   const levelColor = `var(--badge-${evt.scope_level}, var(--accent))`
-  const stripeColor = variant === 'past' ? 'var(--border)' : variant === 'live' ? 'var(--green)' : levelColor
-  const statusColor = variant === 'live' ? 'var(--green)' : variant === 'past' ? 'var(--muted)' : levelColor
+  const statusColor = variant === 'live' ? 'var(--present)' : variant === 'past' ? 'var(--muted)' : levelColor
   const statusLabel = variant === 'live' ? 'Live' : variant === 'past' ? 'Ended' : 'Upcoming'
 
   return (
     <Link
       to={`/events/${evt.id}`}
-      className='flex transition-all hover:brightness-105 active:scale-[0.99]'
+      className='flex items-center gap-3 px-4 py-3 transition-transform active:scale-[0.99]'
       style={{
         background: 'var(--card)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-card)',
         textDecoration: 'none',
-        overflow: 'hidden',
-        boxShadow: variant === 'past' ? 'none' : 'var(--shadow-2)',
-        opacity: variant === 'past' ? 0.65 : 1,
+        boxShadow: variant === 'past' ? 'none' : 'var(--shadow-1)',
+        opacity: variant === 'past' ? 0.7 : 1,
       }}
     >
-      <div style={{ width: 4, background: stripeColor, flexShrink: 0 }} />
-      <div className='px-4 py-3 flex-1 min-w-0 flex items-center justify-between gap-3'>
-        <div className='min-w-0'>
-          <div className='flex items-center gap-1.5 min-w-0'>
-            {variant === 'live' && (
-              <span className='relative flex h-2 w-2 shrink-0'>
-                <span className='animate-ping absolute inline-flex h-full w-full rounded-full opacity-75' style={{ background: 'var(--green)' }} />
-                <span className='relative inline-flex rounded-full h-2 w-2' style={{ background: 'var(--green)' }} />
-              </span>
-            )}
-            <p className='text-sm font-bold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{evt.name}</p>
-          </div>
-          <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
-            {evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}
-          </p>
-        </div>
-        <div className='shrink-0 text-right'>
-          <p className='text-xs font-bold m-0' style={{ color: 'var(--muted)' }}>
-            {format(new Date(evt.starts_at), 'd MMM')}
-          </p>
-          <span className='text-[10px] font-bold uppercase' style={{ color: statusColor, letterSpacing: '0.06em' }}>
-            {statusLabel}
-          </span>
-        </div>
+      {/* Leading status dot — replaces the colored side stripe */}
+      {variant === 'live' ? (
+        <span className='relative flex h-2.5 w-2.5 shrink-0'>
+          <span className='animate-ping absolute inline-flex h-full w-full rounded-full opacity-75' style={{ background: 'var(--present)' }} />
+          <span className='relative inline-flex rounded-full h-2.5 w-2.5' style={{ background: 'var(--present)' }} />
+        </span>
+      ) : (
+        <span className='shrink-0' style={{ width: 9, height: 9, borderRadius: '50%', background: statusColor }} />
+      )}
+
+      <div className='min-w-0 flex-1'>
+        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>{evt.name}</p>
+        <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+          {evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}
+        </p>
+      </div>
+      <div className='shrink-0 text-right'>
+        <p className='text-xs font-semibold m-0 tnum' style={{ color: 'var(--muted)' }}>
+          {format(new Date(evt.starts_at), 'd MMM')}
+        </p>
+        <span className='text-[10px] font-semibold uppercase' style={{ color: statusColor, letterSpacing: '0.06em' }}>
+          {statusLabel}
+        </span>
       </div>
     </Link>
   )

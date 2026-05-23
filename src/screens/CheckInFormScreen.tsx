@@ -216,14 +216,14 @@ export default function CheckInFormScreen() {
                 <div className='mt-4 flex justify-center gap-3 flex-wrap'>
                   <span
                     className='px-3 py-1 text-xs font-semibold'
-                    style={{ background: 'rgba(52,211,153,0.12)', color: 'var(--green)', border: '1px solid rgba(52,211,153,0.3)', borderRadius: 'var(--radius-pill)' }}
+                    style={{ background: 'color-mix(in oklab, var(--present) 12%, transparent)', color: 'var(--green)', border: '1px solid color-mix(in oklab, var(--present) 30%, transparent)', borderRadius: 'var(--radius-pill)' }}
                   >
                     {activeRecord.method || success?.method}
                   </span>
                   {(activeRecord.is_late ?? success?.is_late) && (
                     <span
                       className='px-3 py-1 text-xs font-semibold'
-                      style={{ background: 'rgba(251,191,36,0.12)', color: 'var(--amber)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 'var(--radius-pill)' }}
+                      style={{ background: 'color-mix(in oklab, var(--late) 12%, transparent)', color: 'var(--amber)', border: '1px solid color-mix(in oklab, var(--late) 30%, transparent)', borderRadius: 'var(--radius-pill)' }}
                     >
                       Marked late
                     </span>
@@ -279,9 +279,9 @@ export default function CheckInFormScreen() {
               <div
                 className='p-3 mb-4 text-sm text-center'
                 style={{
-                  background: 'rgba(232,96,74,0.08)',
+                  background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
                   color: 'var(--coral)',
-                  border: '1px solid rgba(232,96,74,0.25)',
+                  border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
                   borderRadius: 'var(--radius-btn)',
                 }}
               >

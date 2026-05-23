@@ -215,9 +215,9 @@ export default function EventHistoryList() {
 
 function statusStyle(status) {
   const c = {
-    ACTIVE: { bg: 'rgba(46,203,143,0.12)', fg: 'var(--green)' },
-    PAUSED: { bg: 'rgba(240,165,0,0.12)', fg: 'var(--amber)' },
-    ENDED:  { bg: 'rgba(154,143,135,0.12)', fg: 'var(--muted)' },
+    ACTIVE: { bg: 'color-mix(in oklab, var(--present) 12%, transparent)', fg: 'var(--green)' },
+    PAUSED: { bg: 'color-mix(in oklab, var(--late) 12%, transparent)', fg: 'var(--amber)' },
+    ENDED:  { bg: 'color-mix(in oklab, var(--muted) 12%, transparent)', fg: 'var(--muted)' },
   }[status] || { bg: 'var(--bg2)', fg: 'var(--text)' }
   return { background: c.bg, color: c.fg }
 }

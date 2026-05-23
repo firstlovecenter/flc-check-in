@@ -7,23 +7,20 @@ export default function EventCardForLeader({ event }) {
   return (
     <Link
       to={`/events/${event.id}`}
-      className='flex transition-transform active:scale-[0.98] hover:brightness-105'
+      className='block transition-transform active:scale-[0.98]'
       style={{
         background: 'var(--card)',
         border: '1px solid var(--border)',
         borderRadius: 'var(--radius-card)',
-        boxShadow: 'var(--shadow-2)',
+        boxShadow: 'var(--shadow-1)',
         textDecoration: 'none',
-        overflow: 'hidden',
       }}
     >
-      {/* Left accent bar */}
-      <div style={{ width: 4, background: levelColor, flexShrink: 0 }} />
-
-      <div className='p-4 flex-1 min-w-0'>
-        {/* Scope eyebrow */}
-        <p className='eyebrow m-0 mb-2.5' style={{ color: 'var(--muted)' }}>
-          <span style={{ color: levelColor, fontWeight: 700 }}>{event.scope_level?.toUpperCase()}</span>
+      <div className='p-4 min-w-0'>
+        {/* Scope eyebrow — level shown via a leading status dot, not a side stripe */}
+        <p className='text-xs m-0 mb-2.5 flex items-center gap-1.5' style={{ color: 'var(--muted)' }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: levelColor, flexShrink: 0 }} />
+          <span style={{ color: levelColor, fontWeight: 600, letterSpacing: '0.03em' }}>{event.scope_level?.toUpperCase()}</span>
           {' · '}
           {event.scope_church_name}
         </p>

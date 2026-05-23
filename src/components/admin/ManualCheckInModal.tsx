@@ -77,13 +77,12 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
   }
 
   return (
-    <div className='fixed inset-0 z-50 flex items-center justify-center px-4'
-      style={{ background: 'rgba(0,0,0,0.6)' }}
+    <div className='drawer-backdrop fixed inset-0 z-50 flex items-center justify-center px-4'
       onClick={onClose}>
       <form
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
-        className='w-full max-w-md p-6 flex flex-col gap-4'
+        className='modal-card w-full max-w-md p-6 flex flex-col gap-4'
         style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-3)' }}
       >
         <div>
@@ -107,7 +106,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
         {error && (
           <p
             className='text-sm px-3 py-2 text-center'
-            style={{ color: 'var(--coral)', background: 'rgba(232,96,74,0.1)', border: '1px solid rgba(232,96,74,0.2)', borderRadius: 'var(--radius-btn)' }}
+            style={{ color: 'var(--coral)', background: 'color-mix(in oklab, var(--absent) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
           >
             {error}
           </p>

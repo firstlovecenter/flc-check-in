@@ -98,7 +98,7 @@ export default function BiometricEnrolGate({ children }) {
               <div className='flex flex-col gap-3 items-center py-4'>
                 <div style={{
                   width: 64, height: 64, borderRadius: '50%',
-                  background: 'rgba(46,203,143,0.15)',
+                  background: 'color-mix(in oklab, var(--present) 15%, transparent)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 32,
                 }}>OK</div>
@@ -116,8 +116,8 @@ export default function BiometricEnrolGate({ children }) {
                 className='text-sm px-3 py-2 text-center m-0'
                 style={{
                   color: 'var(--coral)',
-                  background: 'rgba(232,96,74,0.1)',
-                  border: '1px solid rgba(232,96,74,0.2)',
+                  background: 'color-mix(in oklab, var(--absent) 10%, transparent)',
+                  border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)',
                   borderRadius: 'var(--radius-btn)',
                 }}
               >

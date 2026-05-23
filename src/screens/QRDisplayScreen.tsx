@@ -29,14 +29,14 @@ const REFRESH_INTERVAL_MS = 30_000
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     typeof window !== 'undefined'
-      ? (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'dark'
-      : 'dark'
+      ? (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'light'
+      : 'light'
   )
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     localStorage.setItem('flc-theme', next)
-    if (next === 'light') document.documentElement.setAttribute('data-theme', 'light')
+    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
     else document.documentElement.removeAttribute('data-theme')
   }
   return { theme, toggle }
@@ -178,9 +178,9 @@ export default function QRDisplayScreen() {
           <div
             className='p-4 text-sm'
             style={{
-              background: 'rgba(232,96,74,0.08)',
+              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
               color: 'var(--coral)',
-              border: '1px solid rgba(232,96,74,0.25)',
+              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
               borderRadius: 'var(--radius-btn)',
             }}
           >
