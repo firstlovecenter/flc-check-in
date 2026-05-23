@@ -58,7 +58,7 @@ export default function TopBar({ user, right = null }: Props) {
           className='shrink-0 text-xs font-bold uppercase tracking-wider px-2.5 py-1'
           style={{
             background: badgeColor,
-            color: 'var(--ink)',
+            color: 'var(--badge-text)',
             borderRadius: 'var(--radius-pill)',
             fontSize: '10px',
             letterSpacing: '0.06em',

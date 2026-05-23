@@ -65,8 +65,8 @@ export default function AddMemberModal({ eventId, onClose }: Props) {
     <>
       {/* Backdrop */}
       <div
-        className='fixed inset-0'
-        style={{ background: 'rgba(0,0,0,0.6)', zIndex: 1100 }}
+        className='drawer-backdrop fixed inset-0'
+        style={{ zIndex: 1100 }}
         onClick={onClose}
       />
 
@@ -76,7 +76,7 @@ export default function AddMemberModal({ eventId, onClose }: Props) {
         style={{ zIndex: 1110, pointerEvents: 'none' }}
       >
         <div
-          className='w-full sm:max-w-lg mx-auto flex flex-col'
+          className='sheet-card w-full sm:max-w-lg mx-auto flex flex-col'
           style={{
             background: 'var(--card)',
             border: '1px solid var(--border)',

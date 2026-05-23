@@ -3,7 +3,7 @@
 // Permission-aware: the menu items shown depend on the viewer's role.
 // Items are hidden entirely rather than greyed out, per design decision.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { logout } from '../utils/auth'
 import type { AppUser } from '../types/app'
@@ -65,8 +65,18 @@ function NavItem({ to, icon, label, onClick }: NavItemProps) {
 
 export default function NavDrawer({ user }: { user?: AppUser | null }) {
   const [open, setOpen] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const navigate = useNavigate()
   const { theme, toggle: toggleTheme } = useTheme()
+
+  // Animate the drawer out before unmounting (transition is interruptible).
+  function close() {
+    setClosing(true)
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => { setOpen(false); setClosing(false) }, 300)
+  }
+  useEffect(() => () => clearTimeout(closeTimer.current), [])
 
   // Lock body scroll while the drawer is open
   useEffect(() => {
@@ -80,7 +90,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   // Close on Escape
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') close() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
@@ -116,12 +126,14 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
       {open && (
         <>
           <div
-            onClick={() => setOpen(false)}
-            className='fixed inset-0'
-            style={{ background: 'rgba(0,0,0,0.55)', zIndex: 1040 }}
+            onClick={close}
+            data-state={closing ? 'closed' : 'open'}
+            className='drawer-backdrop fixed inset-0'
+            style={{ zIndex: 1040 }}
           />
           <aside
-            className='fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] flex flex-col'
+            data-state={closing ? 'closed' : 'open'}
+            className='drawer-panel fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] flex flex-col'
             style={{ background: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: 'var(--shadow-2)', zIndex: 1050 }}
             role='dialog'
             aria-label='Navigation'
@@ -133,7 +145,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 <button
                   type='button'
                   aria-label='Close menu'
-                  onClick={() => setOpen(false)}
+                  onClick={close}
                   className='p-1.5 rounded-md cursor-pointer'
                   style={{ background: 'transparent', color: 'var(--muted)' }}
                 >
@@ -157,18 +169,18 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
 
             {/* Nav items */}
             <nav className='flex-1 overflow-y-auto p-2 flex flex-col gap-1'>
-              <NavItem to='/home'    icon={ICONS.home}    label='Home'          onClick={() => setOpen(false)} />
-              <NavItem to='/events'  icon={ICONS.qr}      label='Scan QR Code'  onClick={() => setOpen(false)} />
+              <NavItem to='/home'    icon={ICONS.home}    label='Home'          onClick={close} />
+              <NavItem to='/events'  icon={ICONS.qr}      label='Scan QR Code'  onClick={close} />
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={() => setOpen(false)} />
-                  <NavItem to='/admin/members'    icon={ICONS.profile} label='Members'      onClick={() => setOpen(false)} />
+                  <NavItem to='/admin/reports'    icon={ICONS.report}  label='Reports'      onClick={close} />
+                  <NavItem to='/admin/members'    icon={ICONS.profile} label='Members'      onClick={close} />
                 </>
               )}
               {isSuperAdmin && (
-                <NavItem to='/admin/groups' icon={ICONS.groups} label='Special Groups' onClick={() => setOpen(false)} />
+                <NavItem to='/admin/groups' icon={ICONS.groups} label='Special Groups' onClick={close} />
               )}
-              <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={() => setOpen(false)} />
+              <NavItem to='/admin/history' icon={ICONS.history} label='Event History' onClick={close} />
             </nav>
 
             {/* Footer — profile · theme · sign out on one row */}
@@ -176,7 +188,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               {/* Profile */}
               <Link
                 to='/profile'
-                onClick={() => setOpen(false)}
+                onClick={close}
                 aria-label='My profile'
                 className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
                 style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)', textDecoration: 'none' }}
