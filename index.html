@@ -6,22 +6,24 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0C0F1A" />
+    <meta name="theme-color" content="#F6F7FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16181d" media="(prefers-color-scheme: dark)" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="FLC Hineni" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Hineni</title>
-    <!-- Sofia Sans — Mastercard design system substitute for MarkForMC -->
+    <!-- Geist — Ink & Paper UI typeface; Geist Mono for PINs, codes, counts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Sofia+Sans:ital,wght@0,400;0,450;0,500;0,700;1,400&display=swap" rel="stylesheet" />
-    <!-- Restore persisted theme before React mounts to prevent flash -->
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <!-- Restore persisted theme before React mounts to prevent flash.
+         Light is the default; dark is the opt-in override. -->
     <script>
       (function () {
-        var t = localStorage.getItem('flc-theme');
-        if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        if (localStorage.getItem('flc-theme') === 'dark')
+          document.documentElement.setAttribute('data-theme', 'dark');
       })();
     </script>
   </head>

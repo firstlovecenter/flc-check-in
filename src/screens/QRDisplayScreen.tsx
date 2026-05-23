@@ -29,14 +29,14 @@ const REFRESH_INTERVAL_MS = 30_000
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() =>
     typeof window !== 'undefined'
-      ? (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'dark'
-      : 'dark'
+      ? (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'light'
+      : 'light'
   )
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     localStorage.setItem('flc-theme', next)
-    if (next === 'light') document.documentElement.setAttribute('data-theme', 'light')
+    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
     else document.documentElement.removeAttribute('data-theme')
   }
   return { theme, toggle }

@@ -8,7 +8,7 @@ import LocationPreWarmer from '../LocationPreWarmer'
 import type { GeofenceInput } from '../../types/app'
 
 function useThemeMode() {
-  const isDark = () => document.documentElement.getAttribute('data-theme') !== 'light'
+  const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark'
   const [dark, setDark] = useState(isDark)
   useEffect(() => {
     const obs = new MutationObserver(() => setDark(isDark()))

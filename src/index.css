@@ -1,40 +1,33 @@
 @import "tailwindcss";
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ════════════════════════════════════════════════════════════════════════
+   INK & PAPER — a field instrument for presence.
 
-/* ─── Shared / invariant tokens ─────────────────────────────────────────── */
+   Near-monochrome ink-on-paper. Chroma is reserved almost entirely for
+   attendance STATUS (present / late / absent / checked-out). Light-first,
+   tuned for glancing at a phone in bright daylight; a real dark theme is kept
+   for evening services. All color is OKLCH; neutrals carry a faint cool tint
+   (hue ~258) so nothing reads as sterile pure-white or jet-black.
+   ════════════════════════════════════════════════════════════════════════ */
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Invariant tokens (shared by both themes) ───────────────────────────── */
 :root {
-  --sans: 'Sofia Sans', 'Arial', sans-serif;
+  --sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', 'Menlo', monospace;
 
-  /* Mastercard invariant palette */
-  --ink:          #141413;   /* warm near-black — Ink Black */
-  --canvas-cream: #F3F0EE;   /* warm putty canvas */
-  --lifted-cream: #FCFBFA;   /* nested raised surface */
-  --signal:       #CF4500;   /* consent / legal orange — do NOT use for marketing CTAs */
-  --signal-arc:   #F37338;   /* lighter carroty orange — accent arcs & indicators */
-  --link-blue:    #3860BE;   /* deep dusty blue — inline links */
-
-  /* Semantic check-in status (kept, slightly warmed) */
-  --green:   #2ECB8F;
-  --amber:   #F0A500;
-  --coral:   #E8604A;
-  --teal:    #2DD4BF;
-  --purple:  #A78BFA;
-
-  /* Border-radius scale (Mastercard: small | medium-large | full-pill) */
-  --radius-sm:   6px;
-  --radius-btn:  20px;
-  --radius-card: 40px;
+  /* Border-radius — crisp instrument scale (tighter than the old editorial 40px) */
+  --radius-sm:   8px;
+  --radius-btn:  12px;
+  --radius-card: 16px;
   --radius-pill: 999px;
 
-  /* Atmospheric shadow scale */
-  --shadow-1: rgba(0, 0, 0, 0.04) 0px 4px 24px 0px;
-  --shadow-2: rgba(0, 0, 0, 0.12) 0px 24px 48px 0px;
-  --shadow-3: rgba(0, 0, 0, 0.28) 0px 70px 110px 0px;
+  /* Motion — strong custom easings (Emil Kowalski) */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
-  /* Typography rhythm */
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.5;
@@ -44,60 +37,94 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Dark theme (default) ───────────────────────────────────────────────── */
+/* ─── Light theme (DEFAULT) ──────────────────────────────────────────────── */
 :root {
-  --bg:     #0F0D0C;   /* warm dark canvas — replaces cold navy */
-  --bg2:    #1A1714;   /* raised surface on dark */
-  --card:   #221E1B;   /* card surface on dark */
-  --border: #312C28;   /* subtle dividers */
-  --text:   #F3F0EE;   /* canvas cream as text on dark */
-  --muted:  #9A8F87;   /* muted warm gray */
-  --accent: #7BA4F8;   /* brightened link-blue for dark bg readability */
+  --bg:     oklch(98.5% 0.004 258);   /* cool paper canvas */
+  --bg2:    oklch(96%   0.006 258);   /* recessed / lifted surface */
+  --card:   oklch(99.5% 0.003 258);   /* card surface */
+  --border: oklch(89%   0.008 258);   /* hairline dividers */
+  --text:   oklch(24%   0.015 262);   /* ink */
+  --muted:  oklch(52%   0.014 262);   /* secondary text */
+  --accent: oklch(48%   0.13  252);   /* focus rings + links ONLY */
 
-  /* CTA pill: light-on-dark (cream bg, ink text) */
-  --cta-bg:   var(--canvas-cream);
-  --cta-text: var(--ink);
+  /* Primary pill: ink-on-paper */
+  --cta-bg:   oklch(24% 0.015 262);
+  --cta-text: oklch(98.5% 0.004 258);
 
-  /* Level badge colours */
-  --badge-bacenta:      #7fa8ff;
-  --badge-governorship: #c4b5fd;
-  --badge-council:      #fcd34d;
-  --badge-stream:       #fcd34d;
-  --badge-campus:       #86efac;
-  --badge-oversight:    #fda4af;
-  --badge-denomination: #f9a8d4;
+  /* Attendance status — the only load-bearing chroma */
+  --present: oklch(57% 0.15 155);
+  --late:    oklch(72% 0.14 78);
+  --absent:  oklch(57% 0.20 25);
+  --out:     oklch(56% 0.03 255);
 
-  color-scheme: dark;
-  color: var(--text);
-  background: var(--bg);
-}
+  /* Legacy aliases (consumed across the app) */
+  --green:  var(--present);
+  --amber:  var(--late);
+  --coral:  var(--absent);
+  --teal:   oklch(60% 0.12 195);
+  --purple: oklch(55% 0.17 292);
 
-/* ─── Light theme ────────────────────────────────────────────────────────── */
-[data-theme="light"] {
-  --bg:     #F3F0EE;   /* Canvas Cream — warm putty body canvas */
-  --bg2:    #FCFBFA;   /* Lifted Cream — nested raised sections */
-  --card:   #FFFFFF;   /* white cards on cream */
-  --border: #D1CDC7;   /* warm bone dividers */
-  --text:   #141413;   /* Ink Black */
-  --muted:  #696969;   /* Slate Gray */
-  --accent: #3860BE;   /* Link Blue (full saturation on light) */
+  /* Status tint backgrounds — replace the old scattered inline rgba() tints */
+  --present-bg: color-mix(in oklab, var(--present) 14%, transparent);
+  --late-bg:    color-mix(in oklab, var(--late)    16%, transparent);
+  --absent-bg:  color-mix(in oklab, var(--absent)  13%, transparent);
+  --info-bg:    color-mix(in oklab, var(--accent)  12%, transparent);
+  --neutral-bg: color-mix(in oklab, var(--muted)   12%, transparent);
+  --out-bg:     color-mix(in oklab, var(--out)     14%, transparent);
 
-  /* CTA pill: dark-on-light (ink bg, cream text) */
-  --cta-bg:   var(--ink);
-  --cta-text: var(--canvas-cream);
+  /* Cool-tinted, restrained elevation (borders preferred over shadow on light) */
+  --shadow-1: 0 1px 2px oklch(50% 0.03 262 / 0.07);
+  --shadow-2: 0 4px 16px oklch(48% 0.03 262 / 0.09);
+  --shadow-3: 0 16px 48px oklch(40% 0.04 262 / 0.16);
 
-  /* Level badge colours (slightly darkened for light bg legibility) */
-  --badge-bacenta:      #3860BE;
-  --badge-governorship: #7C3AED;
-  --badge-council:      #B45309;
-  --badge-stream:       #B45309;
-  --badge-campus:       #059669;
-  --badge-oversight:    #BE185D;
-  --badge-denomination: #9D174D;
+  /* Church-level badge hues */
+  --badge-bacenta:      oklch(50% 0.14 250);
+  --badge-governorship: oklch(52% 0.16 300);
+  --badge-council:      oklch(52% 0.13 70);
+  --badge-stream:       oklch(52% 0.13 70);
+  --badge-campus:       oklch(52% 0.13 155);
+  --badge-oversight:    oklch(55% 0.18 12);
+  --badge-denomination: oklch(53% 0.16 340);
 
   color-scheme: light;
   color: var(--text);
   background: var(--bg);
+}
+
+/* ─── Dark theme (evening services) ──────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:     oklch(20% 0.008 262);
+  --bg2:    oklch(24% 0.010 262);
+  --card:   oklch(26% 0.011 262);
+  --border: oklch(34% 0.013 262);
+  --text:   oklch(96% 0.004 258);
+  --muted:  oklch(68% 0.013 258);
+  --accent: oklch(74% 0.12 250);
+
+  --cta-bg:   oklch(95% 0.004 258);
+  --cta-text: oklch(22% 0.012 262);
+
+  --present: oklch(74% 0.15 158);
+  --late:    oklch(82% 0.14 80);
+  --absent:  oklch(70% 0.18 25);
+  --out:     oklch(66% 0.03 255);
+
+  --teal:   oklch(76% 0.12 190);
+  --purple: oklch(74% 0.15 292);
+
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.30);
+  --shadow-2: 0 4px 16px oklch(0% 0 0 / 0.42);
+  --shadow-3: 0 16px 48px oklch(0% 0 0 / 0.58);
+
+  --badge-bacenta:      oklch(74% 0.13 250);
+  --badge-governorship: oklch(76% 0.13 300);
+  --badge-council:      oklch(80% 0.13 80);
+  --badge-stream:       oklch(80% 0.13 80);
+  --badge-campus:       oklch(78% 0.13 158);
+  --badge-oversight:    oklch(74% 0.16 12);
+  --badge-denomination: oklch(74% 0.15 340);
+
+  color-scheme: dark;
 }
 
 /* ─── Global base ────────────────────────────────────────────────────────── */
@@ -107,29 +134,50 @@ body {
   color: var(--text);
   min-height: 100dvh;
   font-family: var(--sans);
-  transition: background 0.2s ease, color 0.2s ease;
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
 }
 
-#root {
-  min-height: 100dvh;
+#root { min-height: 100dvh; }
+
+html { scroll-behavior: smooth; }
+
+/* Tabular figures for counts, metrics, countdowns, codes */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Accessible, brand-tinted focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* ─── Utility: eyebrow label pattern ─────────────────────────────────────── */
+/* Reduced motion: gut movement, keep things instant */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── Utility: eyebrow label ─────────────────────────────────────────────── */
 .eyebrow {
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
 .eyebrow::before {
-  content: '•';
-  color: var(--signal-arc);
-  font-size: 10px;
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
 }
 
 /* ─── Utility: pill button base ──────────────────────────────────────────── */
@@ -138,43 +186,25 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 24px;
+  padding: 10px 22px;
   border-radius: var(--radius-btn);
   font-family: var(--sans);
   font-size: 15px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   border: none;
   cursor: pointer;
-  transition: opacity 0.15s ease, transform 0.1s ease;
+  transition: transform 0.16s var(--ease-out), opacity 0.16s var(--ease-out),
+              background 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
 }
-
-.btn-pill:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.btn-pill:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-/* ─── Leaflet: contain z-index inside the map wrapper ───────────────────────────── */
-/* Leaflet uses z-index: 1000 on controls and 400-800 on panes. Without this
-   isolation the map layers paint over fixed overlays (NavDrawer, modals).
-   `isolation: isolate` creates a new stacking context so every Leaflet
-   z-index is relative to the map container, not the document root. */
-.leaflet-container {
-  isolation: isolate;
-}
-
-/* Leaflet tile theme is handled via JS in GeoFencePicker (CARTO dark_all / light_all URLs). */
+.btn-pill:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-pill:active:not(:disabled) { transform: scale(0.97); }
 
 .btn-primary {
   background: var(--cta-bg);
   color: var(--cta-text);
   border: 1.5px solid var(--cta-bg);
 }
-
 .btn-secondary {
   background: transparent;
   color: var(--text);
@@ -190,18 +220,15 @@ body {
   color: var(--text);
   font-family: var(--sans);
   font-size: 15px;
-  padding: 12px 18px;
+  padding: 12px 16px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
   box-sizing: border-box;
 }
-
-.input-field::placeholder {
-  color: var(--muted);
-}
-
+.input-field::placeholder { color: var(--muted); }
 .input-field:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--info-bg);
 }
 
 /* ─── Utility: card surface ──────────────────────────────────────────────── */
@@ -209,10 +236,15 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-1);
 }
 
-/* ─── Leaflet layer-switcher: theme to match app surfaces ──────────────── */
+/* ─── Leaflet: contain z-index inside the map wrapper ────────────────────── */
+/* `isolation: isolate` creates a new stacking context so Leaflet's internal
+   z-indexes stay relative to the map, not the document root (else map panes
+   paint over fixed overlays like NavDrawer / modals). */
+.leaflet-container { isolation: isolate; }
+
 .leaflet-control-layers {
   background: var(--card) !important;
   color: var(--text) !important;
@@ -220,25 +252,19 @@ body {
   border-radius: var(--radius-btn) !important;
   box-shadow: var(--shadow-2) !important;
 }
-.leaflet-control-layers-expanded {
-  padding: 8px 12px !important;
-}
+.leaflet-control-layers-expanded { padding: 8px 12px !important; }
 .leaflet-control-layers label {
   color: var(--text) !important;
   font-family: var(--sans);
   font-size: 13px;
 }
-.leaflet-control-layers-separator {
-  border-top-color: var(--border) !important;
-}
+.leaflet-control-layers-separator { border-top-color: var(--border) !important; }
 
-/* ─── App logo: adaptive tint for dark / light mode ─────────────────────── */
-/* Dark mode: slight brightness lift so the logo pops on the dark canvas.    */
+/* ─── App logo: adaptive tint per theme ──────────────────────────────────── */
 .app-logo {
   border-radius: 22%;
-  filter: brightness(1.05) drop-shadow(0 2px 8px rgba(0,0,0,0.45));
+  filter: brightness(0.98) drop-shadow(0 1px 4px oklch(40% 0.03 262 / 0.18));
 }
-/* Light mode: gentle shadow only — no brightness boost needed on white.     */
-[data-theme="light"] .app-logo {
-  filter: brightness(0.97) drop-shadow(0 1px 4px rgba(0,0,0,0.18));
+[data-theme="dark"] .app-logo {
+  filter: brightness(1.05) drop-shadow(0 2px 8px oklch(0% 0 0 / 0.45));
 }

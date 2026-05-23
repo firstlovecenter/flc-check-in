@@ -11,16 +11,16 @@ import type { AppUser } from '../types/app'
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'dark'
+      return (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'light'
     }
-    return 'dark'
+    return 'light'
   })
   function toggle() {
     const next = theme === 'dark' ? 'light' : 'dark'
     setTheme(next)
     localStorage.setItem('flc-theme', next)
-    if (next === 'light') {
-      document.documentElement.setAttribute('data-theme', 'light')
+    if (next === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark')
     } else {
       document.documentElement.removeAttribute('data-theme')
     }

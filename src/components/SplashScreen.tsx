@@ -71,7 +71,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   return (
     <div
       className='fixed inset-0 flex items-center justify-center'
-      style={{ background: '#0C0F1A', zIndex: 100 }}
+      style={{ background: 'var(--bg)', zIndex: 100 }}
     >
       <style>{`
         @keyframes flcSplashSpin {
@@ -103,7 +103,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
           className='absolute pointer-events-none'
           style={{
             width: 120, height: 120, borderRadius: '50%',
-            border: '1.5px solid rgba(255,44,94,0.5)',
+            border: '1.5px solid color-mix(in oklab, var(--accent) 55%, transparent)',
             animation: 'flcSplashHaloA 2.4s ease-out infinite',
           }}
         />
@@ -111,7 +111,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
           className='absolute pointer-events-none'
           style={{
             width: 120, height: 120, borderRadius: '50%',
-            border: '1.5px solid rgba(255,44,94,0.35)',
+            border: '1.5px solid color-mix(in oklab, var(--accent) 35%, transparent)',
             animation: 'flcSplashHaloB 2.4s ease-out 1.2s infinite',
           }}
         />
@@ -133,7 +133,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
         <p
           className='text-sm m-0'
           style={{
-            color: 'rgba(255,255,255,0.6)',
+            color: 'var(--muted)',
             letterSpacing: '0.12em',
             textTransform: 'uppercase',
             animation: 'flcSplashFadeIn 0.6s ease-out 0.3s both',
