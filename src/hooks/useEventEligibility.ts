@@ -36,7 +36,8 @@ const ELIGIBILITY_TTL = 4 * 60 * 1000  // 4 min
 // Persisted cache survives full reloads / tab restores; only used for instant
 // first-paint while the fresh fetch is in flight.
 const ELIGIBILITY_PERSIST_TTL = 30 * 60 * 1000  // 30 min sanity cap
-const ELIGIBILITY_STORAGE_PREFIX = 'flc:elig:v1:'
+// v2: persisted entries must include event + viewerCaps (v1 could strand UI on spinner).
+const ELIGIBILITY_STORAGE_PREFIX = 'flc:elig:v2:'
 // Cap stored event/records snapshots to avoid pathological localStorage usage.
 const PERSIST_EVENTS_MAX = 6
 
@@ -56,16 +57,27 @@ const eligibilityCache = new Map<string, CachedEligibility>()
 
 function persistKey(cacheKey: string) { return ELIGIBILITY_STORAGE_PREFIX + cacheKey }
 
+function normalizeCacheEntry(raw: any): CachedEligibility | null {
+  if (!raw || Date.now() - (raw.ts ?? 0) > ELIGIBILITY_PERSIST_TTL) return null
+  if (!raw.event || !raw.viewerCaps) return null
+  return {
+    eligible: Array.isArray(raw.eligible) ? raw.eligible : [],
+    eligibleIds: new Set<string>(raw.eligibleIds || []),
+    viewerCaps: raw.viewerCaps,
+    viewerSlice: Array.isArray(raw.viewerSlice) ? raw.viewerSlice : [],
+    adminScopes: Array.isArray(raw.adminScopes) ? raw.adminScopes : [],
+    childCount: raw.childCount ?? null,
+    event: raw.event,
+    records: Array.isArray(raw.records) ? raw.records : [],
+    ts: raw.ts,
+  }
+}
+
 function readPersistedEligibility(cacheKey: string): CachedEligibility | null {
   try {
     const raw = localStorage.getItem(persistKey(cacheKey))
     if (!raw) return null
-    const parsed = JSON.parse(raw) as any
-    if (!parsed || Date.now() - parsed.ts > ELIGIBILITY_PERSIST_TTL) return null
-    return {
-      ...parsed,
-      eligibleIds: new Set<string>(parsed.eligibleIds || []),
-    }
+    return normalizeCacheEntry(JSON.parse(raw))
   } catch { return null }
 }
 
@@ -155,8 +167,9 @@ export function useEventEligibility(
     // Layer 1: in-memory cache (this tab session only).
     // Layer 2: localStorage cache (survives reloads / tab restores).
     const memHit = eligibilityCache.get(cacheKey)
-    const hit = memHit && Date.now() - memHit.ts < ELIGIBILITY_TTL
-      ? memHit
+    const memCandidate = memHit && Date.now() - memHit.ts < ELIGIBILITY_TTL ? memHit : null
+    const hit = (memCandidate && memCandidate.event && memCandidate.viewerCaps)
+      ? memCandidate
       : readPersistedEligibility(cacheKey)
     if (hit) {
       setEligible(hit.eligible)
@@ -165,8 +178,8 @@ export function useEventEligibility(
       setViewerSlice(hit.viewerSlice)
       setAdminScopes(hit.adminScopes)
       setChildCount(hit.childCount)
-      if (hit.event) setEvent(hit.event)
-      if (hit.records) setRecords(hit.records)
+      setEvent(hit.event)
+      setRecords(hit.records)
       setInitialLoading(false)
       // Still revalidate in background — don't return early.
     }

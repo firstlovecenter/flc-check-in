@@ -47,7 +47,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   const {
-    event, eligible: allEligible, viewerCaps, adminScopes, records,
+    event, eligible: allEligible, viewerSlice, viewerCaps, adminScopes, records,
     error: eligibilityError, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { refreshKey })
 
@@ -108,6 +108,13 @@ export default function FullReport({ eventId }: { eventId: string }) {
   const [filterChurchId, setFilterChurchId] = useState<string | null>(urlChurchId)
   const [filterChurchName, setFilterChurchName] = useState<string | null>(urlChurchName)
 
+  // Keep scope filter in sync when navigating from dashboard stat cards (same route, new search).
+  useEffect(() => {
+    setFilterLevel(urlLevel)
+    setFilterChurchId(urlChurchId)
+    setFilterChurchName(urlChurchName)
+  }, [urlLevel, urlChurchId, urlChurchName])
+
   const scopeOptions = useMemo(() => {
     if (!event) return []
     const topChildLevel = childScopeLevel(event.scope_level)
@@ -136,10 +143,14 @@ export default function FullReport({ eventId }: { eventId: string }) {
   }
 
   const eligible = useMemo(() => {
-    if (!filterChurchId || filterChurchId === '__all__' || !filterLevel) return allEligible
-    const idCol = `${filterLevel}_id`
-    return allEligible.filter((m) => m[idCol] === filterChurchId)
-  }, [allEligible, filterLevel, filterChurchId])
+    const base =
+      filterChurchId && filterChurchId !== '__all__' && filterLevel
+        ? allEligible.filter((m) => m[`${filterLevel}_id`] === filterChurchId)
+        : !viewerCaps?.canManage && viewerSlice.length > 0
+          ? viewerSlice
+          : allEligible
+    return base
+  }, [allEligible, viewerSlice, viewerCaps?.canManage, filterLevel, filterChurchId])
 
   const buckets = useMemo(() => {
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
@@ -185,9 +196,9 @@ export default function FullReport({ eventId }: { eventId: string }) {
   const tabRows =
     activeTab === 'timeline'
       ? []
-      : buckets[
+      : (buckets[
           activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
-        ]
+        ] ?? [])
   const filteredRows = filterRows(tabRows, search)
 
   const filteredTimeline = useMemo(() => {
@@ -202,9 +213,10 @@ export default function FullReport({ eventId }: { eventId: string }) {
   }, [timelineRows, search])
 
   function setTab(id: TabId) {
-    setParams((p) => {
-      p.set('tab', id)
-      return p
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', id)
+      return next
     }, { replace: true })
   }
 
@@ -319,7 +331,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
         )}
 
         <Card>
-          <CardContent className='metric-grid grid-cols-4 gap-2 p-4 text-center'>
+          <CardContent className='metric-grid gap-2 p-4 text-center'>
             <MetricStat value={total} label='Expected' />
             <MetricStat value={counts['checked-in']} label='Checked In' tone='success' />
             <MetricStat value={counts['checked-out']} label='Checked Out' tone='muted' />
