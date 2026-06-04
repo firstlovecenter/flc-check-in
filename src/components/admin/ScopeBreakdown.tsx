@@ -3,6 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Spinner from '../Spinner'
 import { format } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
+import { PageShell, PageMain } from '../layout/PageShell'
+import { CenterCard } from '../layout/CenterCard'
+import { cn } from '../../lib/utils'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
 } from '../../utils/supabaseCheckins'
@@ -61,7 +64,9 @@ export default function ScopeBreakdown({ eventId }) {
         const allRows = eventScopeMembers.map(memberToProfileRow)
         await bulkUpsertMemberProfiles(allRows)
         const allowed = new Set(evt.allowed_roles || [])
-        const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
+        const eligibleRows = user?.isSuperAdmin
+          ? allRows
+          : allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
         const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
         // superAdmin bypass: getViewerCapabilities only checks the member graph
@@ -210,25 +215,28 @@ export default function ScopeBreakdown({ eventId }) {
     ? null // handled by browser back
     : `/events/${eventId}`
 
-  if (error) return <CenterCard><p style={{ color: 'var(--coral)' }}>{error}</p></CenterCard>
+  if (error) {
+    return (
+      <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
+    )
+  }
   if (!event || !viewerCaps) return <Spinner fullPage />
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
-    return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
+    return (
+      <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
+    )
   }
 
   const isMemberList = currentLevel === 'governorship' || childLevel === null || childLevel === 'bacenta'
 
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader
         title={currentName || 'Breakdown'}
-        back={backTo
-          ? { to: backTo, label: 'Dashboard' }
-          : undefined}
+        back={backTo ? { to: backTo, label: 'Dashboard' } : undefined}
         onBack={!backTo ? () => navigate(-1) : undefined}
       />
-
-      <main className='max-w-5xl mx-auto px-4 sm:px-6 py-5 flex flex-col gap-3'>
+      <PageMain className='flex flex-col gap-3 py-5'>
         {/* Breadcrumb-like context */}
         <div className='flex items-center justify-between'>
           <p className='eyebrow m-0'>
@@ -239,8 +247,7 @@ export default function ScopeBreakdown({ eventId }) {
           {!isMemberList && (
             <Link
               to={`/events/${eventId}/report?level=${currentLevel}&churchId=${currentChurchId}&churchName=${encodeURIComponent(currentName)}`}
-              className='text-xs underline'
-              style={{ color: 'var(--accent)' }}
+              className='text-xs underline text-primary'
             >
               Full report ↗
             </Link>
@@ -258,21 +265,33 @@ export default function ScopeBreakdown({ eventId }) {
                 <Link
                   key={g.id}
                   to={drillPath}
-                  className='block p-4 transition-opacity hover:opacity-90 active:scale-[0.99]'
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', textDecoration: 'none', boxShadow: 'var(--shadow-1)' }}
+                  className='stat-link-card block p-4 no-underline transition-opacity hover:opacity-90 active:scale-[0.99]'
                 >
-                  <div className='flex items-center justify-between gap-3 mb-2'>
-                    <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{g.name}</p>
-                    <span className='text-xs font-bold' style={{ color: pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--coral)' }}>{pct}%</span>
+                  <div className='mb-2 flex items-center justify-between gap-3'>
+                    <p className='m-0 truncate text-sm font-semibold text-foreground'>{g.name}</p>
+                    <span
+                      className={cn(
+                        'text-xs font-bold',
+                        pct >= 80 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-destructive',
+                      )}
+                    >
+                      {pct}%
+                    </span>
                   </div>
-                  <div className='h-1.5 overflow-hidden mb-3' style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)' }}>
-                    <div className='h-full' style={{ width: `${pct}%`, background: pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--coral)', borderRadius: 'var(--radius-pill)' }} />
+                  <div className='mb-3 h-1.5 overflow-hidden rounded-full bg-secondary'>
+                    <div
+                      className={cn(
+                        'h-full rounded-full',
+                        pct >= 80 ? 'bg-success' : pct >= 50 ? 'bg-warning' : 'bg-destructive',
+                      )}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
                   <div className='flex gap-4'>
-                    <SmallStat value={g.stillIn} label='Still In' color='var(--green)' />
-                    <SmallStat value={g.left}    label='Left'     color='var(--amber)' />
-                    <SmallStat value={g.absent}  label='Absent'   color='var(--coral)' />
-                    <SmallStat value={g.total}   label='Total' />
+                    <SmallStat value={g.stillIn} label='Still In' tone='success' />
+                    <SmallStat value={g.left} label='Left' tone='warning' />
+                    <SmallStat value={g.absent} label='Absent' tone='destructive' />
+                    <SmallStat value={g.total} label='Total' />
                   </div>
                 </Link>
               )
@@ -284,7 +303,7 @@ export default function ScopeBreakdown({ eventId }) {
              council-level event who have no single governorship) ── */}
         {!isMemberList && unassignedRows.length > 0 && (
           <>
-            <p className='text-xs font-semibold mt-1' style={{ color: 'var(--muted)' }}>
+            <p className='text-xs font-semibold mt-1 text-muted-foreground'>
               {cap(currentLevel!)} level · {unassignedRows.length} member{unassignedRows.length !== 1 ? 's' : ''}
             </p>
             <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
@@ -297,7 +316,7 @@ export default function ScopeBreakdown({ eventId }) {
 
         {/* ── Member list (at governorship / bottom of drill) ── */}
         {isMemberList && memberRows.length === 0 && (
-          <p className='text-sm text-center mt-4' style={{ color: 'var(--muted)' }}>No eligible members in this scope.</p>
+          <p className='text-sm text-center mt-4 text-muted-foreground'>No eligible members in this scope.</p>
         )}
         {isMemberList && memberRows.length > 0 && (
           <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
@@ -306,27 +325,29 @@ export default function ScopeBreakdown({ eventId }) {
             ))}
           </div>
         )}
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }
 
 function MemberRow({ member: m, record: r, status }: { member: any; record: any; status: string }) {
   const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
-  const statusColor = status === 'Checked In' ? 'var(--green)' : status === 'Checked Out' ? 'var(--amber)' : 'var(--coral)'
+  const statusClass =
+    status === 'Checked In'
+      ? 'text-success'
+      : status === 'Checked Out'
+        ? 'text-warning'
+        : 'text-destructive'
   return (
-    <div
-      className='px-4 py-3 flex items-center justify-between gap-3'
-      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-    >
+    <div className='list-row surface-card flex items-center justify-between gap-3 rounded-lg px-4 py-3'>
       <div className='min-w-0'>
-        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
-        <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{(m.roles || [])[0] || '—'}</p>
+        <p className='m-0 truncate text-sm font-semibold text-foreground'>{name}</p>
+        <p className='m-0 mt-0.5 text-xs text-muted-foreground'>{(m.roles || [])[0] || '—'}</p>
       </div>
-      <div className='text-right shrink-0'>
-        <p className='text-xs font-bold m-0' style={{ color: statusColor }}>{status}</p>
+      <div className='shrink-0 text-right'>
+        <p className={cn('m-0 text-xs font-bold', statusClass)}>{status}</p>
         {r?.checked_in_at && (
-          <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
+          <p className='text-xs m-0 mt-0.5 text-muted-foreground'>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
         )}
       </div>
     </div>
@@ -337,24 +358,29 @@ function cap(s: string) {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-function SmallStat({ value, label, color = 'var(--text)' }: { value: number; label: string; color?: string }) {
+function SmallStat({
+  value,
+  label,
+  tone,
+}: {
+  value: number
+  label: string
+  tone?: 'success' | 'warning' | 'destructive'
+}) {
   return (
     <div className='text-center'>
-      <p className='text-sm font-bold m-0' style={{ color }}>{value}</p>
-      <p className='text-[10px] m-0' style={{ color: 'var(--muted)' }}>{label}</p>
-    </div>
-  )
-}
-
-function CenterCard({ children }) {
-  return (
-    <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
-      <div
-        className='w-full max-w-md p-6 text-center'
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
+      <p
+        className={cn(
+          'm-0 text-sm font-bold',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          tone === 'destructive' && 'text-destructive',
+          !tone && 'text-foreground',
+        )}
       >
-        {children}
-      </div>
+        {value}
+      </p>
+      <p className='m-0 text-[10px] text-muted-foreground'>{label}</p>
     </div>
   )
 }

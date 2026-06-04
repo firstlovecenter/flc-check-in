@@ -1,7 +1,7 @@
 // FLC member directory adapter — wraps VITE_MEMBER_GRAPHQL_URL.
 //
-// The endpoint is currently open (no auth required for reads). If that
-// changes, add the JWT bearer header here in client().
+// Reads require a JWT bearer (prod/dev return "Unauthenticated" without one).
+// The client() below attaches accessToken from localStorage on every request.
 //
 // The app's universe is members who lead OR admin something — regular
 // members are excluded. See membersApi.queries.js for the OR-filter that
@@ -219,6 +219,22 @@ export async function resolveCurrentMember(user) {
   return p
 }
 
+/** Drop cached graph lookups so the next resolve hits the network (login / resync). */
+export function clearResolveCurrentMemberCache(user?: { userId?: string; email?: string }) {
+  if (user) {
+    const key = user.userId || user.email
+    if (key) {
+      memberByUserCache.delete(key)
+      memberByUserNullTs.delete(key)
+      memberByUserPending.delete(key)
+    }
+    return
+  }
+  memberByUserCache.clear()
+  memberByUserNullTs.clear()
+  memberByUserPending.clear()
+}
+
 // ─── getMembersInScope({ level, churchId }) ─────────────────────────────────
 // Returns every leader/admin within the given scope's hierarchy, including
 // the scope itself.
@@ -265,11 +281,13 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
 // admin action that should always read the graph fresh.
 export async function getAllLeadersAndAdmins(
   onProgress?: (fetched: number, kept: number) => void,
+  opts?: { includeAllMembers?: boolean },
 ): Promise<any[]> {
   const PAGE_SIZE = 500
   const kept: any[] = []
   let offset = 0
   let fetched = 0
+  const includeAll = !!opts?.includeAllMembers
   // Hard cap to avoid runaway loops if the server ignores offset.
   const MAX_PAGES = 200
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -279,7 +297,7 @@ export async function getAllLeadersAndAdmins(
     const batch: any[] = data?.members || []
     fetched += batch.length
     for (const m of batch) {
-      if (isLeaderOrAdmin(m)) kept.push(m)
+      if (includeAll || isLeaderOrAdmin(m)) kept.push(m)
     }
     onProgress?.(fetched, kept.length)
     if (batch.length < PAGE_SIZE) break
@@ -301,6 +319,8 @@ export async function getAllLeadersAndAdmins(
 //
 // Output: [{ level, id, name }] sorted highest-level first.
 export function getAdminScopes(member, user?: any) {
+  // Superadmins pick scopes in UI (church search / special groups), not from JWT.
+  if (user?.isSuperAdmin) return []
   const scopes = []
   const push = (lvl, list) => {
     for (const x of list || []) {

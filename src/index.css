@@ -1,30 +1,68 @@
 @import "tailwindcss";
+@import "./design-tokens.css";
 
 /* ════════════════════════════════════════════════════════════════════════
-   INK & PAPER — a field instrument for presence.
+   FLC Check-In — aligned with FL Admin Portal (DESIGN-new.md).
 
-   Near-monochrome ink-on-paper. Chroma is reserved almost entirely for
-   attendance STATUS (present / late / absent / checked-out). Light-first,
-   tuned for glancing at a phone in bright daylight; a real dark theme is kept
-   for evening services. All color is OKLCH; neutrals carry a faint cool tint
-   (hue ~258) so nothing reads as sterile pure-white or jet-black.
+   HSL tokens in design-tokens.css; legacy --bg/--text/--present aliases
+   keep existing components working. Brand pink (#FF4266) on cool gray canvas;
+   attendance status uses success / warning / destructive.
    ════════════════════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+  --font-sans: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Menlo', monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Map design-tokens channels → Tailwind --color-* (no <alpha-value>; it was leaking into built CSS). */
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-muted: hsl(var(--muted-surface));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent-surface));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-members: hsl(var(--members));
+  --color-churches: hsl(var(--churches));
+  --color-arrivals: hsl(var(--arrivals));
+  --color-defaulters: hsl(var(--defaulters));
+  --color-banking: hsl(var(--banking));
+  --color-campaigns: hsl(var(--campaigns));
+  --color-maps: hsl(var(--maps));
+}
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ─── Invariant tokens (shared by both themes) ───────────────────────────── */
+/* ─── Shared scale (both themes) ─────────────────────────────────────────── */
 :root {
-  --sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'Geist Mono', ui-monospace, 'SF Mono', 'Menlo', monospace;
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
 
-  /* Border-radius — crisp instrument scale (tighter than the old editorial 40px) */
-  --radius-sm:   8px;
-  --radius-btn:  12px;
-  --radius-card: 16px;
+  --radius-sm: 8px;
+  --radius-btn: var(--radius);
+  --radius-card: calc(var(--radius) + 4px);
   --radius-pill: 999px;
 
-  /* Motion — strong custom easings (Emil Kowalski) */
-  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
@@ -37,95 +75,61 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Light theme (DEFAULT) ──────────────────────────────────────────────── */
-:root {
-  --bg:     oklch(98.5% 0.004 258);   /* cool paper canvas */
-  --bg2:    oklch(96%   0.006 258);   /* recessed / lifted surface */
-  --card:   oklch(99.5% 0.003 258);   /* card surface */
-  --border: oklch(89%   0.008 258);   /* hairline dividers */
-  --text:   oklch(24%   0.015 262);   /* ink */
-  --muted:  oklch(52%   0.014 262);   /* secondary text */
-  --accent: oklch(48%   0.13  252);   /* focus rings + links ONLY */
+/* ─── Legacy aliases → portal semantic tokens ────────────────────────────── */
+:root,
+[data-theme='dark'] {
+  --bg: hsl(var(--background));
+  --bg2: hsl(var(--secondary));
+  /* --card / --border / --accent-surface / --muted-surface = HSL channels only */
+  --text: hsl(var(--foreground));
+  /* Legacy pink alias — always var(--accent), never hsl(var(--accent)) */
+  --muted: hsl(var(--muted-foreground));
+  --accent: hsl(var(--primary));
+  --cta-bg: hsl(var(--primary));
+  --cta-text: hsl(var(--primary-foreground));
 
-  /* Primary pill: ink-on-paper */
-  --cta-bg:   oklch(24% 0.015 262);
-  --cta-text: oklch(98.5% 0.004 258);
+  --present: hsl(var(--success));
+  --late: hsl(var(--warning));
+  --absent: hsl(var(--destructive));
+  --out: hsl(var(--out));
 
-  /* Attendance status — the only load-bearing chroma */
-  --present: oklch(57% 0.15 155);
-  --late:    oklch(72% 0.14 78);
-  --absent:  oklch(57% 0.20 25);
-  --out:     oklch(56% 0.03 255);
+  --green: var(--present);
+  --amber: var(--late);
+  --coral: var(--absent);
+  --teal: hsl(var(--members));
+  --purple: hsl(var(--churches));
 
-  /* Legacy aliases (consumed across the app) */
-  --green:  var(--present);
-  --amber:  var(--late);
-  --coral:  var(--absent);
-  --teal:   oklch(60% 0.12 195);
-  --purple: oklch(55% 0.17 292);
-
-  /* Status tint backgrounds — replace the old scattered inline rgba() tints */
   --present-bg: color-mix(in oklab, var(--present) 14%, transparent);
-  --late-bg:    color-mix(in oklab, var(--late)    16%, transparent);
-  --absent-bg:  color-mix(in oklab, var(--absent)  13%, transparent);
-  --info-bg:    color-mix(in oklab, var(--accent)  12%, transparent);
-  --neutral-bg: color-mix(in oklab, var(--muted)   12%, transparent);
-  --out-bg:     color-mix(in oklab, var(--out)     14%, transparent);
+  --late-bg: color-mix(in oklab, var(--late) 16%, transparent);
+  --absent-bg: color-mix(in oklab, var(--absent) 13%, transparent);
+  --info-bg: color-mix(in oklab, var(--accent) 12%, transparent);
+  --neutral-bg: color-mix(in oklab, var(--muted) 12%, transparent);
+  --out-bg: color-mix(in oklab, var(--out) 14%, transparent);
 
-  /* Cool-tinted, restrained elevation (borders preferred over shadow on light) */
-  --shadow-1: 0 1px 2px oklch(50% 0.03 262 / 0.07);
-  --shadow-2: 0 4px 16px oklch(48% 0.03 262 / 0.09);
-  --shadow-3: 0 16px 48px oklch(40% 0.04 262 / 0.16);
+  --badge-bacenta: hsl(var(--members));
+  --badge-governorship: hsl(var(--churches));
+  --badge-council: hsl(var(--defaulters));
+  --badge-stream: hsl(var(--arrivals));
+  --badge-campus: hsl(var(--banking));
+  --badge-oversight: hsl(var(--primary));
+  --badge-denomination: hsl(var(--campaigns));
+  --badge-text: hsl(var(--primary-foreground));
 
-  /* Church-level badge hues */
-  --badge-bacenta:      oklch(50% 0.14 250);
-  --badge-governorship: oklch(52% 0.16 300);
-  --badge-council:      oklch(52% 0.13 70);
-  --badge-stream:       oklch(52% 0.13 70);
-  --badge-campus:       oklch(52% 0.13 155);
-  --badge-oversight:    oklch(55% 0.18 12);
-  --badge-denomination: oklch(53% 0.16 340);
-  --badge-text:         oklch(99% 0.004 258);   /* paper — contrasts mid-L badges */
-
-  color-scheme: light;
   color: var(--text);
   background: var(--bg);
 }
 
-/* ─── Dark theme (evening services) ──────────────────────────────────────── */
-[data-theme="dark"] {
-  --bg:     oklch(20% 0.008 262);
-  --bg2:    oklch(24% 0.010 262);
-  --card:   oklch(26% 0.011 262);
-  --border: oklch(34% 0.013 262);
-  --text:   oklch(96% 0.004 258);
-  --muted:  oklch(68% 0.013 258);
-  --accent: oklch(74% 0.12 250);
+:root {
+  --shadow-1: 0 1px 2px hsl(220 14% 10% / 0.06);
+  --shadow-2: 0 4px 16px hsl(220 14% 10% / 0.08);
+  --shadow-3: 0 16px 48px hsl(220 14% 10% / 0.12);
+  color-scheme: light;
+}
 
-  --cta-bg:   oklch(95% 0.004 258);
-  --cta-text: oklch(22% 0.012 262);
-
-  --present: oklch(74% 0.15 158);
-  --late:    oklch(82% 0.14 80);
-  --absent:  oklch(70% 0.18 25);
-  --out:     oklch(66% 0.03 255);
-
-  --teal:   oklch(76% 0.12 190);
-  --purple: oklch(74% 0.15 292);
-
-  --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.30);
-  --shadow-2: 0 4px 16px oklch(0% 0 0 / 0.42);
-  --shadow-3: 0 16px 48px oklch(0% 0 0 / 0.58);
-
-  --badge-bacenta:      oklch(74% 0.13 250);
-  --badge-governorship: oklch(76% 0.13 300);
-  --badge-council:      oklch(80% 0.13 80);
-  --badge-stream:       oklch(80% 0.13 80);
-  --badge-campus:       oklch(78% 0.13 158);
-  --badge-oversight:    oklch(74% 0.16 12);
-  --badge-denomination: oklch(74% 0.15 340);
-  --badge-text:         oklch(22% 0.012 262);   /* ink — contrasts bright badges */
-
+[data-theme='dark'] {
+  --shadow-1: 0 1px 2px hsl(0 0% 0% / 0.30);
+  --shadow-2: 0 4px 16px hsl(0 0% 0% / 0.42);
+  --shadow-3: 0 16px 48px hsl(0 0% 0% / 0.58);
   color-scheme: dark;
 }
 
@@ -143,16 +147,13 @@ body {
 
 html { scroll-behavior: smooth; }
 
-/* Tabular figures for counts, metrics, countdowns, codes */
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* Accessible, brand-tinted focus ring */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Reduced motion: gut movement, keep things instant */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -162,88 +163,378 @@ html { scroll-behavior: smooth; }
   }
 }
 
-/* ─── Utility: eyebrow label ─────────────────────────────────────────────── */
-.eyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.eyebrow::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.7;
+/* ─── Portal layout & surfaces (DESIGN-new.md) ───────────────────────────── */
+.page-shell {
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
 }
 
-/* ─── Utility: pill button base ──────────────────────────────────────────── */
+.surface-card {
+  background: hsl(var(--card));
+  border: none;
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-2);
+}
+
+.section-heading {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--primary));
+  margin: 0;
+}
+
+/* Section labels — portal sentence-case (replaces Ink & Paper uppercase eyebrow) */
+.eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--muted);
+  display: block;
+  margin: 0;
+}
+.eyebrow::before { display: none; }
+
+/* ─── Buttons (shadcn-style primary) ─────────────────────────────────────── */
 .btn-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 22px;
-  border-radius: var(--radius-btn);
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border-radius: var(--radius-lg);
   font-family: var(--sans);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
   letter-spacing: -0.01em;
   border: none;
   cursor: pointer;
-  transition: transform 0.16s var(--ease-out), opacity 0.16s var(--ease-out),
+  transition: transform 0.16s var(--ease-out), filter 0.16s var(--ease-out),
               background 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
 }
 .btn-pill:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-pill:active:not(:disabled) { transform: scale(0.97); }
+.btn-pill:active:not(:disabled) { transform: scale(0.98); }
 
 .btn-primary {
-  background: var(--cta-bg);
-  color: var(--cta-text);
-  border: 1.5px solid var(--cta-bg);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow: 0 1px 2px hsl(349 100% 50% / 0.22);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 .btn-secondary {
-  background: transparent;
+  background: hsl(var(--card));
   color: var(--text);
-  border: 1.5px solid var(--border);
+  border: none;
+  box-shadow: var(--shadow-1);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: hsl(var(--accent-surface));
+  box-shadow: var(--shadow-2);
 }
 
-/* ─── Utility: input base ────────────────────────────────────────────────── */
+/* ─── Inputs ───────────────────────────────────────────────────────────────── */
 .input-field {
   width: 100%;
-  background: var(--bg2);
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-btn);
+  min-height: 2.75rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
   color: var(--text);
   font-family: var(--sans);
-  font-size: 15px;
-  padding: 12px 16px;
+  font-size: 0.9375rem;
+  padding: 0.625rem 1rem;
   outline: none;
   transition: border-color 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
   box-sizing: border-box;
 }
 .input-field::placeholder { color: var(--muted); }
 .input-field:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--info-bg);
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.18);
 }
 
-/* ─── Utility: card surface ──────────────────────────────────────────────── */
+/* ─── Card surface ─────────────────────────────────────────────────────────── */
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
+  background: hsl(var(--card));
+  border: none;
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-2);
+}
+
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: hsl(var(--card));
+  border: none;
+  border-radius: calc(var(--radius) + 4px);
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+.event-row:hover {
+  box-shadow: var(--shadow-2), 0 0 0 1px hsl(var(--primary) / 0.22);
+}
+.event-row:active {
+  transform: scale(0.99);
+}
+
+/* ─── Forms & choices ──────────────────────────────────────────────────────── */
+.choice-option {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  text-align: left;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border-radius: var(--radius-lg);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.choice-option:hover { border-color: hsl(var(--primary) / 0.35); }
+.choice-option--selected {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.check-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid hsl(var(--border));
+  background: hsl(var(--secondary));
+  color: var(--text);
+  transition: border-color 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.check-row--selected {
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.check-row__box {
+  display: flex;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border: 2px solid hsl(var(--border));
+  background: transparent;
+}
+.check-row--selected .check-row__box {
+  border-color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary-foreground));
+}
+
+.field-error { font-size: 0.75rem; color: var(--absent); margin: 0.25rem 0 0; }
+
+/* ─── Tabs (check-in, reports) ───────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-lg);
+  background: hsl(var(--secondary));
+}
+.tab-item {
+  flex: 1;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.16s var(--ease-out), color 0.16s var(--ease-out);
+}
+.tab-item--active {
+  background: hsl(var(--card));
+  color: hsl(var(--primary));
   box-shadow: var(--shadow-1);
 }
 
-/* ─── Slide-in drawer (enter via @starting-style, exit via data-state) ───── */
+/* ─── Metrics & stat tiles ───────────────────────────────────────────────── */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+@media (min-width: 480px) { .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+.metric-tile {
+  padding: 0.875rem 1rem;
+  border-radius: calc(var(--radius) + 4px);
+  border: none;
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-1);
+}
+.metric-tile__value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.1;
+}
+.metric-tile__label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+.metric-tile--present .metric-tile__value { color: var(--present); }
+.metric-tile--late .metric-tile__value { color: var(--late); }
+.metric-tile--absent .metric-tile__value { color: var(--absent); }
+.metric-tile--out .metric-tile__value { color: var(--out); }
+.metric-tile--primary .metric-tile__value { color: hsl(var(--primary)); }
+
+.stat-link-card {
+  display: block;
+  padding: 1rem;
+  border-radius: calc(var(--radius) + 4px);
+  border: none;
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-1);
+  text-decoration: none;
+  transition: box-shadow 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+.stat-link-card:hover {
+  background: hsl(var(--primary) / 0.06);
+  box-shadow: var(--shadow-2), 0 0 0 1px hsl(var(--primary) / 0.18);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: var(--radius-lg);
+  border: none;
+  background: hsl(var(--card));
+  color: var(--text);
+  line-height: 0;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  transition: background 0.16s var(--ease-out), color 0.16s var(--ease-out);
+}
+.icon-btn:hover {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: hsl(var(--secondary));
+  color: var(--muted);
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.list-row:last-child { border-bottom: none; }
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: none;
+  background: hsl(var(--secondary));
+  flex-shrink: 0;
+}
+.avatar--sm { width: 30px; height: 30px; }
+.avatar--md { width: 32px; height: 32px; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-fallback {
+  font-size: 11px;
+  font-weight: 700;
+  color: hsl(var(--primary));
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 300px;
+  overflow-y: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-2);
+}
+.search-dropdown-item {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.75rem;
+  border: none;
+  border-bottom: 1px solid hsl(var(--border));
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-family: var(--sans);
+  color: var(--text);
+  transition: background 0.16s var(--ease-out);
+}
+.search-dropdown-item:last-child { border-bottom: none; }
+.search-dropdown-item:hover:not(:disabled) {
+  background: hsl(var(--secondary));
+}
+.search-dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+  color: var(--muted);
+}
+
+.btn-destructive-outline {
+  background: transparent;
+  border: 1.5px solid color-mix(in oklab, var(--absent) 40%, transparent);
+  color: var(--absent);
+  border-radius: var(--radius-lg);
+}
+
+/* Legacy btn-pill maps to Button component styles */
+.btn-pill.btn-primary { /* see .btn-primary above */ }
+.input-field { /* alias — prefer ui/Input */ }
+
+/* ─── Drawer / modal motion ──────────────────────────────────────────────── */
 .drawer-backdrop {
-  background: oklch(0% 0 0 / 0.45);
+  background: hsl(0 0% 0% / 0.45);
   opacity: 1;
   transition: opacity 0.28s var(--ease-out);
 }
@@ -251,6 +542,8 @@ html { scroll-behavior: smooth; }
 @starting-style { .drawer-backdrop { opacity: 0; } }
 
 .drawer-panel {
+  background: hsl(var(--card));
+  box-shadow: var(--shadow-3);
   transform: translateX(0);
   transition: transform 0.3s var(--ease-drawer);
   will-change: transform;
@@ -258,7 +551,6 @@ html { scroll-behavior: smooth; }
 .drawer-panel[data-state="closed"] { transform: translateX(-100%); }
 @starting-style { .drawer-panel { transform: translateX(-100%); } }
 
-/* Modal / sheet entrance — scale from center (modals stay centered) */
 .modal-card {
   opacity: 1;
   transform: scale(1);
@@ -266,7 +558,6 @@ html { scroll-behavior: smooth; }
 }
 @starting-style { .modal-card { opacity: 0; transform: scale(0.96); } }
 
-/* Bottom-sheet / centered-panel entrance */
 .sheet-card {
   opacity: 1;
   transform: translateY(0);
@@ -274,16 +565,13 @@ html { scroll-behavior: smooth; }
 }
 @starting-style { .sheet-card { opacity: 0; transform: translateY(14px); } }
 
-/* ─── Leaflet: contain z-index inside the map wrapper ────────────────────── */
-/* `isolation: isolate` creates a new stacking context so Leaflet's internal
-   z-indexes stay relative to the map, not the document root (else map panes
-   paint over fixed overlays like NavDrawer / modals). */
+/* ─── Leaflet ────────────────────────────────────────────────────────────── */
 .leaflet-container { isolation: isolate; }
 
 .leaflet-control-layers {
-  background: var(--card) !important;
+  background: hsl(var(--card)) !important;
   color: var(--text) !important;
-  border: 1px solid var(--border) !important;
+  border: 1px solid hsl(var(--border)) !important;
   border-radius: var(--radius-btn) !important;
   box-shadow: var(--shadow-2) !important;
 }
@@ -293,13 +581,12 @@ html { scroll-behavior: smooth; }
   font-family: var(--sans);
   font-size: 13px;
 }
-.leaflet-control-layers-separator { border-top-color: var(--border) !important; }
+.leaflet-control-layers-separator { border-top-color: hsl(var(--border)) !important; }
 
-/* ─── App logo: adaptive tint per theme ──────────────────────────────────── */
 .app-logo {
   border-radius: 22%;
-  filter: brightness(0.98) drop-shadow(0 1px 4px oklch(40% 0.03 262 / 0.18));
+  filter: brightness(0.98) drop-shadow(0 1px 4px hsl(220 14% 10% / 0.12));
 }
 [data-theme="dark"] .app-logo {
-  filter: brightness(1.05) drop-shadow(0 2px 8px oklch(0% 0 0 / 0.45));
+  filter: brightness(1.05) drop-shadow(0 2px 8px hsl(0 0% 0% / 0.45));
 }

@@ -3,6 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import TopBar from '../components/TopBar'
 import Spinner from '../components/Spinner'
+import { PageShell, PageMain } from '../components/layout/PageShell'
+import { EmptyState } from '../components/layout/EmptyState'
+import { Alert } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
@@ -162,62 +166,30 @@ export default function LeaderHomeScreen() {
   }, [refreshKey])
 
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
-      {/* Pull-to-refresh indicator now lives inside <TopBar /> so every
-          screen gets the gesture by default — see PullToRefreshIndicator. */}
+    <PageShell>
       <TopBar
         user={user}
         right={(
-          <Link
-            to='/events'
-            className='px-3 py-1.5'
-            style={{
-              background: 'var(--bg2)',
-              color: 'var(--text)',
-              border: '1.5px solid var(--border)',
-              borderRadius: 'var(--radius-btn)',
-              textDecoration: 'none',
-              fontSize: '13px',
-              fontWeight: 600,
-              letterSpacing: '-0.01em',
-            }}
-          >
+          <Link to='/events' className='btn-pill btn-secondary px-3 py-1.5 text-xs no-underline'>
             QR
           </Link>
         )}
       />
-      <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6'>
-
+      <PageMain>
         {isAdmin && (
           <div className='mb-6'>
-            <button
-              type='button'
-              onClick={() => navigate('/admin/events/new')}
-              className='btn-pill btn-primary flex items-center gap-2 px-4 py-2.5 font-semibold text-sm cursor-pointer'
-            >
+            <Button type='button' onClick={() => navigate('/admin/events/new')} className='gap-2'>
               <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
                 <path d='M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z' />
               </svg>
               Create Event
-            </button>
+            </Button>
           </div>
         )}
 
         {state.status === 'loading' && <Spinner />}
 
-        {state.status === 'error' && (
-          <div
-            className='p-4 text-sm'
-            style={{
-              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-              color: 'var(--coral)',
-              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            {state.error}
-          </div>
-        )}
+        {state.status === 'error' && <Alert variant='destructive'>{state.error}</Alert>}
 
         {state.status === 'ok' && (() => {
           const now = new Date()
@@ -229,29 +201,26 @@ export default function LeaderHomeScreen() {
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
-              <div className='flex flex-col items-center text-center px-6 py-14' style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}>
-                <div
-                  className='flex items-center justify-center mb-4'
-                  style={{ width: 56, height: 56, borderRadius: '50%', background: 'var(--bg2)', color: 'var(--muted)' }}
-                >
+              <EmptyState
+                title='No events yet'
+                description={
+                  isAdmin
+                    ? 'Create an event to start taking check-ins.'
+                    : 'Check-ins will appear here once a leader opens an event.'
+                }
+                icon={
                   <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>
                     <path d='M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V9h14v11z' />
                   </svg>
-                </div>
-                <p className='text-base font-semibold m-0' style={{ color: 'var(--text)' }}>No events yet</p>
-                <p className='text-sm m-0 mt-1' style={{ color: 'var(--muted)', maxWidth: '24ch' }}>
-                  {isAdmin ? 'Create an event to start taking check-ins.' : 'Check-ins will appear here once a leader opens an event.'}
-                </p>
-                {isAdmin && (
-                  <button
-                    type='button'
-                    onClick={() => navigate('/admin/events/new')}
-                    className='btn-pill btn-primary mt-5 px-4 py-2.5 text-sm'
-                  >
-                    Create event
-                  </button>
-                )}
-              </div>
+                }
+                action={
+                  isAdmin ? (
+                    <Button type='button' onClick={() => navigate('/admin/events/new')}>
+                      Create event
+                    </Button>
+                  ) : undefined
+                }
+              />
             )
           }
 
@@ -261,7 +230,7 @@ export default function LeaderHomeScreen() {
               {/* ── Live ── */}
               {live.length > 0 && (
                 <section>
-                  <p className='eyebrow mb-3' style={{ color: 'var(--green)' }}>Live</p>
+                  <p className='section-heading mb-3 text-success'>Live now</p>
                   <div className='flex flex-col gap-2.5'>
                     {live.map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
                   </div>
@@ -271,7 +240,7 @@ export default function LeaderHomeScreen() {
               {/* ── Upcoming ── */}
               {upcoming.length > 0 && (
                 <section>
-                  <p className='eyebrow mb-3'>Upcoming</p>
+                  <p className='section-heading mb-3'>Upcoming</p>
                   <div className='flex flex-col gap-2.5'>
                     {upcoming.map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
                   </div>
@@ -282,12 +251,11 @@ export default function LeaderHomeScreen() {
               {pastSlice.length > 0 && (
                 <section>
                   <div className='flex items-center justify-between mb-3'>
-                    <p className='eyebrow m-0'>Recent</p>
+                    <p className='section-heading m-0'>Recent</p>
                     {past.length > 5 && (
                       <Link
                         to='/admin/history'
-                        className='text-xs font-semibold'
-                        style={{ color: 'var(--accent)', textDecoration: 'none', letterSpacing: '-0.01em' }}
+                        className='text-xs font-semibold text-primary no-underline hover:underline'
                       >
                         View all history →
                       </Link>
@@ -299,14 +267,7 @@ export default function LeaderHomeScreen() {
                   {past.length > 5 && (
                     <Link
                       to='/admin/history'
-                      className='mt-3 flex items-center justify-center text-xs font-semibold py-2.5'
-                      style={{
-                        color: 'var(--muted)',
-                        textDecoration: 'none',
-                        border: '1px dashed var(--border)',
-                        borderRadius: 'var(--radius-btn)',
-                        letterSpacing: '-0.01em',
-                      }}
+                      className='mt-3 flex items-center justify-center rounded-lg bg-primary/5 py-2.5 text-xs font-semibold tracking-tight text-primary no-underline hover:bg-primary/10'
                     >
                       + {past.length - 5} more in history
                     </Link>
@@ -317,8 +278,8 @@ export default function LeaderHomeScreen() {
             </div>
           )
         })()}
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }
 
@@ -330,37 +291,35 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
   return (
     <Link
       to={`/events/${evt.id}`}
-      className='flex items-center gap-3 px-4 py-3 transition-transform active:scale-[0.99]'
-      style={{
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-card)',
-        textDecoration: 'none',
-        boxShadow: variant === 'past' ? 'none' : 'var(--shadow-1)',
-        opacity: variant === 'past' ? 0.7 : 1,
-      }}
+      className={`event-row ${variant === 'past' ? 'opacity-70 shadow-none' : ''}`}
     >
       {/* Leading status dot — replaces the colored side stripe */}
       {variant === 'live' ? (
         <span className='relative flex h-2.5 w-2.5 shrink-0'>
-          <span className='animate-ping absolute inline-flex h-full w-full rounded-full opacity-75' style={{ background: 'var(--present)' }} />
-          <span className='relative inline-flex rounded-full h-2.5 w-2.5' style={{ background: 'var(--present)' }} />
+          <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75' />
+          <span className='relative inline-flex h-2.5 w-2.5 rounded-full bg-success' />
         </span>
       ) : (
-        <span className='shrink-0' style={{ width: 9, height: 9, borderRadius: '50%', background: statusColor }} />
+        <span
+          className='size-2 shrink-0 rounded-full'
+          style={{ background: statusColor }}
+        />
       )}
 
       <div className='min-w-0 flex-1'>
-        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.015em' }}>{evt.name}</p>
-        <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+        <p className='m-0 truncate text-sm font-semibold tracking-tight text-foreground'>{evt.name}</p>
+        <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>
           {evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}
         </p>
       </div>
       <div className='shrink-0 text-right'>
-        <p className='text-xs font-semibold m-0 tnum' style={{ color: 'var(--muted)' }}>
+        <p className='tnum m-0 text-xs font-semibold text-muted-foreground'>
           {format(new Date(evt.starts_at), 'd MMM')}
         </p>
-        <span className='text-[10px] font-semibold uppercase' style={{ color: statusColor, letterSpacing: '0.06em' }}>
+        <span
+          className='text-[10px] font-semibold uppercase tracking-wider'
+          style={{ color: statusColor }}
+        >
           {statusLabel}
         </span>
       </div>

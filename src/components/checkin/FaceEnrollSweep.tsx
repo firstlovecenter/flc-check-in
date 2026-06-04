@@ -246,7 +246,7 @@ export default function FaceEnrollSweep({ onComplete, onError }: Props) {
             <p className='text-sm m-0' style={{ color: 'var(--text)', fontWeight: 600 }}>
               {currentBucket.label}
             </p>
-            <p className='text-xs m-0 mt-1' style={{ color: 'var(--muted)' }}>
+            <p className='text-xs m-0 mt-1 text-muted-foreground'>
               {currentBucket.hint}
             </p>
           </>

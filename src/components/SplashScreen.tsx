@@ -69,10 +69,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   if (done === 'guest')  return <>{children}</>
 
   return (
-    <div
-      className='fixed inset-0 flex items-center justify-center'
-      style={{ background: 'var(--bg)', zIndex: 100 }}
-    >
+    <div className='page-shell fixed inset-0 z-[100] flex items-center justify-center'>
       <style>{`
         @keyframes flcSplashSpin {
           from { transform: rotate(0deg) scale(1); }
@@ -99,47 +96,20 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
 
       <div className='relative flex flex-col items-center gap-6'>
         {/* Expanding halo rings */}
-        <div
-          className='absolute pointer-events-none'
-          style={{
-            width: 120, height: 120, borderRadius: '50%',
-            border: '1.5px solid color-mix(in oklab, var(--accent) 55%, transparent)',
-            animation: 'flcSplashHaloA 2.4s ease-out infinite',
-          }}
-        />
-        <div
-          className='absolute pointer-events-none'
-          style={{
-            width: 120, height: 120, borderRadius: '50%',
-            border: '1.5px solid color-mix(in oklab, var(--accent) 35%, transparent)',
-            animation: 'flcSplashHaloB 2.4s ease-out 1.2s infinite',
-          }}
-        />
+        <div className='pointer-events-none absolute size-[120px] rounded-full border-[1.5px] border-primary/45 animate-[flcSplashHaloA_2.4s_ease-out_infinite]' />
+        <div className='pointer-events-none absolute size-[120px] rounded-full border-[1.5px] border-primary/30 animate-[flcSplashHaloB_2.4s_ease-out_1.2s_infinite]' />
 
         {/* Pulsing logo */}
         <img
-          src='/flc-logo-circle.jpeg'
-          alt='FLC'
-          style={{
-            width: 120, height: 120,
-            borderRadius: '50%',
-            objectFit: 'cover',
-            animation: 'flcSplashSpin 2.4s cubic-bezier(0.4,0,0.6,1) infinite',
-            position: 'relative',
-            zIndex: 1,
-          }}
+          src='/synago-logo.svg'
+          alt='Synago'
+          width={96}
+          height={96}
+          className='relative z-[1] animate-[flcSplashSpin_2.4s_cubic-bezier(0.4,0,0.6,1)_infinite]'
         />
 
-        <p
-          className='text-sm m-0'
-          style={{
-            color: 'var(--muted)',
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            animation: 'flcSplashFadeIn 0.6s ease-out 0.3s both',
-          }}
-        >
-          FLC Servants Check-In Portal
+        <p className='m-0 animate-[flcSplashFadeIn_0.6s_ease-out_0.3s_both] text-sm font-medium text-muted-foreground'>
+          Hineni check-in
         </p>
       </div>
     </div>

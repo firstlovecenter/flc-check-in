@@ -1,7 +1,9 @@
-# FLC Check-In
+# FLC Check-In (Hineni)
 
 > Attendance tracking for First Love Church leaders — geofenced, time-windowed,
 > and fraud-resistant.
+
+**Agent / contributor docs:** [AGENTS.md](AGENTS.md) · [kb/hineni/](kb/hineni/) · [kb/00-read-first.md](kb/00-read-first.md)
 
 ---
 
@@ -54,19 +56,26 @@ immutable audit log.
 
 ## Church hierarchy
 
+Hineni uses the **same church structure as the FL Admin Portal** — one FLC member graph
+(GraphQL), same role strings (`leaderBacenta`, `adminCouncil`, …). See
+[kb/01-glossary.md](kb/01-glossary.md), [kb/02-user-roles.md](kb/02-user-roles.md), and
+[kb/hineni/00-church-structure.md](kb/hineni/00-church-structure.md).
+
 ```
-Stream  (e.g. Colossians)
-  └── Council / Oversight
-        └── Governorship
-              └── Bacenta   ← smallest unit; a leader leads one
+Denomination
+  └── Oversight
+        └── Campus
+              └── Stream  (e.g. Colossians)
+                    └── Council
+                          └── Governorship
+                                └── Bacenta   ← leaf; a leader leads one
 ```
 
 The app's universe is FLC members who hold at least one leadership or admin
-relationship in the FLC member graph. Regular members without a leadership role
-are blocked at login.
+relationship on that graph. Regular members without a leadership role are blocked at login.
 
 Admins (`adminStream`, `adminCouncil`, etc.) can create and manage events at
-their own scope and any scope below it.
+their own scope and any scope below it (same admin levels as the portal).
 
 ---
 

@@ -1,81 +1,73 @@
-# Ink & Paper — FLC Check-In design system
+# FLC Check-In — design system
 
-A field instrument for presence. The app is used by leaders and members to
-check in at events, often glancing at a phone at arm's length in bright
-daylight, and by admins watching live attendance. The interface should read
-like a precise instrument, not a brochure.
+**Source spec:** [`DESIGN-new.md`](DESIGN-new.md) (FL Admin Portal). This file describes how Hineni implements it.
 
-Supersedes the previous Mastercard-inspired warm-cream system.
+**Hineni KB:** [`kb/hineni/07-design-system.md`](kb/hineni/07-design-system.md) — agent-oriented design rules for this repo.
+
+Aligned with the **FL Admin Portal** frontend spec: pink-red brand
+(`#FF4266`), cool gray canvas, **Outfit** typeface, HSL tokens in `src/design-tokens.css`,
+and legacy CSS aliases in `src/index.css` so existing screens keep working without a
+full shadcn migration.
 
 ## Principles
 
-1. **Near-monochrome ink on paper.** Surfaces are tinted neutrals; text is a
-   warm-cool ink. Chroma is reserved almost entirely for *attendance status*.
-2. **Color carries meaning.** The only saturated color a user sees is status:
-   present / late / absent / checked-out. If a color isn't telling you about
-   attendance (or focus), it shouldn't be saturated.
-3. **Light-first.** Light is the default for daylight legibility; a real dark
-   theme is kept for evening services. Theme is a manual toggle persisted to
-   `localStorage['flc-theme']` (`dark` = opt-in override; no attribute = light).
-4. **Glanceable.** High contrast, tabular figures for every count, generous
-   touch targets, calm motion.
+1. **Portal parity.** Same semantic tokens as the admin app (background, primary,
+   success/warning/destructive) so Hineni feels like one product family.
+2. **Color carries meaning.** Brand pink is for primary actions, focus, and links.
+   Saturated greens/ambers/reds are reserved for *attendance status* (present / late /
+   absent / checked-out).
+3. **Light-first + system.** Default is light; users can cycle **Light → Dark → System**
+   via the theme toggle (`localStorage['flc-theme']`).
+4. **Glanceable.** Tabular figures on counts, generous touch targets, calm motion.
 
 ## Tokens
 
-All tokens live in `src/index.css` as CSS custom properties. Components consume
-them via `var(--…)`; the app is ~entirely token-driven, so the system is changed
-by editing those tokens, not component code. All color is OKLCH; neutrals carry
-a faint cool tint (hue ~258). Never use `#000`/`#fff` for surfaces or text.
+| File | Role |
+|---|---|
+| `src/design-tokens.css` | HSL channel triplets — single source of truth |
+| `src/index.css` | Tailwind `@theme`, legacy `--bg`/`--present`/… aliases, utilities |
 
-### Color roles (per theme: `:root` = light, `[data-theme="dark"]`)
-- `--bg` / `--bg2` / `--card` — paper canvas, recessed surface, card surface
-- `--border` — hairline dividers (preferred over shadow on the light UI)
-- `--text` / `--muted` — ink, secondary ink
-- `--accent` — **focus rings and links only**, not a decorative fill
-- `--cta-bg` / `--cta-text` — primary pill (ink-on-paper light, paper-on-ink dark)
+### Legacy aliases (components use these today)
 
-### Status (the load-bearing chroma)
-- `--present` (green) · `--late` (amber) · `--absent` (red) · `--out` (slate)
-- Legacy aliases kept: `--green`/`--amber`/`--coral` map to present/late/absent
-- Tint backgrounds: `--present-bg`, `--late-bg`, `--absent-bg`, `--info-bg`,
-  `--neutral-bg`, `--out-bg`. For one-off tints use
-  `color-mix(in oklab, var(--present) 14%, transparent)`.
+- `--bg` / `--bg2` / `--text` / `--muted` — resolved full colors
+- `--card`, `--border`, `--accent-surface`, `--muted-surface` in `design-tokens.css` are
+  **HSL channels only** — use `hsl(var(--card))` in raw CSS, or Tailwind `bg-card`, `bg-accent`
+- Legacy `--accent` / `--muted` are **resolved ink colors** (primary pink, muted text) — never
+  assign `--card: hsl(var(--card))` or overwrite channel tokens in `index.css`
+- `--accent` / `--cta-bg` / `--cta-text` → portal `--primary`
+- `--present` / `--late` / `--absent` / `--out` → success / warning / destructive / slate
+- `--badge-*` → portal feature accents (members, churches, arrivals, …)
 
-### Church-level badges
-`--badge-{bacenta,governorship,council,stream,campus,oversight,denomination}`,
-plus `--badge-text` for legible text on any badge/accent fill in either theme.
+### Tailwind utilities (new code)
 
-### Scale, depth, motion
-- Radius: `--radius-sm 8` · `--radius-btn 12` · `--radius-card 16` · `--radius-pill 999`
-- Shadow: `--shadow-1/2/3` — restrained, cool-tinted; prefer borders on light
-- Easing: `--ease-out` (enter/exit UI), `--ease-in-out` (on-screen movement),
-  `--ease-drawer` (drawers/sheets)
+Prefer Tailwind classes mapped in `@theme`: `bg-background`, `text-foreground`,
+`bg-primary`, `text-muted-foreground`, `rounded-xl`, `shadow-sm`, etc.
 
 ## Typography
-- **Geist** (UI) + **Geist Mono** (PINs, codes); loaded in `index.html`.
-- Hierarchy through scale + weight contrast; tight negative tracking on large
-  headers; sentence case (uppercase only for the small `.eyebrow` label).
-- Add `tnum` (`font-variant-numeric: tabular-nums`) to any number that updates
-  or aligns in a column: counts, metrics, countdowns, times, PINs.
+
+- **Outfit** (300–700) from Google Fonts in `index.html`.
+- **Mono stack** for PINs and codes via `var(--mono)`.
+- Class `.tnum` or `tabular-nums` for metrics, countdowns, PINs.
+
+## Theme
+
+- `src/lib/theme.ts` — resolve preference, apply `data-theme`, update `theme-color` meta.
+- `src/hooks/useTheme.ts` — React hook; cycle toggle in `NavDrawer` and public QR header.
+- Inline script in `index.html` prevents flash on load.
 
 ## Components & utilities
-- `.btn-pill` + `.btn-primary` / `.btn-secondary` — pressable pill; presses
-  scale to `0.97`.
-- `.input-field` — focus shows accent border + soft `--info-bg` ring.
-- `.card` — bordered surface, `--shadow-1`.
-- `.eyebrow` — small uppercase label with a leading dot.
-- `.drawer-panel` / `.drawer-backdrop` — slide-in nav (enter via
-  `@starting-style`, exit via `data-state="closed"`, interruptible).
-- `.modal-card` / `.sheet-card` — centered scale / bottom-sheet entrance.
+
+Unchanged utility classes: `.btn-pill`, `.input-field`, `.card`, `.eyebrow`,
+`.drawer-panel`, `.modal-card`, `.sheet-card`.
 
 ## Rules of thumb
-- Don't reintroduce colored **side-stripe** borders on cards; show state with a
-  leading status dot/chip on a full-bordered row.
-- Don't pair a saturated color with another saturated color; let ink + one
-  status color do the work.
-- Status color should be semantically correct (e.g. checked-out is `--out`
-  slate, not amber; an attendance bar is green/amber/red by rate).
-- QR module colors and the face-capture fill light stay high-contrast /
-  fixed on purpose — they're functional, not themed chrome.
-- Respect `prefers-reduced-motion` (handled globally) and keep UI motion
-  under ~300ms; never animate keyboard-repeated or camera-path actions.
+
+- Status color must match semantics (checked-out = `--out`, not amber).
+- QR module and face-capture fills stay high-contrast / functional, not themed chrome.
+- Respect `prefers-reduced-motion` (global).
+- For new UI, prefer Tailwind + tokens; avoid hard-coded hex in components.
+
+## Further alignment (optional)
+
+`DESIGN-new.md` also describes shadcn/ui, Formik, Apollo, and `AppShell` — adopt those
+incrementally if the check-in app grows admin-style surfaces.

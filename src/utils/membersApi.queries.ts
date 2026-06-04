@@ -1,7 +1,7 @@
 // FLC member GraphQL queries — Neo4j-GraphQL flavor.
 //
 // Schema notes (discovered via introspection 2026-05-10):
-//   - The GraphQL endpoint is open (no auth required for read queries).
+//   - Read queries require Authorization: Bearer <JWT> (unauthenticated → "Unauthenticated").
 //   - Member.id is a uuid-formatted ID.
 //   - Filtering follows Neo4j-GraphQL conventions: <field>_EQ, <field>_IN,
 //     <relation>_SOME (matches if any related node satisfies), _ALL, _NONE.

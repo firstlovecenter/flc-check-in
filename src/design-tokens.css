@@ -1,0 +1,80 @@
+/* design-tokens.css — single source of truth (DESIGN-new.md / FL Admin Portal)
+   Values are HSL channel triplets for Tailwind opacity modifiers.
+   Do NOT alias --card/--border/--accent-surface/--muted-surface to full colors in index.css. */
+
+:root {
+  --brand: 349 100% 63%;
+  --brand-foreground: 0 0% 100%;
+
+  --background: 215 20% 95%;
+  --foreground: 220 14% 10%;
+  --card: 210 20% 99%;
+  --card-foreground: 220 14% 10%;
+  --popover: 210 20% 99%;
+  --popover-foreground: 220 14% 10%;
+  --primary: 349 100% 63%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 214 14% 94%;
+  --secondary-foreground: 220 14% 10%;
+  /* Renamed from --muted / --accent to avoid collision with legacy ink aliases */
+  --muted-surface: 214 14% 94%;
+  --muted-foreground: 215 12% 47%;
+  --accent-surface: 214 14% 94%;
+  --accent-foreground: 220 14% 10%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 142 71% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 220 14% 10%;
+  --border: 214 14% 89%;
+  --input: 214 14% 89%;
+  --ring: 349 100% 63%;
+
+  --out: 215 14% 42%;
+
+  --members: 174 63% 40%;
+  --churches: 262 52% 50%;
+  --arrivals: 231 48% 50%;
+  --defaulters: 25 95% 48%;
+  --banking: 142 71% 38%;
+  --campaigns: 270 67% 50%;
+  --maps: 199 89% 42%;
+
+  --chart-1: 349 100% 63%;
+  --chart-2: 174 63% 40%;
+  --chart-3: 262 52% 50%;
+  --chart-4: 142 71% 38%;
+  --chart-5: 25 95% 48%;
+
+  --radius: 0.625rem;
+}
+
+[data-theme='dark'] {
+  --background: 222 14% 7%;
+  --foreground: 210 20% 96%;
+  --card: 220 13% 10%;
+  --card-foreground: 210 20% 96%;
+  --popover: 220 13% 10%;
+  --popover-foreground: 210 20% 96%;
+  --secondary: 217 10% 16%;
+  --secondary-foreground: 210 20% 96%;
+  --muted-surface: 217 10% 16%;
+  --muted-foreground: 215 12% 62%;
+  --accent-surface: 217 10% 16%;
+  --accent-foreground: 210 20% 96%;
+  --destructive: 0 72% 55%;
+  --success: 142 65% 52%;
+  --warning: 38 88% 55%;
+  --border: 217 10% 18%;
+  --input: 217 10% 18%;
+  --out: 215 12% 58%;
+
+  --members: 174 58% 48%;
+  --churches: 262 48% 58%;
+  --arrivals: 231 44% 58%;
+  --defaulters: 25 90% 55%;
+  --banking: 142 65% 48%;
+  --campaigns: 270 62% 58%;
+  --maps: 199 85% 50%;
+}

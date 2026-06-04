@@ -6,6 +6,10 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
+import { PageShell, PageMain } from '../layout/PageShell'
+import { Card, CardContent } from '../ui/card'
+import { Alert } from '../ui/alert'
+import { Button } from '../ui/button'
 import { getCurrentUser } from '../../utils/auth'
 import { getAllLeadersAndAdmins, memberToProfileRow } from '../../utils/membersApi'
 import { bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
@@ -22,13 +26,14 @@ export default function SyncMembersPanel() {
   if (!user?.isSuperAdmin) return <Navigate to='/home' replace />
 
   const [state, setState] = useState<SyncState>({ status: 'idle' })
+  const [includeAllMembers, setIncludeAllMembers] = useState(false)
 
   async function handleSync() {
     setState({ status: 'fetching', fetched: 0, kept: 0 })
     try {
       const members = await getAllLeadersAndAdmins((fetched, kept) => {
         setState({ status: 'fetching', fetched, kept })
-      })
+      }, { includeAllMembers })
       setState({ status: 'upserting', kept: members.length })
       const rows = members.map(memberToProfileRow)
       const upserted = await bulkUpsertMemberProfiles(rows)
@@ -41,72 +46,49 @@ export default function SyncMembersPanel() {
   const running = state.status === 'fetching' || state.status === 'upserting'
 
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader title='Sync Members' />
-      <main className='max-w-2xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5'>
-        <div
-          className='p-4'
-          style={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-card)',
-          }}
-        >
-          <p className='text-sm m-0 mb-2' style={{ color: 'var(--text)', fontWeight: 600 }}>
-            Populate member profiles
-          </p>
-          <p className='text-xs m-0' style={{ color: 'var(--muted)', lineHeight: 1.5 }}>
-            Pulls every leader and admin from the FLC member graph and upserts
-            them into Supabase. Use this to make members appear in dashboards
-            before they log in or get added to an event's scope.
-          </p>
-        </div>
+      <PageMain className='max-w-2xl flex flex-col gap-5'>
+        <Card>
+          <CardContent className='p-4'>
+            <p className='m-0 mb-2 text-sm font-semibold text-foreground'>Populate member profiles</p>
+            <p className='m-0 text-xs leading-relaxed text-muted-foreground'>
+              Pages the FLC member graph (with your login token) and upserts rows into Supabase.
+              Default: leaders and admins only. Optional: every member the graph returns for each page.
+              Not limited by your JWT church scopes in this app — graph visibility still depends on
+              the FLC API (ideally a JWT with the <code className='text-[11px]'>superAdmin</code> role).
+            </p>
+          </CardContent>
+        </Card>
 
-        <button
-          type='button'
-          onClick={handleSync}
-          disabled={running}
-          className='px-4 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50'
-          style={{
-            background: 'var(--accent)',
-            color: 'var(--bg)',
-            border: 'none',
-            borderRadius: 'var(--radius-btn)',
-          }}
-        >
+        <label className='flex items-start gap-2 text-sm text-foreground cursor-pointer'>
+          <input
+            type='checkbox'
+            className='mt-1'
+            checked={includeAllMembers}
+            onChange={(e) => setIncludeAllMembers(e.target.checked)}
+            disabled={running}
+          />
+          <span>
+            Include all members (not only leaders/admins). Larger sync; use for full-directory probes.
+          </span>
+        </label>
+
+        <Button type='button' onClick={handleSync} disabled={running}>
           {state.status === 'fetching' && `Fetching… (${state.fetched} scanned, ${state.kept} kept)`}
           {state.status === 'upserting' && `Writing ${state.kept} to Supabase…`}
           {!running && 'Sync all members'}
-        </button>
+        </Button>
 
         {state.status === 'done' && (
-          <div
-            className='p-3 text-sm'
-            style={{
-              background: 'color-mix(in oklab, var(--present) 8%, transparent)',
-              color: 'var(--green, #16a34a)',
-              border: '1px solid color-mix(in oklab, var(--present) 30%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            Synced <strong>{state.upserted}</strong> leader{state.upserted === 1 ? '' : 's'}/admin{state.upserted === 1 ? '' : 's'} into Supabase.
-          </div>
+          <Alert variant='success'>
+            Synced <strong>{state.upserted}</strong> leader{state.upserted === 1 ? '' : 's'}/admin
+            {state.upserted === 1 ? '' : 's'} into Supabase.
+          </Alert>
         )}
 
-        {state.status === 'error' && (
-          <div
-            className='p-3 text-sm'
-            style={{
-              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-              color: 'var(--coral)',
-              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            {state.message}
-          </div>
-        )}
-      </main>
-    </div>
+        {state.status === 'error' && <Alert variant='destructive'>{state.message}</Alert>}
+      </PageMain>
+    </PageShell>
   )
 }

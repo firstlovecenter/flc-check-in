@@ -353,7 +353,7 @@ export default function FaceCapture({ mode, targetDescriptor, onComplete, onErro
           style={{
             alignSelf: 'center',
             background: 'none',
-            border: '1px solid var(--border)',
+            border: '1px solid hsl(var(--border))',
             borderRadius: 'var(--radius-pill)',
             color: lowLight ? '#F59E0B' : 'var(--muted)',
             cursor: 'pointer',

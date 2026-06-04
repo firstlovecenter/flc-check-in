@@ -7,6 +7,10 @@ import { Link, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import ScreenHeader from '../../components/ScreenHeader'
 import Spinner from '../../components/Spinner'
+import { PageShell, PageMain } from '../../components/layout/PageShell'
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
+import { cn } from '../../lib/utils'
 import {
   getMemberProfile, listEventsAttendedByMember, adminClearFaceDescriptor,
 } from '../../utils/supabaseCheckins'
@@ -75,34 +79,33 @@ export default function MemberDetailScreen() {
     : '?'
 
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader title='Member' back={{ to: '/admin/biometrics', label: 'Biometrics' }} />
-      <main className='max-w-3xl mx-auto px-4 py-6 flex flex-col gap-4'>
+      <PageMain className='max-w-3xl flex flex-col gap-4'>
 
         {status === 'loading' && <Spinner />}
         {status === 'error' && (
-          <p className='text-sm text-center' style={{ color: 'var(--coral)' }}>{error}</p>
+          <p className='text-sm text-center text-destructive'>{error}</p>
         )}
 
         {profile && (
           <>
             {/* Identity card */}
             <div
-              className='p-5 flex items-center gap-4'
-              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
+              className='p-5 flex items-center gap-4 surface-card'
             >
               <Avatar pictureUrl={profile.picture_url} initials={initials} size={72} />
               <div className='min-w-0 flex-1'>
-                <h2 className='text-lg font-bold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>
+                <h2 className='m-0 truncate text-lg font-bold tracking-tight text-foreground'>
                   {name}
                 </h2>
                 {profile.email && (
-                  <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                  <p className='text-xs m-0 mt-0.5 truncate text-muted-foreground'>
                     {profile.email}
                   </p>
                 )}
                 {profile.phone && (
-                  <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                  <p className='text-xs m-0 mt-0.5 truncate text-muted-foreground'>
                     {profile.phone}
                   </p>
                 )}
@@ -114,13 +117,9 @@ export default function MemberDetailScreen() {
               <Section title='Roles'>
                 <div className='flex flex-wrap gap-1.5'>
                   {profile.roles.map((r: string) => (
-                    <span
-                      key={r}
-                      className='text-xs px-2.5 py-1 font-semibold'
-                      style={{ background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)' }}
-                    >
+                    <Badge key={r} variant='muted'>
                       {r}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </Section>
@@ -136,16 +135,15 @@ export default function MemberDetailScreen() {
                   return (
                     <div
                       key={key}
-                      className='px-3 py-2 flex items-center justify-between gap-3'
-                      style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+                      className='px-3 py-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary'
                     >
                       <span className='eyebrow m-0'>{label}</span>
-                      <span className='text-sm font-semibold truncate' style={{ color: 'var(--text)' }}>{name || id}</span>
+                      <span className='text-sm font-semibold truncate text-foreground'>{name || id}</span>
                     </div>
                   )
                 })}
                 {HIERARCHY.every(({ key }) => !profile[`${key}_id`]) && (
-                  <p className='text-sm' style={{ color: 'var(--muted)' }}>No hierarchy data on this member.</p>
+                  <p className='text-sm text-muted-foreground'>No hierarchy data on this member.</p>
                 )}
               </div>
             </Section>
@@ -153,12 +151,11 @@ export default function MemberDetailScreen() {
             {/* Biometrics */}
             <Section title='Biometrics'>
               <div
-                className='px-4 py-3 flex items-center justify-between gap-3'
-                style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+                className='px-4 py-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary'
               >
                 <div className='min-w-0'>
-                  <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>Face ID</p>
-                  <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>
+                  <p className='text-sm font-semibold m-0 text-foreground'>Face ID</p>
+                  <p className='text-xs m-0 mt-0.5 text-muted-foreground'>
                     {profile.has_face_id ? 'Enrolled — descriptor on file.' : 'Not enrolled yet.'}
                   </p>
                 </div>
@@ -169,63 +166,52 @@ export default function MemberDetailScreen() {
                         type='button'
                         onClick={() => setConfirmReset(false)}
                         disabled={resetBusy}
-                        className='text-xs px-3 py-1.5 cursor-pointer'
-                        style={{ background: 'var(--bg2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+                        className='btn-pill btn-secondary cursor-pointer px-3 py-1.5 text-xs'
                       >Cancel</button>
                       <button
                         type='button'
                         onClick={handleClearFace}
                         disabled={resetBusy}
-                        className='text-xs px-3 py-1.5 cursor-pointer disabled:opacity-50'
-                        style={{ background: 'transparent', color: 'var(--coral)', border: '1.5px solid var(--coral)', borderRadius: 'var(--radius-btn)' }}
+                        className='cursor-pointer rounded-lg border border-destructive bg-transparent px-3 py-1.5 text-xs text-destructive disabled:opacity-50'
                       >{resetBusy ? 'Resetting…' : 'Confirm reset'}</button>
                     </div>
                   ) : (
                     <button
                       type='button'
                       onClick={() => setConfirmReset(true)}
-                      className='text-xs px-3 py-1.5 cursor-pointer shrink-0'
-                      style={{ background: 'transparent', color: 'var(--coral)', border: '1.5px solid var(--coral)', borderRadius: 'var(--radius-btn)' }}
+                      className='shrink-0 cursor-pointer rounded-lg border border-destructive bg-transparent px-3 py-1.5 text-xs text-destructive'
                     >Reset Face ID</button>
                   )
                 )}
               </div>
-              {error && <p className='text-xs mt-2' style={{ color: 'var(--coral)' }}>{error}</p>}
+              {error && <p className='text-xs mt-2 text-destructive'>{error}</p>}
             </Section>
 
             {/* Attendance */}
             <Section title={`Attendance (${events.length})`}>
               {events.length === 0 && (
-                <p className='text-sm' style={{ color: 'var(--muted)' }}>No event check-ins yet.</p>
+                <p className='text-sm text-muted-foreground'>No event check-ins yet.</p>
               )}
               <div className='flex flex-col gap-1.5'>
                 {events.slice(0, 20).map((evt) => (
                   <Link
                     key={evt.id}
                     to={`/events/${evt.id}`}
-                    className='px-3 py-2.5 flex items-center justify-between gap-3'
-                    style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', textDecoration: 'none' }}
+                    className='list-row flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary px-3 py-2.5 no-underline'
                   >
                     <div className='min-w-0'>
-                      <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{evt.name}</p>
-                      <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>
+                      <p className='text-sm font-semibold m-0 truncate text-foreground'>{evt.name}</p>
+                      <p className='text-xs m-0 mt-0.5 truncate text-muted-foreground'>
                         {evt.scope_level} · {evt.scope_church_name} · {format(new Date(evt.starts_at), 'PP')}
                       </p>
                     </div>
-                    <span
-                      className='text-[10px] px-2 py-0.5 uppercase font-bold shrink-0'
-                      style={{
-                        background: evt.status === 'ACTIVE' ? 'color-mix(in oklab, var(--present) 12%, transparent)' : 'var(--bg2)',
-                        color: evt.status === 'ACTIVE' ? 'var(--green)' : 'var(--muted)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-pill)',
-                        letterSpacing: '0.06em',
-                      }}
-                    >{evt.status}</span>
+                    <Badge variant={evt.status === 'ACTIVE' ? 'success' : 'muted'} className='shrink-0'>
+                      {evt.status}
+                    </Badge>
                   </Link>
                 ))}
                 {events.length > 20 && (
-                  <p className='text-xs text-center mt-1' style={{ color: 'var(--muted)' }}>
+                  <p className='text-xs text-center mt-1 text-muted-foreground'>
                     Showing 20 most recent of {events.length}
                   </p>
                 )}
@@ -233,8 +219,8 @@ export default function MemberDetailScreen() {
             </Section>
           </>
         )}
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }
 
@@ -248,13 +234,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Avatar({ pictureUrl, initials, size }: { pictureUrl: string | null; initials: string; size: number }) {
-  const common: React.CSSProperties = {
-    width: size, height: size,
-    borderRadius: '50%',
-    border: '1.5px solid var(--border)',
-    flexShrink: 0,
-    background: 'var(--bg2)',
-  }
+  const cls = cn('shrink-0 rounded-full border border-border bg-secondary object-cover')
   if (pictureUrl) {
     return (
       <img
@@ -263,7 +243,7 @@ function Avatar({ pictureUrl, initials, size }: { pictureUrl: string | null; ini
         width={size}
         height={size}
         decoding='async'
-        style={{ ...common, objectFit: 'cover' }}
+        className={cls}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
       />
     )
@@ -271,13 +251,10 @@ function Avatar({ pictureUrl, initials, size }: { pictureUrl: string | null; ini
   return (
     <div
       aria-label={initials}
-      style={{
-        ...common,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--muted)',
-        fontSize: Math.round(size * 0.36),
-        fontWeight: 700,
-      }}
-    >{initials}</div>
+      className={cn(cls, 'flex items-center justify-center font-bold text-muted-foreground')}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+    >
+      {initials}
+    </div>
   )
 }

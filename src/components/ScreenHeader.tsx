@@ -22,31 +22,25 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
   return (
     <>
     <PullToRefreshIndicator />
-    <header
-      className='sticky top-0 z-10 px-4 py-3 grid grid-cols-[auto_1fr_auto] items-center gap-3'
-      style={{
-        background: 'var(--card)',
-        borderBottom: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-1)',
-      }}
-    >
+    <header className='sticky top-0 z-10 grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b-0 bg-card px-4 py-3 shadow-sm'>
       <NavDrawer user={user} />
       <div className='min-w-0 text-center'>
         {title && (
-          <h1
-            className='text-base font-semibold m-0 leading-tight truncate'
-            style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}
-          >
+          <h1 className='m-0 truncate text-base font-semibold leading-tight tracking-tight text-foreground'>
             {title}
           </h1>
         )}
         {back && (
-          <Link to={back.to} className='text-xs' style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+          <Link to={back.to} className='text-xs text-primary no-underline hover:underline'>
             ← {back.label}
           </Link>
         )}
         {!back && onBack && (
-          <button onClick={onBack} className='text-xs cursor-pointer' style={{ background: 'none', border: 'none', color: 'var(--accent)', padding: 0 }}>
+          <button
+            type='button'
+            onClick={onBack}
+            className='cursor-pointer border-0 bg-transparent p-0 text-xs text-primary hover:underline'
+          >
             ← Back
           </button>
         )}

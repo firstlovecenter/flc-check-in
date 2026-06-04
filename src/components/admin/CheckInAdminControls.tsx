@@ -1,11 +1,21 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  pauseEvent, resumeEvent, endEvent, extendEvent, resetPin, addAuditLog,
+  pauseEvent,
+  resumeEvent,
+  endEvent,
+  extendEvent,
+  resetPin,
+  addAuditLog,
   deleteEvent,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import { getCurrentUser, formatName } from '../../utils/auth'
+import { Button } from '../ui/button'
+import { Alert } from '../ui/alert'
+import { Modal } from '../ui/modal'
+import { Input } from '../ui/input'
+import { cn } from '../../lib/utils'
 import type { CheckinEventRow } from '../../types/app'
 
 interface Props {
@@ -18,13 +28,10 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
   const admin = getCurrentUser()
   const adminName = admin ? formatName(admin) : 'Admin'
   const isSuperAdmin = !!admin?.isSuperAdmin
-  const [busy, setBusy]         = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  // Inline confirmation — stores the pending action id ('end' | 'pin' | 'delete').
   const [confirmAction, setConfirmAction] = useState<'end' | 'pin' | 'delete' | null>(null)
-  // Type-to-confirm string for the destructive delete action.
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  // The newly generated PIN to display inline instead of alert().
   const [newPinDisplay, setNewPinDisplay] = useState<string | null>(null)
 
   async function run(
@@ -48,7 +55,13 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
   async function handleExtend(minutes: number) {
     const newEnds = new Date(new Date(event.ends_at).getTime() + minutes * 60_000)
     await run(`extend-${minutes}`, () => extendEvent(event.id, newEnds), () => {
-      addAuditLog({ action: 'event.extend', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { minutes } }).catch(() => {})
+      addAuditLog({
+        action: 'event.extend',
+        actorId: admin?.userId,
+        actorName: adminName,
+        eventId: event.id,
+        details: { minutes },
+      }).catch(() => {})
     })
   }
 
@@ -60,7 +73,12 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     try {
       await resetPin(event.id, pin)
       setNewPinDisplay(pin)
-      addAuditLog({ action: 'pin.reset', actorId: admin?.userId, actorName: adminName, eventId: event.id }).catch(() => {})
+      addAuditLog({
+        action: 'pin.reset',
+        actorId: admin?.userId,
+        actorName: adminName,
+        eventId: event.id,
+      }).catch(() => {})
     } catch (err: any) {
       setActionError(err.message || 'Reset failed')
     } finally {
@@ -71,7 +89,13 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
   async function doEnd() {
     setConfirmAction(null)
     await run('end', () => endEvent(event.id), (updated) => {
-      addAuditLog({ action: 'event.end', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: updated.status } }).catch(() => {})
+      addAuditLog({
+        action: 'event.end',
+        actorId: admin?.userId,
+        actorName: adminName,
+        eventId: event.id,
+        details: { status: updated.status },
+      }).catch(() => {})
     })
   }
 
@@ -81,14 +105,9 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     setBusy('delete')
     setActionError(null)
     try {
-      // Capture event identity BEFORE delete for the audit log entry —
-      // event_id on audit_log is `on delete set null`, so we lose the
-      // direct link, but the details payload still names the event.
       const eventName = event.name
       const eventId = event.id
       await deleteEvent(eventId, admin?.email || '')
-      // Best-effort audit log — eventId will be set to null by the FK cascade,
-      // but the row is preserved with the details payload for traceability.
       addAuditLog({
         action: 'event.delete',
         actorId: admin?.userId,
@@ -96,7 +115,6 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
         eventId,
         details: { event_name: eventName },
       }).catch(() => {})
-      // Navigate away — the event no longer exists.
       navigate('/admin/history', { replace: true })
     } catch (err: any) {
       setActionError(err.message || 'Delete failed')
@@ -109,166 +127,204 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     <div>
       <div className='flex flex-wrap gap-2'>
         {event.status === 'ACTIVE' && (
-          <Btn disabled={busy} onClick={() => run('pause', () => pauseEvent(event.id), (u) => {
-            addAuditLog({ action: 'event.pause', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: u.status } }).catch(() => {})
-          })}>
+          <ControlBtn
+            disabled={busy}
+            onClick={() =>
+              run('pause', () => pauseEvent(event.id), (u) => {
+                addAuditLog({
+                  action: 'event.pause',
+                  actorId: admin?.userId,
+                  actorName: adminName,
+                  eventId: event.id,
+                  details: { status: u.status },
+                }).catch(() => {})
+              })
+            }
+          >
             {busy === 'pause' ? '…' : 'Pause'}
-          </Btn>
+          </ControlBtn>
         )}
         {event.status === 'PAUSED' && (
-          <Btn disabled={busy} onClick={() => run('resume', () => resumeEvent(event.id), (u) => {
-            addAuditLog({ action: 'event.resume', actorId: admin?.userId, actorName: adminName, eventId: event.id, details: { status: u.status } }).catch(() => {})
-          })}>
+          <ControlBtn
+            disabled={busy}
+            onClick={() =>
+              run('resume', () => resumeEvent(event.id), (u) => {
+                addAuditLog({
+                  action: 'event.resume',
+                  actorId: admin?.userId,
+                  actorName: adminName,
+                  eventId: event.id,
+                  details: { status: u.status },
+                }).catch(() => {})
+              })
+            }
+          >
             {busy === 'resume' ? '…' : 'Resume'}
-          </Btn>
+          </ControlBtn>
         )}
         {event.status !== 'ENDED' && (
           <>
-            <Btn disabled={busy} onClick={() => handleExtend(30)}>+30 min</Btn>
-            <Btn disabled={busy} onClick={() => handleExtend(60)}>+60 min</Btn>
+            <ControlBtn disabled={busy} onClick={() => handleExtend(30)}>
+              +30 min
+            </ControlBtn>
+            <ControlBtn disabled={busy} onClick={() => handleExtend(60)}>
+              +60 min
+            </ControlBtn>
             {event.allowed_check_in_methods?.includes('PIN') && (
-              <Btn disabled={busy} onClick={() => { setNewPinDisplay(null); setConfirmAction('pin') }}>
+              <ControlBtn
+                disabled={busy}
+                onClick={() => {
+                  setNewPinDisplay(null)
+                  setConfirmAction('pin')
+                }}
+              >
                 {busy === 'pin' ? '…' : 'Reset PIN'}
-              </Btn>
+              </ControlBtn>
             )}
-            <Btn disabled={busy} danger onClick={() => setConfirmAction('end')}>
+            <ControlBtn disabled={busy} danger onClick={() => setConfirmAction('end')}>
               {busy === 'end' ? '…' : 'End'}
-            </Btn>
+            </ControlBtn>
           </>
         )}
-        {/* Super-admin only: hard-delete the event (any status). Server
-            re-checks isSuperAdmin via the superadmins table — this is just
-            the UI gate. */}
         {isSuperAdmin && (
-          <Btn disabled={busy} danger onClick={() => { setDeleteConfirmText(''); setConfirmAction('delete') }}>
+          <ControlBtn
+            disabled={busy}
+            danger
+            onClick={() => {
+              setDeleteConfirmText('')
+              setConfirmAction('delete')
+            }}
+          >
             {busy === 'delete' ? '…' : '🗑 Delete'}
-          </Btn>
+          </ControlBtn>
         )}
       </div>
 
-      {/* Inline error */}
       {actionError && (
-        <p style={{ color: 'var(--coral)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+        <Alert variant='destructive' className='mt-2 text-xs'>
           {actionError}
-        </p>
+        </Alert>
       )}
 
-      {/* New PIN display (replaces alert) */}
       {newPinDisplay && (
-        <div
-          style={{
-            marginTop: '0.75rem', padding: '0.75rem 1rem',
-            background: 'color-mix(in oklab, var(--accent) 8%, transparent)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)',
-            borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
-          }}
-        >
-          <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>New PIN:</span>
-          <span style={{ color: 'var(--accent)', fontWeight: 700, letterSpacing: '0.15em', fontSize: '1.1rem' }}>
-            {newPinDisplay}
-          </span>
+        <Alert variant='info' className='mt-3 flex items-center gap-3'>
+          <span className='text-xs text-muted-foreground'>New PIN:</span>
+          <span className='tnum text-lg font-bold tracking-widest text-primary'>{newPinDisplay}</span>
           <button
+            type='button'
             onClick={() => setNewPinDisplay(null)}
-            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: '1rem' }}
+            className='icon-btn ml-auto border-0 bg-transparent text-muted-foreground'
             aria-label='Dismiss'
-          >✕</button>
-        </div>
+          >
+            ✕
+          </button>
+        </Alert>
       )}
 
-      {/* Inline confirmation sheet (replaces window.confirm — broken on iOS PWA) */}
-      {confirmAction && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            zIndex: 999, padding: '1rem',
-          }}
-          onClick={() => setConfirmAction(null)}
-        >
-          <div
-            style={{
-              background: 'var(--card)', border: '1px solid var(--border)',
-              borderRadius: '1rem', padding: '1.5rem', width: '100%', maxWidth: '22rem',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {confirmAction === 'end' && (
-              <>
-                <p style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.5rem' }}>End this event?</p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-                  All open check-ins will be closed. This cannot be undone.
-                </p>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <Btn onClick={() => setConfirmAction(null)}>Cancel</Btn>
-                  <Btn danger onClick={doEnd}>End Event</Btn>
-                </div>
-              </>
-            )}
-            {confirmAction === 'pin' && (
-              <>
-                <p style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.5rem' }}>Reset PIN?</p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-                  A new PIN will be generated. The old one stops working immediately.
-                </p>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <Btn onClick={() => setConfirmAction(null)}>Cancel</Btn>
-                  <Btn onClick={doResetPin}>Generate New PIN</Btn>
-                </div>
-              </>
-            )}
-            {confirmAction === 'delete' && (
-              <>
-                <p style={{ color: 'var(--coral)', fontWeight: 700, marginBottom: '0.5rem' }}>
-                  Permanently delete this event?
-                </p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-                  This removes the event, every check-in record, and all related
-                  data. <strong style={{ color: 'var(--coral)' }}>This cannot be undone.</strong>
-                </p>
-                <p style={{ color: 'var(--muted)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-                  Type <code style={{ color: 'var(--coral)', fontWeight: 700 }}>DELETE</code> to confirm:
-                </p>
-                <input
-                  type='text'
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder='DELETE'
-                  autoComplete='off'
-                  autoCorrect='off'
-                  spellCheck={false}
-                  className='input-field'
-                  style={{ fontSize: 14, padding: '8px 12px', marginBottom: '1rem' }}
-                />
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  <Btn onClick={() => { setConfirmAction(null); setDeleteConfirmText('') }}>Cancel</Btn>
-                  <Btn danger disabled={deleteConfirmText !== 'DELETE'} onClick={doDelete}>
-                    Delete forever
-                  </Btn>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} variant='sheet'>
+        {confirmAction === 'end' && (
+          <>
+            <h2 className='m-0 text-base font-semibold text-foreground'>End this event?</h2>
+            <p className='m-0 mt-1 text-sm text-muted-foreground'>
+              All open check-ins will be closed. This cannot be undone.
+            </p>
+            <div className='mt-4 flex gap-3'>
+              <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmAction(null)}>
+                Cancel
+              </Button>
+              <Button type='button' variant='destructive' className='flex-1' onClick={doEnd}>
+                End Event
+              </Button>
+            </div>
+          </>
+        )}
+        {confirmAction === 'pin' && (
+          <>
+            <h2 className='m-0 text-base font-semibold text-foreground'>Reset PIN?</h2>
+            <p className='m-0 mt-1 text-sm text-muted-foreground'>
+              A new PIN will be generated. The old one stops working immediately.
+            </p>
+            <div className='mt-4 flex gap-3'>
+              <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmAction(null)}>
+                Cancel
+              </Button>
+              <Button type='button' className='flex-1' onClick={doResetPin}>
+                Generate New PIN
+              </Button>
+            </div>
+          </>
+        )}
+        {confirmAction === 'delete' && (
+          <>
+            <h2 className='m-0 text-base font-semibold text-destructive'>Permanently delete this event?</h2>
+            <p className='m-0 mt-1 text-sm text-muted-foreground'>
+              This removes the event, every check-in record, and all related data.{' '}
+              <strong className='text-destructive'>This cannot be undone.</strong>
+            </p>
+            <p className='m-0 mt-2 text-xs text-muted-foreground'>
+              Type <code className='font-bold text-destructive'>DELETE</code> to confirm:
+            </p>
+            <Input
+              type='text'
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder='DELETE'
+              autoComplete='off'
+              className='my-3'
+            />
+            <div className='flex gap-3'>
+              <Button
+                type='button'
+                variant='outline'
+                className='flex-1'
+                onClick={() => {
+                  setConfirmAction(null)
+                  setDeleteConfirmText('')
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type='button'
+                variant='destructive'
+                className='flex-1'
+                disabled={deleteConfirmText !== 'DELETE'}
+                onClick={doDelete}
+              >
+                Delete forever
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   )
 }
 
-function Btn({ children, onClick, disabled, danger }: {
+function ControlBtn({
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
   children: React.ReactNode
   onClick: () => void
-  disabled?: any
+  disabled?: boolean | string | null
   danger?: boolean
 }) {
   return (
     <button
-      type='button' onClick={onClick} disabled={disabled}
-      className='px-3 py-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50'
-      style={{
-        background: danger ? 'color-mix(in oklab, var(--absent) 12%, transparent)' : 'var(--bg2)',
-        color: danger ? 'var(--coral)' : 'var(--text)',
-        border: `1.5px solid ${danger ? 'color-mix(in oklab, var(--absent) 30%, transparent)' : 'var(--border)'}`,
-        borderRadius: 'var(--radius-btn)',
-      }}
-    >{children}</button>
+      type='button'
+      onClick={onClick}
+      disabled={!!disabled}
+      className={cn(
+        'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50',
+        danger
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : 'border-border bg-secondary text-foreground',
+      )}
+    >
+      {children}
+    </button>
   )
 }

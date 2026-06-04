@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
+import { Label } from '../ui/label'
+import { cn } from '../../lib/utils'
 
 export default function AttendanceField({ field, value, onChange, error }) {
   const count = value ?? 0
   const [editing, setEditing] = useState(false)
-  const inputRef = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  // flagBelow: if set to a number, show a warning when count > 0 and count < threshold
   const threshold = typeof field.flagBelow === 'number' ? field.flagBelow : null
   const isBelowThreshold = threshold !== null && count > 0 && count < threshold
 
@@ -18,11 +19,10 @@ export default function AttendanceField({ field, value, onChange, error }) {
 
   function handleTapNumber() {
     setEditing(true)
-    // Give React a tick to render the input before focusing
     setTimeout(() => inputRef.current?.select(), 0)
   }
 
-  function handleInputChange(e) {
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/\D/g, '')
     onChange(raw === '' ? 0 : Math.min(Number(raw), 9999))
   }
@@ -31,39 +31,35 @@ export default function AttendanceField({ field, value, onChange, error }) {
     setEditing(false)
   }
 
-  function handleKeyDown(e) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') inputRef.current?.blur()
   }
 
   return (
     <div className='flex flex-col gap-2'>
-      <label
-        className='eyebrow'
-        style={{ color: 'var(--muted)' }}
-      >
+      <Label>
         {field.label}
-        {field.required && <span style={{ color: 'var(--coral)' }}>*</span>}
-      </label>
+        {field.required && <span className='text-destructive'>*</span>}
+      </Label>
       <div
-        className='flex items-center overflow-hidden'
-        style={{
-          background: 'var(--card)',
-          border: error ? '1.5px solid var(--coral)' : isBelowThreshold ? '1.5px solid var(--amber)' : '1.5px solid var(--border)',
-          borderRadius: 'var(--radius-btn)',
-        }}
+        className={cn(
+          'surface-card flex items-center overflow-hidden rounded-lg p-0',
+          error && 'border-destructive',
+          !error && isBelowThreshold && 'border-warning',
+        )}
       >
-        {/* Decrement */}
         <button
           type='button'
           onClick={decrement}
-          className='flex items-center justify-center text-2xl font-light select-none cursor-pointer flex-shrink-0'
-          style={{ width: 64, height: 64, color: count > 0 ? 'var(--text)' : 'var(--border)' }}
+          className={cn(
+            'flex size-16 shrink-0 cursor-pointer select-none items-center justify-center text-2xl font-light',
+            count > 0 ? 'text-foreground' : 'text-border',
+          )}
         >
           −
         </button>
 
-        {/* Centre — tap to type */}
-        <div className='flex-1 flex items-center justify-center' style={{ minHeight: 64 }}>
+        <div className='flex min-h-16 flex-1 items-center justify-center'>
           {editing ? (
             <input
               ref={inputRef}
@@ -74,20 +70,20 @@ export default function AttendanceField({ field, value, onChange, error }) {
               onChange={handleInputChange}
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
-              className='text-4xl font-semibold tabular-nums text-center bg-transparent outline-none w-full'
-              style={{ color: 'var(--accent)', caretColor: 'var(--accent)' }}
+              className='tnum w-full border-0 bg-transparent text-center text-4xl font-semibold text-primary outline-none caret-primary'
             />
           ) : (
             <button
               type='button'
               onClick={handleTapNumber}
               title='Tap to type a number'
-              className='flex items-center justify-center w-full h-full cursor-text select-none'
-              style={{ background: 'none', border: 'none', padding: 0 }}
+              className='flex h-full w-full cursor-text select-none items-center justify-center border-0 bg-transparent p-0'
             >
               <span
-                className='text-4xl font-semibold tabular-nums'
-                style={{ color: count === 0 ? 'var(--muted)' : 'var(--text)' }}
+                className={cn(
+                  'tnum text-4xl font-semibold',
+                  count === 0 ? 'text-muted-foreground' : 'text-foreground',
+                )}
               >
                 {count}
               </span>
@@ -95,25 +91,21 @@ export default function AttendanceField({ field, value, onChange, error }) {
           )}
         </div>
 
-        {/* Increment */}
         <button
           type='button'
           onClick={increment}
-          className='flex items-center justify-center text-2xl font-light select-none cursor-pointer flex-shrink-0'
-          style={{ width: 64, height: 64, color: 'var(--accent)' }}
+          className='flex size-16 shrink-0 cursor-pointer select-none items-center justify-center text-2xl font-light text-primary'
         >
           +
         </button>
       </div>
-      <p className='text-xs' style={{ color: 'var(--muted)', marginTop: -4 }}>
-        Tap the number to type it directly
-      </p>
+      <p className='-mt-1 text-xs text-muted-foreground'>Tap the number to type it directly</p>
       {isBelowThreshold && !error && (
-        <p className='text-xs mt-0.5 m-0' style={{ color: 'var(--amber)' }}>
-          Target is {threshold} — you're below the minimum
+        <p className='m-0 mt-0.5 text-xs text-warning'>
+          Target is {threshold} — you&apos;re below the minimum
         </p>
       )}
-      {error && <p className='text-xs mt-0.5 m-0' style={{ color: 'var(--coral)' }}>{error}</p>}
+      {error && <p className='field-error'>{error}</p>}
     </div>
   )
 }

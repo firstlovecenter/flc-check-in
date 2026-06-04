@@ -5,6 +5,15 @@ import { format, formatDistanceToNowStrict } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
+import { PageShell, PageMain } from '../layout/PageShell'
+import { CenterCard } from '../layout/CenterCard'
+import { Card, CardContent } from '../ui/card'
+import { Button } from '../ui/button'
+import { Badge } from '../ui/badge'
+import { Label } from '../ui/label'
+import { Textarea } from '../ui/textarea'
+import { Modal } from '../ui/modal'
+import { cn } from '../../lib/utils'
 import {
   listCheckedIn, adminClearFaceDescriptor,
   listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
@@ -12,57 +21,51 @@ import {
 import {
   childScopeLevel, adminCoversMember,
 } from '../../utils/membersApi'
-import { getCurrentUser, SCOPE_LEVELS, formatName } from '../../utils/auth'
+import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
 const TABS = [
   { id: 'checked-in', label: 'Checked In' },
-  { id: 'defaulted',  label: 'Defaulted' },
+  { id: 'defaulted', label: 'Defaulted' },
   { id: 'checked-out', label: 'Checked Out' },
-  { id: 'timeline',   label: 'Timeline' },
-]
+  { id: 'timeline', label: 'Timeline' },
+] as const
 
-export default function FullReport({ eventId }) {
+type TabId = (typeof TABS)[number]['id']
+
+export default function FullReport({ eventId }: { eventId: string }) {
   const user = getCurrentUser()
   const [params, setParams] = useSearchParams()
-  const activeTab = TABS.find((t) => t.id === params.get('tab'))?.id || 'checked-in'
+  const activeTab = (TABS.find((t) => t.id === params.get('tab'))?.id || 'checked-in') as TabId
 
-  // Scope filter — can be passed in via URL (from ScopeBreakdown) or set interactively
-  const urlLevel      = params.get('level')      || null
-  const urlChurchId   = params.get('churchId')   || null
+  const urlLevel = params.get('level') || null
+  const urlChurchId = params.get('churchId') || null
   const urlChurchName = params.get('churchName') || null
 
-  // Bumped by the global refresh signal (TopBar / ScreenHeader refresh button).
   const [refreshKey, setRefreshKey] = useState(0)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
-  // Core eligibility + records — SWR-cached so page is instant on revisit.
   const {
     event, eligible: allEligible, viewerCaps, adminScopes, records,
     error: eligibilityError, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { refreshKey })
 
-  const [search, setSearch]             = useState('')
-  const [error, setError]               = useState<string | null>(null)
-  const [modalMember, setModalMember]   = useState(null)
-  const [resetting, setResetting]       = useState<string | null>(null)
-  // Inline confirmation state for Face ID reset (replaces window.confirm).
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [modalMember, setModalMember] = useState<any>(null)
+  const [resetting, setResetting] = useState<string | null>(null)
   const [confirmResetId, setConfirmResetId] = useState<string | null>(null)
 
-  // Absence notes state
-  const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
+  const [absenceNotes, setAbsenceNotes] = useState<Map<string, string>>(new Map())
   const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
-  const [absenceInput, setAbsenceInput]   = useState('')
+  const [absenceInput, setAbsenceInput] = useState('')
   const [absenceSaving, setAbsenceSaving] = useState(false)
 
-  // Risk flags — members whose device fingerprint was shared with another member
   const [riskyIds, setRiskyIds] = useState<Set<string>>(new Set())
 
-  // Merge hook error with local errors.
   const displayError = error || eligibilityError
 
-  // Load absence notes whenever the event is known (also refetch on refresh).
   useEffect(() => {
     if (!eventId) return
     listAbsenceNotesForEvent(eventId)
@@ -70,24 +73,22 @@ export default function FullReport({ eventId }) {
       .catch(() => {})
   }, [eventId, refreshKey])
 
-  // Load risk flags whenever records change
   useEffect(() => {
     if (!eventId || records.length === 0) return
     getRiskyCheckIns(eventId)
       .then(setRiskyIds)
       .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, records.length])
 
   async function saveAbsenceNote() {
     if (!absenceTarget || !absenceInput.trim()) return
     setAbsenceSaving(true)
     try {
-      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user.userId)
+      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user!.userId)
       setAbsenceNotes((m) => new Map(m).set(absenceTarget.id, absenceInput.trim()))
       addAuditLog({
         action: 'absence.note_set',
-        actorId: user.userId,
+        actorId: user!.userId,
         actorName: formatName(user),
         eventId,
         targetId: absenceTarget.id,
@@ -103,18 +104,15 @@ export default function FullReport({ eventId }) {
     }
   }
 
-  // Scope filter state (level + child-church selector)
-  const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
-  const [filterChurchId,   setFilterChurchId]   = useState<string | null>(urlChurchId)
+  const [filterLevel, setFilterLevel] = useState<string | null>(urlLevel)
+  const [filterChurchId, setFilterChurchId] = useState<string | null>(urlChurchId)
   const [filterChurchName, setFilterChurchName] = useState<string | null>(urlChurchName)
 
-  // Available child-scope options for the filter dropdown
   const scopeOptions = useMemo(() => {
     if (!event) return []
-    // Build one level below the event scope as the top filter level
     const topChildLevel = childScopeLevel(event.scope_level)
     if (!topChildLevel) return []
-    const idCol   = `${topChildLevel}_id`
+    const idCol = `${topChildLevel}_id`
     const nameCol = `${topChildLevel}_name`
     const seen = new Map<string, string>()
     for (const m of allEligible) {
@@ -122,7 +120,9 @@ export default function FullReport({ eventId }) {
     }
     return [
       { level: topChildLevel, id: '__all__', name: `All ${cap(topChildLevel)}s` },
-      ...[...seen.entries()].map(([id, name]) => ({ level: topChildLevel, id, name })).sort((a, b) => a.name.localeCompare(b.name)),
+      ...[...seen.entries()]
+        .map(([id, name]) => ({ level: topChildLevel, id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     ]
   }, [event, allEligible])
 
@@ -135,19 +135,17 @@ export default function FullReport({ eventId }) {
     }
   }
 
-  // Apply scope filter on top of allEligible
   const eligible = useMemo(() => {
     if (!filterChurchId || filterChurchId === '__all__' || !filterLevel) return allEligible
     const idCol = `${filterLevel}_id`
     return allEligible.filter((m) => m[idCol] === filterChurchId)
   }, [allEligible, filterLevel, filterChurchId])
 
-  // Bucket the eligible set
   const buckets = useMemo(() => {
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
-    const checkedIn = []
-    const defaulted = []
-    const checkedOut = []
+    const checkedIn: { member: any; record: any }[] = []
+    const defaulted: { member: any; record: null }[] = []
+    const checkedOut: { member: any; record: any }[] = []
     for (const m of eligible) {
       const r = recordByMember.get(m.id)
       if (!r) defaulted.push({ member: m, record: null })
@@ -157,14 +155,13 @@ export default function FullReport({ eventId }) {
     return { checkedIn, defaulted, checkedOut }
   }, [eligible, records])
 
-  const counts = {
-    'checked-in':  buckets.checkedIn.length,
-    'defaulted':   buckets.defaulted.length,
+  const counts: Record<TabId, number> = {
+    'checked-in': buckets.checkedIn.length,
+    defaulted: buckets.defaulted.length,
     'checked-out': buckets.checkedOut.length,
-    'timeline':    records.length,
+    timeline: records.length,
   }
 
-  // Timeline: all check-in records in scope, sorted chronologically
   const timelineRows = useMemo(() => {
     const eligibleSet = new Set(eligible.map((m) => m.id))
     return records
@@ -180,13 +177,17 @@ export default function FullReport({ eventId }) {
       }))
       .sort((a, b) => new Date(a.record.checked_in_at).getTime() - new Date(b.record.checked_in_at).getTime())
   }, [records, eligible])
+
   const total = eligible.length
   const pct = total > 0 ? Math.round((counts['checked-in'] / total) * 100) : 0
+  const rateTone = pct >= 80 ? 'success' : pct >= 50 ? 'warning' : 'destructive'
 
-  // These must live above the early-return guards to satisfy rules-of-hooks.
-  const tabRows = activeTab === 'timeline'
-    ? []
-    : buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
+  const tabRows =
+    activeTab === 'timeline'
+      ? []
+      : buckets[
+          activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
+        ]
   const filteredRows = filterRows(tabRows, search)
 
   const filteredTimeline = useMemo(() => {
@@ -194,21 +195,20 @@ export default function FullReport({ eventId }) {
     if (!s) return timelineRows
     return timelineRows.filter((b) => {
       const m = b.member
-      return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
-        .some((v) => (v || '').toLowerCase().includes(s))
+      return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name].some(
+        (v) => (v || '').toLowerCase().includes(s),
+      )
     })
   }, [timelineRows, search])
 
-  const scopeLabel = (filterChurchId && filterChurchId !== '__all__' && filterChurchName)
-    ? filterChurchName
-    : (event?.scope_church_name || '')
-
-  function setTab(id) {
-    setParams((p) => { p.set('tab', id); return p }, { replace: true })
+  function setTab(id: TabId) {
+    setParams((p) => {
+      p.set('tab', id)
+      return p
+    }, { replace: true })
   }
 
-  function handleResetFaceId(member) {
-    // Show inline confirmation instead of window.confirm (broken on iOS PWA).
+  function handleResetFaceId(member: any) {
     setConfirmResetId(member.id)
   }
 
@@ -220,7 +220,7 @@ export default function FullReport({ eventId }) {
       const target = allEligible.find((r) => r.id === memberId)
       addAuditLog({
         action: 'face.descriptor_clear',
-        actorId: user.userId,
+        actorId: user!.userId,
         actorName: formatName(user),
         eventId,
         targetId: memberId,
@@ -235,11 +235,12 @@ export default function FullReport({ eventId }) {
 
   function exportCsv() {
     if (!event || activeTab === 'timeline') return
-    // Export only the currently visible tab + scope filter
-    const tabRows = buckets[activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut']
-    const statusLabel = activeTab === 'checked-in' ? 'Checked In' : activeTab === 'defaulted' ? 'Defaulted' : 'Checked Out'
-    const rows = tabRows.map((b) => csvRow(b, statusLabel))
-    const csv = Papa.unparse(rows)
+    const rows = buckets[
+      activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
+    ]
+    const statusLabel =
+      activeTab === 'checked-in' ? 'Checked In' : activeTab === 'defaulted' ? 'Defaulted' : 'Checked Out'
+    const csv = Papa.unparse(rows.map((b) => csvRow(b, statusLabel)))
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -251,43 +252,53 @@ export default function FullReport({ eventId }) {
     URL.revokeObjectURL(url)
   }
 
-  if (displayError) return <CenterCard><p style={{ color: 'var(--coral)' }}>{displayError}</p></CenterCard>
+  if (displayError) {
+    return (
+      <CenterCard>
+        <p className='text-destructive'>{displayError}</p>
+      </CenterCard>
+    )
+  }
   if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
-    return <CenterCard><p style={{ color: 'var(--muted)' }}>This event isn't part of your scope.</p></CenterCard>
+    return (
+      <CenterCard>
+        <p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p>
+      </CenterCard>
+    )
   }
 
+  const confirmMember = confirmResetId ? allEligible.find((r) => r.id === confirmResetId) : null
+  const confirmName = confirmMember
+    ? [confirmMember.first_name, confirmMember.last_name].filter(Boolean).join(' ') || confirmMember.id
+    : confirmResetId
+
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader
         title={event.name}
         back={{ to: `/events/${eventId}`, label: 'Back to Dashboard' }}
-        right={viewerCaps.canManage && (
-          <button
-            onClick={exportCsv}
-            className='text-xs px-3 py-1.5 cursor-pointer'
-            style={{
-              background: 'transparent',
-              color: 'var(--green)',
-              border: '1.5px solid var(--green)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            Export CSV
-          </button>
-        )}
+        right={
+          viewerCaps.canManage ? (
+            <Button type='button' variant='outline' size='sm' className='border-success text-success' onClick={exportCsv}>
+              Export CSV
+            </Button>
+          ) : null
+        }
       />
 
-      <main className='max-w-5xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5'>
-        <p className='eyebrow m-0'>
-          <StatusPill status={event.status} /> &nbsp;
-          {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · Admin: {event.created_by_name || '—'}
+      <PageMain className='flex flex-col gap-5'>
+        <p className='section-heading m-0 flex flex-wrap items-center gap-1'>
+          <StatusBadge status={event.status} />
+          <span>
+            {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · Admin:{' '}
+            {event.created_by_name || '—'}
+          </span>
         </p>
 
-        {/* Scope filter */}
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
-            <label className='eyebrow' style={{ color: 'var(--muted)' }}>Filter by scope</label>
+            <Label className='section-heading'>Filter by scope</Label>
             <select
               value={filterChurchId || '__all__'}
               onChange={(e) => {
@@ -299,71 +310,62 @@ export default function FullReport({ eventId }) {
               className='input-field'
             >
               {scopeOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
               ))}
             </select>
           </div>
         )}
 
-        {/* Compact stat strip */}
-        <div
-          className='p-4 grid grid-cols-4 gap-2 text-center'
-          style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
-        >
-          <Stat value={total} label='Expected' />
-          <Stat value={counts['checked-in']}  label='Checked In'  color='var(--present)' />
-          <Stat value={counts['checked-out']} label='Checked Out' color='var(--out)' />
-          <Stat value={counts['defaulted']}   label='Defaulted'   color='var(--absent)' />
-        </div>
+        <Card>
+          <CardContent className='metric-grid grid-cols-4 gap-2 p-4 text-center'>
+            <MetricStat value={total} label='Expected' />
+            <MetricStat value={counts['checked-in']} label='Checked In' tone='success' />
+            <MetricStat value={counts['checked-out']} label='Checked Out' tone='muted' />
+            <MetricStat value={counts.defaulted} label='Defaulted' tone='destructive' />
+          </CardContent>
+        </Card>
 
-        {/* Attendance bar — fill colour tracks the rate */}
-        {(() => {
-          const rateColor = pct >= 80 ? 'var(--present)' : pct >= 50 ? 'var(--late)' : 'var(--absent)'
-          return (
-            <div
-              className='p-4'
-              style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-            >
-              <div className='flex items-center justify-between text-xs mb-2'>
-                <span style={{ color: 'var(--muted)' }}>Attendance</span>
-                <span className='tnum font-semibold' style={{ color: rateColor }}>{pct}%</span>
-              </div>
-              <div className='h-2 overflow-hidden' style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)' }}>
-                <div className='h-full' style={{ width: `${pct}%`, background: rateColor, borderRadius: 'var(--radius-pill)', transition: 'width 0.4s var(--ease-out)' }} />
-              </div>
+        <Card>
+          <CardContent className='p-4'>
+            <div className='mb-2 flex items-center justify-between text-xs'>
+              <span className='text-muted-foreground'>Attendance</span>
+              <span
+                className={cn(
+                  'tnum font-semibold',
+                  rateTone === 'success' && 'text-success',
+                  rateTone === 'warning' && 'text-warning',
+                  rateTone === 'destructive' && 'text-destructive',
+                )}
+              >
+                {pct}%
+              </span>
             </div>
-          )
-        })()}
+            <div className='h-2 overflow-hidden rounded-full bg-secondary'>
+              <div
+                className={cn(
+                  'h-full rounded-full transition-[width] duration-300 ease-out',
+                  rateTone === 'success' && 'bg-success',
+                  rateTone === 'warning' && 'bg-warning',
+                  rateTone === 'destructive' && 'bg-destructive',
+                )}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Tabs — pill toggle */}
-        <div
-          className='flex gap-1 p-1'
-          style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}
-        >
+        <div className='tab-bar'>
           {TABS.map((t) => (
             <button
               key={t.id}
+              type='button'
               onClick={() => setTab(t.id)}
-              className='flex-1 py-2 text-xs font-semibold cursor-pointer transition-colors flex items-center justify-center gap-1.5'
-              style={{
-                background: activeTab === t.id ? 'var(--cta-bg)' : 'transparent',
-                color: activeTab === t.id ? 'var(--cta-text)' : 'var(--muted)',
-                border: 'none',
-                borderRadius: 'var(--radius-pill)',
-                letterSpacing: '0.03em',
-              }}
+              className={cn('tab-item flex items-center justify-center gap-1.5', activeTab === t.id && 'tab-item--active')}
             >
               {t.label}
-              <span
-                className='text-[10px] font-bold px-1.5 py-0.5 tnum'
-                style={{
-                  background: activeTab === t.id ? 'color-mix(in oklab, var(--cta-text) 22%, transparent)' : 'var(--card)',
-                  color: activeTab === t.id ? 'var(--cta-text)' : 'var(--muted)',
-                  borderRadius: 'var(--radius-pill)',
-                }}
-              >
-                {counts[t.id]}
-              </span>
+              <span className='chip tnum text-[10px]'>{counts[t.id]}</span>
             </button>
           ))}
         </div>
@@ -376,27 +378,22 @@ export default function FullReport({ eventId }) {
           className='input-field'
         />
 
-        {/* List / Timeline */}
         {activeTab === 'timeline' ? (
-          <div
-            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
-          >
-            {filteredTimeline.length === 0 ? (
-              <p className='text-sm text-center py-8' style={{ color: 'var(--muted)' }}>No check-ins yet.</p>
-            ) : (
-              filteredTimeline.map((b, i) => (
-                <TimelineEntry
-                  key={b.record.id}
-                  entry={b}
-                  isLast={i === filteredTimeline.length - 1}
-                />
-              ))
-            )}
-          </div>
+          <Card className='overflow-hidden p-0'>
+            <CardContent className='p-0'>
+              {filteredTimeline.length === 0 ? (
+                <p className='py-8 text-center text-sm text-muted-foreground'>No check-ins yet.</p>
+              ) : (
+                filteredTimeline.map((b, i) => (
+                  <TimelineEntry key={b.record.id} entry={b} isLast={i === filteredTimeline.length - 1} />
+                ))
+              )}
+            </CardContent>
+          </Card>
         ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 gap-2'>
+          <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
             {filteredRows.length === 0 && (
-              <p className='text-sm text-center mt-2 md:col-span-2' style={{ color: 'var(--muted)' }}>
+              <p className='mt-2 text-center text-sm text-muted-foreground md:col-span-2'>
                 {tabRows.length === 0 ? 'Nothing here yet.' : 'No matches.'}
               </p>
             )}
@@ -412,134 +409,80 @@ export default function FullReport({ eventId }) {
                 absenceNote={activeTab === 'defaulted' ? absenceNotes.get(b.member.id) : undefined}
                 onManual={() => setModalMember(b.member)}
                 onResetFaceId={() => handleResetFaceId(b.member)}
-                onAddNote={activeTab === 'defaulted' && viewerCaps.canManage
-                  ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
-                  : undefined}
+                onAddNote={
+                  activeTab === 'defaulted' && viewerCaps.canManage
+                    ? () => {
+                        setAbsenceTarget(b.member)
+                        setAbsenceInput(absenceNotes.get(b.member.id) || '')
+                      }
+                    : undefined
+                }
               />
             ))}
           </div>
         )}
-      </main>
+      </PageMain>
 
       {modalMember && (
         <ManualCheckInModal
           event={event}
           member={modalMember}
           onClose={() => setModalMember(null)}
-          onSuccess={() => { setModalMember(null); refresh() }}
+          onSuccess={() => {
+            setModalMember(null)
+            refresh()
+          }}
         />
       )}
 
-      {/* Inline Face ID reset confirmation — replaces window.confirm (broken on iOS PWA) */}
-      {confirmResetId && (() => {        const m = allEligible.find((r) => r.id === confirmResetId)
-        const name = m ? [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id : confirmResetId
-        return (
-          <div
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              zIndex: 999, padding: '1rem',
-            }}
-            onClick={() => setConfirmResetId(null)}
+      <Modal open={!!confirmResetId} onClose={() => setConfirmResetId(null)} variant='sheet'>
+        <h2 className='m-0 text-base font-semibold text-foreground'>Reset Face ID for {confirmName}?</h2>
+        <p className='m-0 mt-1 text-sm text-muted-foreground'>
+          They will be prompted to re-enrol on their next login.
+        </p>
+        <div className='mt-4 flex gap-3'>
+          <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmResetId(null)}>
+            Cancel
+          </Button>
+          <Button
+            type='button'
+            variant='destructive'
+            className='flex-1'
+            onClick={() => confirmResetId && confirmResetFaceId(confirmResetId)}
           >
-            <div
-              style={{
-                background: 'var(--card)', border: '1px solid var(--border)',
-                borderRadius: '1rem', padding: '1.5rem', width: '100%', maxWidth: '22rem',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <p style={{ color: 'var(--text)', marginBottom: '0.5rem', fontWeight: 600 }}>
-                Reset Face ID for {name}?
-              </p>
-              <p style={{ color: 'var(--muted)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-                They will be prompted to re-enrol on their next login.
-              </p>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button
-                  onClick={() => setConfirmResetId(null)}
-                  style={{
-                    flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                    background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => confirmResetFaceId(confirmResetId)}
-                  style={{
-                    flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                    background: 'var(--absent)', color: 'var(--badge-text)', border: 'none', fontWeight: 600,
-                  }}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* Absence reason modal */}
-      {absenceTarget && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            zIndex: 999, padding: '1rem',
-          }}
-          onClick={() => setAbsenceTarget(null)}
-        >
-          <div
-            style={{
-              background: 'var(--card)', border: '1px solid var(--border)',
-              borderRadius: '1rem', padding: '1.5rem', width: '100%', maxWidth: '22rem',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p style={{ color: 'var(--text)', fontWeight: 600, margin: '0 0 0.25rem' }}>Absence Reason</p>
-            <p style={{ color: 'var(--muted)', fontSize: '0.875rem', margin: '0 0 1rem' }}>
-              {[absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id}
-            </p>
-            <textarea
-              value={absenceInput}
-              onChange={(e) => setAbsenceInput(e.target.value)}
-              placeholder='Enter absence reason…'
-              rows={3}
-              style={{
-                width: '100%', padding: '0.75rem', boxSizing: 'border-box',
-                background: 'var(--bg2)', border: '1px solid var(--border)',
-                borderRadius: '0.5rem', color: 'var(--text)', fontSize: '0.875rem',
-                resize: 'vertical', marginBottom: '1rem',
-              }}
-            />
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button
-                onClick={() => setAbsenceTarget(null)}
-                style={{
-                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                  background: 'var(--bg2)', color: 'var(--muted)', border: '1px solid var(--border)', cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveAbsenceNote}
-                disabled={absenceSaving || !absenceInput.trim()}
-                style={{
-                  flex: 1, padding: '0.75rem', borderRadius: '0.5rem',
-                  background: 'var(--accent)', color: 'var(--badge-text)', border: 'none',
-                  fontWeight: 600, cursor: 'pointer',
-                  opacity: (absenceSaving || !absenceInput.trim()) ? 0.5 : 1,
-                }}
-              >
-                {absenceSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
+            Reset
+          </Button>
         </div>
-      )}
-    </div>
+      </Modal>
+
+      <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
+        <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
+        <p className='m-0 mt-1 text-sm text-muted-foreground'>
+          {absenceTarget &&
+            [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id}
+        </p>
+        <Textarea
+          value={absenceInput}
+          onChange={(e) => setAbsenceInput(e.target.value)}
+          placeholder='Enter absence reason…'
+          rows={3}
+          className='mt-3 min-h-0'
+        />
+        <div className='mt-4 flex gap-3'>
+          <Button type='button' variant='outline' className='flex-1' onClick={() => setAbsenceTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            type='button'
+            className='flex-1'
+            disabled={absenceSaving || !absenceInput.trim()}
+            onClick={saveAbsenceNote}
+          >
+            {absenceSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </Modal>
+    </PageShell>
   )
 }
 
@@ -547,178 +490,190 @@ function cap(s: string) {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-function Stat({ value, label, color = 'var(--text)' }) {
+function MetricStat({
+  value,
+  label,
+  tone,
+}: {
+  value: number
+  label: string
+  tone?: 'success' | 'warning' | 'destructive' | 'muted'
+}) {
   return (
     <div>
-      <p className='text-2xl font-bold m-0 tnum' style={{ color, letterSpacing: '-0.02em' }}>{value}</p>
-      <p className='text-[10px] uppercase tracking-widest m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{label}</p>
+      <p
+        className={cn(
+          'tnum m-0 text-2xl font-bold tracking-tight',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          tone === 'destructive' && 'text-destructive',
+          tone === 'muted' && 'text-muted-foreground',
+          !tone && 'text-foreground',
+        )}
+      >
+        {value}
+      </p>
+      <p className='m-0 mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground'>{label}</p>
     </div>
   )
 }
 
-function ListRow({ entry, tab, canManuallyCheckIn, canResetFaceId, resetting, onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false }) {
+function ListRow({
+  entry,
+  tab,
+  canManuallyCheckIn,
+  canResetFaceId,
+  resetting,
+  onManual,
+  onResetFaceId,
+  absenceNote,
+  onAddNote,
+  isRisky = false,
+}: {
+  entry: { member: any; record: any }
+  tab: TabId
+  canManuallyCheckIn: boolean
+  canResetFaceId: boolean
+  resetting: boolean
+  onManual: () => void
+  onResetFaceId: () => void
+  absenceNote?: string
+  onAddNote?: () => void
+  isRisky?: boolean
+}) {
   const { member, record } = entry
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
-  const unit = member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
+  const unit =
+    member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
+
   return (
     <div
-      className='p-3 flex items-center justify-between gap-3'
-      style={{ background: 'var(--card)', border: `1px solid ${isRisky ? 'var(--absent)' : 'var(--border)'}`, borderRadius: 'var(--radius-btn)' }}
+      className={cn(
+        'list-row flex items-center justify-between gap-3 rounded-lg px-3 py-3',
+        isRisky ? 'border border-destructive/40 bg-card' : 'surface-card',
+      )}
     >
       <div className='min-w-0'>
         <div className='flex items-center gap-1.5'>
-          <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
+          <p className='m-0 truncate text-sm font-semibold text-foreground'>{name}</p>
           {isRisky && (
-            <span
+            <Badge
+              variant='destructive'
+              className='cursor-help whitespace-nowrap text-[10px]'
               title='Device fingerprint shared with another member — possible proxy check-in'
-              className='text-[10px] font-bold px-1.5 py-0.5 leading-none'
-              style={{ background: 'color-mix(in oklab, var(--absent) 15%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 30%, transparent)', borderRadius: 'var(--radius-pill)', cursor: 'help', whiteSpace: 'nowrap' }}
             >
               ⚠ Device shared
-            </span>
+            </Badge>
           )}
         </div>
-        <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
+        <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>{unit}</p>
       </div>
-      <div className='text-right shrink-0 flex flex-col items-end gap-1'>
+      <div className='flex shrink-0 flex-col items-end gap-1 text-right'>
         {tab === 'defaulted' && (
           <>
-            <Tag color='var(--amber)'>Pending</Tag>
+            <Badge variant='warning'>Pending</Badge>
             {absenceNote && (
-              <span
-                className='text-[10px] max-w-[120px] truncate block mt-0.5'
-                style={{ color: 'var(--muted)' }}
-                title={absenceNote}
-              >
+              <span className='mt-0.5 block max-w-[120px] truncate text-[10px] text-muted-foreground' title={absenceNote}>
                 {absenceNote}
               </span>
             )}
             {canManuallyCheckIn && (
-              <button
-                onClick={onManual}
-                className='text-xs px-3 py-1 cursor-pointer mt-1'
-                style={{ background: 'transparent', color: 'var(--green)', border: '1.5px solid var(--green)', borderRadius: 'var(--radius-btn)' }}
-              >
+              <Button type='button' variant='outline' size='sm' className='mt-1 border-success text-success' onClick={onManual}>
                 Manually Check In
-              </button>
+              </Button>
             )}
             {onAddNote && (
-              <button
-                onClick={onAddNote}
-                className='text-xs px-3 py-1 cursor-pointer mt-1'
-                style={{ background: 'transparent', color: 'var(--purple)', border: '1.5px solid var(--purple)', borderRadius: 'var(--radius-btn)' }}
-              >
+              <Button type='button' variant='outline' size='sm' className='mt-1' onClick={onAddNote}>
                 {absenceNote ? 'Edit Note' : 'Add Note'}
-              </button>
+              </Button>
             )}
           </>
         )}
         {tab !== 'defaulted' && record && (
           <>
-            <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>
-              {format(new Date(record.checked_in_at), 'HH:mm')}
-            </p>
+            <p className='m-0 text-xs text-muted-foreground'>{format(new Date(record.checked_in_at), 'HH:mm')}</p>
             <div className='flex gap-1'>
-              <Tag>{record.method}</Tag>
-              {record.is_late && <Tag color='var(--amber)'>Late</Tag>}
+              <MethodTag>{record.method}</MethodTag>
+              {record.is_late && <Badge variant='warning'>Late</Badge>}
             </div>
           </>
         )}
         {canResetFaceId && (
-          <button
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='mt-1 border-destructive text-destructive'
             onClick={onResetFaceId}
             disabled={resetting}
-            className='text-xs px-3 py-1 cursor-pointer mt-1 disabled:opacity-50'
-            style={{ background: 'transparent', color: 'var(--coral)', border: '1.5px solid var(--coral)', borderRadius: 'var(--radius-btn)' }}
           >
             {resetting ? 'Resetting…' : 'Reset Face ID'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
   )
 }
 
-function Tag({ children, color = 'var(--text)' }) {
-  return (
-    <span
-      className='text-[10px] px-2 py-0.5 uppercase font-bold'
-      style={{ background: 'var(--bg2)', color, border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', letterSpacing: '0.05em' }}
-    >
-      {children}
-    </span>
-  )
+function MethodTag({ children }: { children: React.ReactNode }) {
+  return <Badge variant='outline' className='text-[10px] uppercase tracking-wide'>{children}</Badge>
 }
 
-function TimelineEntry({ entry, isLast }: { entry: { record: any; member: any }; isLast: boolean }) {
+function TimelineEntry({
+  entry,
+  isLast,
+}: {
+  entry: { record: any; member: any }
+  isLast: boolean
+}) {
   const { record: r, member: m } = entry
   const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
   const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
   const checkInTime = format(new Date(r.checked_in_at), 'HH:mm')
   const checkOutTime = r.checked_out_at ? format(new Date(r.checked_out_at), 'HH:mm') : null
+
   return (
-    <div
-      className='flex items-start gap-3 px-4 py-3'
-      style={{ borderBottom: isLast ? 'none' : '1px solid var(--border)' }}
-    >
-      <div className='flex flex-col items-end shrink-0' style={{ minWidth: 44 }}>
-        <span className='text-xs font-bold tabular-nums' style={{ color: 'var(--text)' }}>{checkInTime}</span>
+    <div className={cn('flex items-start gap-3 px-4 py-3', !isLast && 'border-b border-border')}>
+      <div className='flex min-w-11 shrink-0 flex-col items-end'>
+        <span className='tnum text-xs font-bold text-foreground'>{checkInTime}</span>
         {checkOutTime && (
-          <span className='text-[10px] tabular-nums mt-0.5' style={{ color: 'var(--muted)' }}>→ {checkOutTime}</span>
+          <span className='tnum mt-0.5 text-[10px] text-muted-foreground'>→ {checkOutTime}</span>
         )}
       </div>
-      <div className='flex-1 min-w-0'>
-        <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>{name}</p>
-        <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{unit}</p>
+      <div className='min-w-0 flex-1'>
+        <p className='m-0 truncate text-sm font-semibold text-foreground'>{name}</p>
+        <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>{unit}</p>
       </div>
-      <div className='flex flex-col items-end gap-1 shrink-0'>
-        <Tag>{r.method}</Tag>
-        {r.is_late && <Tag color='var(--amber)'>Late</Tag>}
+      <div className='flex shrink-0 flex-col items-end gap-1'>
+        <MethodTag>{r.method}</MethodTag>
+        {r.is_late && <Badge variant='warning'>Late</Badge>}
       </div>
     </div>
   )
 }
 
-function StatusPill({ status }) {
-  const colors = {
-    ACTIVE: { bg: 'color-mix(in oklab, var(--present) 12%, transparent)', fg: 'var(--green)' },
-    PAUSED: { bg: 'color-mix(in oklab, var(--late) 12%, transparent)', fg: 'var(--amber)' },
-    ENDED:  { bg: 'color-mix(in oklab, var(--muted) 12%, transparent)', fg: 'var(--muted)' },
-  }[status] || { bg: 'var(--bg2)', fg: 'var(--text)' }
+function StatusBadge({ status }: { status: string }) {
+  const variant =
+    status === 'ACTIVE' ? 'success' : status === 'PAUSED' ? 'warning' : status === 'ENDED' ? 'muted' : 'outline'
   return (
-    <span
-      className='text-[10px] px-2 py-0.5 font-bold uppercase'
-      style={{ background: colors.bg, color: colors.fg, borderRadius: 'var(--radius-pill)', letterSpacing: '0.06em' }}
-    >
+    <Badge variant={variant as 'success' | 'warning' | 'muted' | 'outline'} className='text-[10px]'>
       {status}
-    </span>
+    </Badge>
   )
 }
 
-function CenterCard({ children }) {
-  return (
-    <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
-      <div
-        className='w-full max-w-md p-6 text-center'
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
-      >
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function filterRows(rows, q) {
+function filterRows(rows: { member: any; record: any }[], q: string) {
   const s = q.trim().toLowerCase()
   if (!s) return rows
   return rows.filter((b) => {
     const m = b.member
-    return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
-      .some((v) => (v || '').toLowerCase().includes(s))
+    return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name].some((v) =>
+      (v || '').toLowerCase().includes(s),
+    )
   })
 }
 
-function csvRow(b, status) {
+function csvRow(b: { member: any; record: any }, status: string) {
   const m = b.member
   const r = b.record
   return {

@@ -31,14 +31,7 @@ export default function Spinner({ fullPage = true, size = 48 }: SpinnerProps) {
     return (
       <>
         <style>{SPIN_CSS}</style>
-        <div
-          style={{
-            position: 'fixed', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--bg)',
-            zIndex: 10,
-          }}
-        >
+        <div className='page-shell fixed inset-0 z-10 flex items-center justify-center'>
           {img}
         </div>
       </>
@@ -48,9 +41,7 @@ export default function Spinner({ fullPage = true, size = 48 }: SpinnerProps) {
   return (
     <>
       <style>{SPIN_CSS}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-        {img}
-      </div>
+      <div className='flex items-center justify-center p-6'>{img}</div>
     </>
   )
 }

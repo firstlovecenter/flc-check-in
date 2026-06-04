@@ -27,6 +27,7 @@ import {
   getAdminScopes, countChildScopes,
 } from '../utils/membersApi'
 import { getUserChurchRef } from '../utils/userScope'
+import { bypassesScopeAndRoleLimits } from '../utils/superadmin'
 import { SCOPE_LEVELS } from '../types/app'
 import type { AppUser, CheckinEventRow, ScopeLevel } from '../types/app'
 
@@ -263,8 +264,8 @@ export function useEventEligibility(
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
-        // Special-group events: group membership IS eligibility — bypass role filter.
-        const eligibleRows = isSpecialGroup
+        // Special-group: membership IS eligibility. Superadmin: full scope snapshot.
+        const eligibleRows = isSpecialGroup || bypassesScopeAndRoleLimits(user)
           ? allRows
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))

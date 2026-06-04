@@ -4,29 +4,11 @@
 // Items are hidden entirely rather than greyed out, per design decision.
 
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useTheme } from '../hooks/useTheme'
+import { cn } from '../lib/utils'
 import { logout } from '../utils/auth'
 import type { AppUser } from '../types/app'
-
-function useTheme() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('flc-theme') as 'dark' | 'light') || 'light'
-    }
-    return 'light'
-  })
-  function toggle() {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    localStorage.setItem('flc-theme', next)
-    if (next === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark')
-    } else {
-      document.documentElement.removeAttribute('data-theme')
-    }
-  }
-  return { theme, toggle }
-}
 
 const ICONS = {
   home: 'M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z',
@@ -48,17 +30,21 @@ interface NavItemProps {
   onClick?: () => void
 }
 function NavItem({ to, icon, label, onClick }: NavItemProps) {
+  const { pathname } = useLocation()
+  const active = pathname === to || (to !== '/home' && pathname.startsWith(to + '/'))
   return (
     <Link
       to={to}
       onClick={onClick}
-      className='flex items-center gap-3 px-4 py-3 transition-colors'
-      style={{ textDecoration: 'none', color: 'var(--text)', borderRadius: 'var(--radius-btn)' }}
+      className={cn(
+        'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium no-underline transition-colors',
+        active ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-primary/6',
+      )}
     >
-      <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor' style={{ color: 'var(--muted)' }}>
+      <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor' className={active ? 'text-primary' : 'text-muted-foreground'}>
         <path d={icon} />
       </svg>
-      <span className='text-sm font-semibold'>{label}</span>
+      <span>{label}</span>
     </Link>
   )
 }
@@ -68,7 +54,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   const [closing, setClosing] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const navigate = useNavigate()
-  const { theme, toggle: toggleTheme } = useTheme()
+  const { preference, resolved, toggle: toggleTheme } = useTheme()
 
   // Animate the drawer out before unmounting (transition is interruptible).
   function close() {
@@ -114,10 +100,9 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
         type='button'
         aria-label='Open menu'
         onClick={() => setOpen(true)}
-        className='p-2 cursor-pointer'
-        style={{ background: 'transparent', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', lineHeight: 0 }}
+        className='cursor-pointer rounded-lg border-0 bg-card p-2 leading-none text-foreground shadow-sm hover:bg-primary/8'
       >
-        <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' style={{ color: 'var(--text)' }}>
+        <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
           <path d='M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z' />
         </svg>
       </button>
@@ -128,26 +113,23 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
           <div
             onClick={close}
             data-state={closing ? 'closed' : 'open'}
-            className='drawer-backdrop fixed inset-0'
-            style={{ zIndex: 1040 }}
+            className='drawer-backdrop fixed inset-0 z-[1040]'
           />
           <aside
             data-state={closing ? 'closed' : 'open'}
-            className='drawer-panel fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] flex flex-col'
-            style={{ background: 'var(--card)', borderRight: '1px solid var(--border)', boxShadow: 'var(--shadow-2)', zIndex: 1050 }}
+            className='drawer-panel fixed top-0 bottom-0 left-0 z-[1050] flex w-72 max-w-[85vw] flex-col'
             role='dialog'
             aria-label='Navigation'
           >
-            {/* Header */}
-            <div className='px-4 py-4' style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className='h-1 shrink-0 bg-primary' aria-hidden />
+            <div className='px-4 py-4'>
               <div className='flex items-center justify-between'>
-                <p className='text-sm font-bold m-0' style={{ color: 'var(--text)' }}>{fullName}</p>
+                <p className='m-0 text-sm font-semibold text-foreground'>{fullName}</p>
                 <button
                   type='button'
                   aria-label='Close menu'
                   onClick={close}
-                  className='p-1.5 rounded-md cursor-pointer'
-                  style={{ background: 'transparent', color: 'var(--muted)' }}
+                  className='cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground'
                 >
                   <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
                     <path d='M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z' />
@@ -155,12 +137,12 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 </button>
               </div>
               {user?.unitName && (
-                <p className='text-xs mt-1 m-0' style={{ color: 'var(--muted)' }}>
+                <p className='m-0 mt-1 text-xs text-muted-foreground'>
                   {user.unitName}
                   {user.level && (
                     <>
-                      <span style={{ color: 'var(--border)' }}> · </span>
-                      <span className='uppercase tracking-wider' style={{ color: 'var(--accent)' }}>{user.level}</span>
+                      <span className='text-border'> · </span>
+                      <span className='font-medium uppercase tracking-wide text-primary'>{user.level}</span>
                     </>
                   )}
                 </p>
@@ -184,33 +166,33 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             </nav>
 
             {/* Footer — profile · theme · sign out on one row */}
-            <div className='p-3 flex items-center gap-2' style={{ borderTop: '1px solid var(--border)' }}>
-              {/* Profile */}
+            <div className='flex items-center gap-2 p-3'>
               <Link
                 to='/profile'
                 onClick={close}
                 aria-label='My profile'
-                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
-                style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)', textDecoration: 'none' }}
+                className='flex flex-1 cursor-pointer items-center justify-center rounded-lg bg-secondary py-2.5 no-underline shadow-sm hover:bg-primary/8'
               >
                 {pictureUrl ? (
-                  <img src={pictureUrl} alt={fullName} width={24} height={24} decoding='async' style={{ borderRadius: '50%', objectFit: 'cover' }} />
+                  <img src={pictureUrl} alt={fullName} width={24} height={24} decoding='async' className='size-6 rounded-full object-cover' />
                 ) : (
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent)', color: 'var(--bg)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div className='flex size-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground'>
                     {initials}
                   </div>
                 )}
               </Link>
 
-              {/* Theme toggle */}
               <button
                 type='button'
                 onClick={toggleTheme}
-                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
-                style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)' }}
+                aria-label={`Theme: ${preference}. Tap to cycle.`}
+                className='flex flex-1 cursor-pointer items-center justify-center rounded-lg bg-secondary py-2.5 text-foreground shadow-sm hover:bg-primary/8'
               >
-                {theme === 'dark' ? (
+                {preference === 'system' ? (
+                  <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' aria-hidden>
+                    <path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L11 15v4c0 .55.45 1 1 1v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z' />
+                  </svg>
+                ) : resolved === 'dark' ? (
                   <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
                     <path d='M12 7a5 5 0 1 0 0 10A5 5 0 0 0 12 7zm0-5a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0v-1a1 1 0 0 1 1-1zm9-9a1 1 0 0 1 0 2h-1a1 1 0 0 1 0-2h1zM4 12a1 1 0 0 1-1 1H2a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1zm14.95 5.54a1 1 0 0 1 0 1.41l-.71.71a1 1 0 0 1-1.41-1.41l.71-.71a1 1 0 0 1 1.41 0zM5.05 6.46a1 1 0 0 1 0 1.41l-.71.71A1 1 0 0 1 2.93 7.17l.71-.71a1 1 0 0 1 1.41 0zm13.9-1.41a1 1 0 0 1 0 1.41l-.71.71a1 1 0 0 1-1.41-1.41l.71-.71a1 1 0 0 1 1.41 0zM5.05 17.54a1 1 0 0 1 1.41 0l.71.71a1 1 0 0 1-1.41 1.41l-.71-.71a1 1 0 0 1 0-1.41z' />
                   </svg>
@@ -227,8 +209,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 type='button'
                 onClick={handleSignOut}
                 aria-label='Sign out'
-                className='flex-1 flex items-center justify-center py-2.5 cursor-pointer'
-                style={{ background: 'transparent', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--coral)' }}
+                className='flex flex-1 cursor-pointer items-center justify-center rounded-lg bg-secondary py-2.5 text-destructive shadow-sm hover:bg-destructive/10'
               >
                 <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'><path d={ICONS.signout} /></svg>
               </button>

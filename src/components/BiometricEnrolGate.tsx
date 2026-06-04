@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import FaceEnrollSweep from './checkin/FaceEnrollSweep'
 import { checkHasFaceId, setMyFaceDescriptor } from '../utils/supabaseCheckins'
 import { getCurrentUser } from '../utils/auth'
+import { Modal } from './ui/modal'
+import { Alert } from './ui/alert'
+import { Button } from './ui/button'
 
 type GateState = 'checking' | 'open' | 'confirm' | 'saving' | 'done' | 'skipped'
 
@@ -23,7 +26,7 @@ export default function BiometricEnrolGate({ children }) {
         if (cancelled) return
         setState(enrolled ? 'done' : 'open')
       } catch {
-        if (!cancelled) setState('done')  // fail open — don't block the app on a transient error
+        if (!cancelled) setState('done')
       }
     })()
     return () => { cancelled = true }
@@ -63,100 +66,47 @@ export default function BiometricEnrolGate({ children }) {
   return (
     <>
       {children}
-      {showModal && (
-        <div
-          className='fixed inset-0 z-50 flex items-center justify-center px-4'
-          style={{ background: 'rgba(0,0,0,0.7)' }}
-        >
-          <div
-            className='w-full max-w-md p-6 flex flex-col gap-4'
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-card)',
-              boxShadow: 'var(--shadow-3)',
-            }}
-          >
-            <div>
-              <h2 className='text-lg font-semibold m-0' style={{ color: 'var(--text)' }}>
-                Set up Face ID
-              </h2>
-              <p className='text-xs m-0 mt-1' style={{ color: 'var(--muted)' }}>
-                We'll capture your face from a few angles so you can check in
-                with Face ID later. Slowly move your head when prompted.
-              </p>
+      <Modal open={showModal} onClose={handleSkip}>
+        <h2 className='m-0 text-lg font-semibold text-foreground'>Set up Face ID</h2>
+        <p className='m-0 mt-1 text-xs text-muted-foreground'>
+          We&apos;ll capture your face from a few angles so you can check in with Face ID later.
+          Slowly move your head when prompted.
+        </p>
+
+        {state === 'open' && (
+          <FaceEnrollSweep onComplete={handleCaptured} onError={(err) => setError(err.message)} />
+        )}
+
+        {(state === 'confirm' || state === 'saving') && (
+          <div className='flex flex-col items-center gap-3 py-4'>
+            <div className='flex size-16 items-center justify-center rounded-full bg-success/15 text-[32px]'>
+              OK
             </div>
-
-            {state === 'open' && (
-              <FaceEnrollSweep
-                onComplete={handleCaptured}
-                onError={(err) => setError(err.message)}
-              />
-            )}
-
-            {(state === 'confirm' || state === 'saving') && (
-              <div className='flex flex-col gap-3 items-center py-4'>
-                <div style={{
-                  width: 64, height: 64, borderRadius: '50%',
-                  background: 'color-mix(in oklab, var(--present) 15%, transparent)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 32,
-                }}>OK</div>
-                <p className='text-sm m-0 text-center' style={{ color: 'var(--text)' }}>
-                  Captured. Save your Face ID?
-                </p>
-                <p className='text-xs m-0 text-center' style={{ color: 'var(--muted)' }}>
-                  You can re-enrol any time from your profile.
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <p
-                className='text-sm px-3 py-2 text-center m-0'
-                style={{
-                  color: 'var(--coral)',
-                  background: 'color-mix(in oklab, var(--absent) 10%, transparent)',
-                  border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)',
-                  borderRadius: 'var(--radius-btn)',
-                }}
-              >
-                {error}
-              </p>
-            )}
-
-            <div className='flex gap-2'>
-              <button
-                type='button'
-                onClick={handleSkip}
-                disabled={state === 'saving'}
-                className='btn-pill btn-secondary flex-1 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50'
-              >
-                Skip for now
-              </button>
-              {state === 'confirm' && (
-                <button
-                  type='button'
-                  onClick={handleRetake}
-                  className='btn-pill btn-secondary flex-1 py-2.5 text-sm font-semibold cursor-pointer'
-                >
-                  Retake
-                </button>
-              )}
-              {(state === 'confirm' || state === 'saving') && (
-                <button
-                  type='button'
-                  onClick={handleSave}
-                  disabled={state === 'saving'}
-                  className='btn-pill btn-primary flex-1 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50'
-                >
-                  {state === 'saving' ? 'Saving…' : 'Save Face ID'}
-                </button>
-              )}
-            </div>
+            <p className='m-0 text-center text-sm text-foreground'>Captured. Save your Face ID?</p>
+            <p className='m-0 text-center text-xs text-muted-foreground'>
+              You can re-enrol any time from your profile.
+            </p>
           </div>
+        )}
+
+        {error && <Alert variant='destructive'>{error}</Alert>}
+
+        <div className='flex gap-2'>
+          <Button type='button' variant='outline' onClick={handleSkip} disabled={state === 'saving'} className='flex-1'>
+            Skip for now
+          </Button>
+          {state === 'confirm' && (
+            <Button type='button' variant='secondary' onClick={handleRetake} className='flex-1'>
+              Retake
+            </Button>
+          )}
+          {(state === 'confirm' || state === 'saving') && (
+            <Button type='button' onClick={handleSave} disabled={state === 'saving'} className='flex-1'>
+              {state === 'saving' ? 'Saving…' : 'Save Face ID'}
+            </Button>
+          )}
         </div>
-      )}
+      </Modal>
     </>
   )
 }

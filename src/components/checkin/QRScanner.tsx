@@ -62,7 +62,7 @@ export default function QRScanner({ onDecode, onError }) {
 
   if (error) {
     return (
-      <div className='rounded-xl p-4 text-sm' style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)' }}>
+      <div className='rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive'>
         Camera error: {error}
       </div>
     )

@@ -1,4 +1,5 @@
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { Button } from './ui/button'
 
 export default function UpdatePrompt() {
   const {
@@ -9,47 +10,16 @@ export default function UpdatePrompt() {
   if (!needRefresh) return null
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: '1.25rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'calc(100% - 2rem)',
-        maxWidth: '28rem',
-        zIndex: 9999,
-        background: 'var(--card)',
-        border: '1.5px solid var(--border)',
-        borderRadius: 'var(--radius-card, 16px)',
-        padding: '1rem 1.25rem',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '1rem',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-      }}
-    >
-      <div style={{ flex: 1 }}>
-        <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>
-          Update available
-        </p>
-        <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>
+    <div className='surface-card fixed bottom-5 left-1/2 z-[9999] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center gap-4 px-5 py-4 shadow-lg'>
+      <div className='min-w-0 flex-1'>
+        <p className='m-0 text-sm font-semibold text-foreground'>Update available</p>
+        <p className='m-0 mt-0.5 text-xs text-muted-foreground'>
           A new version of the app is ready.
         </p>
       </div>
-      <button
-        onClick={() => updateServiceWorker(true)}
-        className='text-xs font-semibold px-4 py-2 cursor-pointer'
-        style={{
-          background: 'var(--accent)',
-          color: 'var(--badge-text)',
-          border: 'none',
-          borderRadius: 'var(--radius-btn, 8px)',
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-        }}
-      >
+      <Button size='sm' className='shrink-0' onClick={() => updateServiceWorker(true)}>
         Refresh
-      </button>
+      </Button>
     </div>
   )
 }

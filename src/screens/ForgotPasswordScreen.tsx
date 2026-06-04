@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { requestPasswordReset } from '../utils/auth'
+import { AuthLayout } from '../components/layout/AuthLayout'
+import { Alert } from '../components/ui/alert'
+import { Label } from '../components/ui/label'
+import { Input } from '../components/ui/input'
+import { Button } from '../components/ui/button'
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('')
@@ -8,7 +13,7 @@ export default function ForgotPasswordScreen() {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     setLoading(true)
@@ -23,109 +28,48 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <div
-      className='min-h-dvh flex items-center justify-center px-4 py-12'
-      style={{ background: 'var(--bg)' }}
-    >
-      <div
-        className='w-full max-w-sm p-8 flex flex-col gap-8'
-        style={{
-          background: 'var(--card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-card)',
-          boxShadow: 'var(--shadow-2)',
-        }}
-      >
-        <div className='flex flex-col items-center gap-3'>
-          <img
-            src='/apple-touch-icon.png'
-            alt='First Love Church'
-            width={60}
-            height={60}
-            className='app-logo'
-          />
-          <h1
-            className='m-0 leading-tight text-center'
-            style={{ fontSize: '24px', fontWeight: 500, letterSpacing: '-0.02em', color: 'var(--text)' }}
-          >
-            Reset your<br />password
-          </h1>
+    <AuthLayout title='Reset your password' subtitle='We’ll email you a secure link'>
+      {sent ? (
+        <div className='flex flex-col gap-4'>
+          <Alert variant='success' className='text-center'>
+            Check your email — we&apos;ve sent a reset link to <strong>{email}</strong>.
+          </Alert>
+          <Link to='/' className='btn-pill btn-secondary w-full text-center no-underline'>
+            Back to Sign In
+          </Link>
         </div>
-
-        {sent ? (
-          <div className='flex flex-col gap-4'>
-            <div
-              className='p-4 text-sm text-center'
-              style={{
-                background: 'color-mix(in oklab, var(--present) 8%, transparent)',
-                color: 'var(--green)',
-                border: '1px solid color-mix(in oklab, var(--present) 25%, transparent)',
-                borderRadius: 'var(--radius-btn)',
-              }}
-            >
-              Check your email — we've sent a reset link to <strong>{email}</strong>.
-            </div>
-            <Link
-              to='/'
-              className='btn-pill btn-secondary w-full text-center'
-              style={{ fontSize: '14px' }}
-            >
-              Back to Sign In
-            </Link>
+      ) : (
+        <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
+          <p className='m-0 text-sm text-muted-foreground'>
+            Enter your email and we&apos;ll send you a link to reset your password.
+          </p>
+          <div className='flex flex-col gap-1.5'>
+            <Label htmlFor='forgot-email'>Email</Label>
+            <Input
+              id='forgot-email'
+              type='email'
+              autoComplete='email'
+              placeholder='your@email.com'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
-            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>
-              Enter your email and we'll send you a link to reset your password.
-            </p>
-            <div className='flex flex-col gap-2'>
-              <label className='eyebrow' style={{ color: 'var(--muted)' }}>Email</label>
-              <input
-                type='email'
-                autoComplete='email'
-                placeholder='your@email.com'
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className='input-field'
-                onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-                onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-              />
-            </div>
 
-            {error && (
-              <p
-                className='text-sm px-4 py-3 m-0 text-center'
-                style={{
-                  color: 'var(--coral)',
-                  background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-                  border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-                  borderRadius: 'var(--radius-btn)',
-                }}
-              >
-                {error}
-              </p>
-            )}
+          {error && <Alert variant='destructive'>{error}</Alert>}
 
-            <button
-              type='submit'
-              disabled={loading}
-              className='btn-pill btn-primary w-full'
-              style={{ fontSize: '15px', padding: '13px 24px' }}
-            >
-              {loading ? 'Sending…' : 'Send Reset Link'}
-            </button>
+          <Button type='submit' disabled={loading} className='w-full' size='lg'>
+            {loading ? 'Sending…' : 'Send Reset Link'}
+          </Button>
 
-            <Link
-              to='/'
-              className='text-sm text-center'
-              style={{ color: 'var(--muted)', textDecoration: 'none' }}
-            >
-              ← Back to Sign In
-            </Link>
-          </form>
-        )}
-      </div>
-    </div>
+          <Link
+            to='/'
+            className='text-center text-sm text-muted-foreground no-underline hover:text-primary'
+          >
+            ← Back to Sign In
+          </Link>
+        </form>
+      )}
+    </AuthLayout>
   )
 }

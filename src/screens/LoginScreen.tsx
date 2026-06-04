@@ -1,5 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { AuthLayout } from '../components/layout/AuthLayout'
+import { Alert } from '../components/ui/alert'
+import { Label } from '../components/ui/label'
+import { Input } from '../components/ui/input'
+import { Button } from '../components/ui/button'
 import { loginWithCredentials, logout } from '../utils/auth'
 import { resolveCurrentMember, isLeaderOrAdmin } from '../utils/membersApi'
 
@@ -13,31 +18,22 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: { preventDefault: () => void }) {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
       const user = await loginWithCredentials(email, password)
-      // Navigate immediately — the graph leader/admin check runs in the
-      // background. If it comes back negative, we log the user out and
-      // bounce them back here with an error. This makes the typical (valid
-      // leader) login feel instant on slow networks.
       navigate('/home')
       if (!user.isSuperAdmin) {
-        // Fire-and-forget — no `await`. Errors swallowed; a graph outage
-        // means we can't verify, so we trust the JWT roles.
         resolveCurrentMember(user)
           .then((member) => {
             if (member && !isLeaderOrAdmin(member)) {
               logout()
-              // Hard reload back to login with an error flag in the URL —
-              // we've already navigated away from this component, so
-              // setError() wouldn't render anywhere visible.
               window.location.assign('/?notLeader=1')
             }
           })
-          .catch(() => { /* graph unreachable — trust the JWT */ })
+          .catch(() => {})
       }
     } catch (err: any) {
       setError(err.message || 'Login failed. Check your credentials.')
@@ -47,157 +43,57 @@ export default function LoginScreen() {
   }
 
   return (
-    <div
-      className='min-h-dvh flex items-center justify-center px-4 py-12'
-      style={{ background: 'var(--bg)' }}
-    >
-      {/* Card */}
-      <div
-        className='w-full max-w-sm p-8 flex flex-col gap-8'
-        style={{
-          background: 'var(--card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-card)',
-          boxShadow: 'var(--shadow-2)',
-        }}
-      >
-        {/* Logo / wordmark */}
-        <div className='flex flex-col items-center gap-3'>
-          <img
-            src='/apple-touch-icon.png'
-            alt='First Love Church'
-            width={72}
-            height={72}
-            className='app-logo'
+    <AuthLayout title='Hineni' subtitle='Right here, right now'>
+      {resetSuccess && (
+        <Alert variant='success' className='text-center'>
+          Password updated — sign in with your new password.
+        </Alert>
+      )}
+      {notLeader && (
+        <Alert variant='destructive' className='text-center'>
+          This app is for leaders and admins only.
+        </Alert>
+      )}
+      <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
+        <p className='m-0 text-center text-xs text-muted-foreground'>
+          Use the same credentials as the{' '}
+          <strong className='font-medium text-foreground'>Synago App</strong>.
+        </p>
+        <div className='flex flex-col gap-1.5'>
+          <Label htmlFor='login-email'>Email</Label>
+          <Input
+            id='login-email'
+            type='email'
+            autoComplete='email'
+            placeholder='your@email.com'
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
           />
-          <h1
-            className='m-0 leading-tight text-center'
-            style={{
-              fontSize: '28px',
-              fontWeight: 500,
-              letterSpacing: '-0.02em',
-              color: 'var(--text)',
-            }}
-          >
-            Hineni<br />Right Here, Right Now
-          </h1>
         </div>
-
-        {/* Reset success banner */}
-        {resetSuccess && (
-          <div
-            className='px-4 py-3 text-sm text-center'
-            style={{
-              background: 'color-mix(in oklab, var(--present) 8%, transparent)',
-              color: 'var(--green)',
-              border: '1px solid color-mix(in oklab, var(--present) 25%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            Password updated — sign in with your new password.
-          </div>
-        )}
-
-        {/* Background leader/admin check rejected the user */}
-        {notLeader && (
-          <div
-            className='px-4 py-3 text-sm text-center'
-            style={{
-              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-              color: 'var(--coral)',
-              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
-            This app is for leaders and admins only.
-          </div>
-        )}
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
-          <p className='text-xs text-center m-0' style={{ color: 'var(--muted)' }}>
-            Use the same credentials as the <strong>Synago App</strong>.
-          </p>
-          <div className='flex flex-col gap-2'>
-            <label
-              className='eyebrow'
-              style={{ color: 'var(--muted)' }}
-            >
-              Email
-            </label>
-            <input
-              type='email'
-              autoComplete='email'
-              placeholder='your@email.com'
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className='input-field'
-              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-            />
-          </div>
-
-          <div className='flex flex-col gap-2'>
-            <label
-              className='eyebrow'
-              style={{ color: 'var(--muted)' }}
-            >
-              Password
-            </label>
-            <input
-              type='password'
-              autoComplete='current-password'
-              placeholder='••••••••'
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className='input-field'
-              onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
-              onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
-            />
-            <Link
-              to='/forgot-password'
-              className='text-xs self-end'
-              style={{ color: 'var(--accent)', textDecoration: 'none' }}
-            >
-              Forgot password?
-            </Link>
-          </div>
-
-          {error && (
-            <p
-              className='text-sm px-4 py-3 m-0 text-center'
-              style={{
-                color: 'var(--coral)',
-                background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-                border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-                borderRadius: 'var(--radius-btn)',
-              }}
-            >
-              {error}
-            </p>
-          )}
-
-          <button
-            type='submit'
-            disabled={loading}
-            className='btn-pill btn-primary w-full'
-            style={{ marginTop: '4px', fontSize: '15px', padding: '13px 24px' }}
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-
-          <Link
-            to='/events'
-            className='text-sm text-center'
-            style={{ color: 'var(--muted)', textDecoration: 'none' }}
-          >
-            View Meetings At This Location
+        <div className='flex flex-col gap-1.5'>
+          <Label htmlFor='login-password'>Password</Label>
+          <Input
+            id='login-password'
+            type='password'
+            autoComplete='current-password'
+            placeholder='••••••••'
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Link to='/forgot-password' className='self-end text-xs font-medium text-primary no-underline hover:underline'>
+            Forgot password?
           </Link>
-        </form>
-
-      </div>
-    </div>
+        </div>
+        {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
+        <Button type='submit' disabled={loading} className='w-full' size='lg'>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+        <Link to='/events' className='text-center text-sm text-muted-foreground no-underline hover:text-primary'>
+          View meetings at this location
+        </Link>
+      </form>
+    </AuthLayout>
   )
 }

@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import CheckInAdminControls from './CheckInAdminControls'
+import { Alert } from '../ui/alert'
+import { cn } from '../../lib/utils'
 import { getEvent, updateEvent, resetPin } from '../../utils/supabaseCheckins'
 import { allowedRolesForScope } from '../../utils/membersApi'
 import { generatePin } from '../../utils/checkinsCrypto'
@@ -146,15 +148,15 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
     }
   }
 
-  if (error && !event) return <Centered><p style={{ color: 'var(--coral)' }}>{error}</p></Centered>
+  if (error && !event) return <Centered><p className='text-destructive'>{error}</p></Centered>
   if (!event) return <Spinner fullPage />
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
       {/* Lifecycle controls — always at the top */}
       <Section title='Status & controls'>
-        <p className='text-xs' style={{ color: 'var(--muted)' }}>
-          Current status: <span className='uppercase tracking-wider' style={{ color: 'var(--accent)' }}>{event.status}</span>
+        <p className='text-xs text-muted-foreground'>
+          Current status: <span className='uppercase tracking-wider text-primary'>{event.status}</span>
         </p>
         <CheckInAdminControls event={event} onChange={(updated) => {
           setEvent(updated)
@@ -165,17 +167,17 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       <Section title='Event'>
         <Field label='Name'>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
-            className={inputClasses()} style={inputStyle} />
+            className='input-field' />
         </Field>
         <Field label='Venue / Location name'>
           <input type='text' value={venueName} onChange={(e) => setVenueName(e.target.value)}
             placeholder='e.g. First Love Center, The Qodesh'
-            className={inputClasses()} style={inputStyle} />
+            className='input-field' />
         </Field>
         <Field label='Scope (read-only)'>
-          <p className='m-0 px-4 py-2.5 text-sm' style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--text)' }}>
-            <span className='uppercase tracking-wider' style={{ color: 'var(--accent)' }}>{event.scope_level}</span>
-            <span style={{ color: 'var(--border)' }}> · </span>
+          <p className='surface-card m-0 rounded-lg px-4 py-2.5 text-sm text-foreground'>
+            <span className='uppercase tracking-wider text-primary'>{event.scope_level}</span>
+            <span className='text-border'> · </span>
             {event.scope_church_name}
           </p>
         </Field>
@@ -185,21 +187,21 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         <div className='grid grid-cols-2 gap-3'>
           <Field label='Starts'>
             <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
-              className={inputClasses()} style={inputStyle} />
+              className='input-field' />
           </Field>
           <Field label='Ends'>
             <input type='datetime-local' required value={endsAt} onChange={(e) => setEndsAt(e.target.value)}
-              className={inputClasses()} style={inputStyle} />
+              className='input-field' />
           </Field>
         </div>
         <div className='grid grid-cols-2 gap-3'>
           <Field label='Grace (min)'>
             <input type='number' min={0} max={180} value={gracePeriodMin} onChange={(e) => setGracePeriodMin(e.target.value)}
-              className={inputClasses()} style={inputStyle} />
+              className='input-field' />
           </Field>
           <Field label='Auto-checkout (min)'>
             <input type='number' min={0} max={1440} value={autoCheckoutMin} onChange={(e) => setAutoCheckoutMin(e.target.value)}
-              className={inputClasses()} style={inputStyle} />
+              className='input-field' />
           </Field>
         </div>
       </Section>
@@ -217,14 +219,12 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         </div>
         {methods.includes('PIN') && (
           <div className='mt-3 flex items-center gap-3'>
-            <label className='text-xs' style={{ color: 'var(--muted)' }}>New PIN (optional)</label>
+            <label className='text-xs text-muted-foreground'>New PIN (optional)</label>
             <input type='text' inputMode='numeric' maxLength={6} value={pin}
               placeholder='leave blank to keep current'
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              className={inputClasses() + ' font-mono tracking-widest'} style={inputStyle} />
-            <button type='button' onClick={handleResetPin}
-              className='text-xs px-3 py-1 cursor-pointer'
-              style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius-btn)' }}>
+              className='input-field font-mono tracking-widest' />
+            <button type='button' onClick={handleResetPin} className='btn-pill btn-secondary px-3 py-1 text-xs'>
               Reset & show
             </button>
           </div>
@@ -246,7 +246,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
 
       <Section title='Geofence' lockedHint={locked('geofence') ? 'Pause the event to edit.' : null}>
         {locked('geofence') || isEnded ? (
-          <p className='m-0 px-4 py-2.5 text-sm' style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--muted)' }}>
+          <p className='surface-card m-0 rounded-lg px-4 py-2.5 text-sm text-muted-foreground'>
             {geofence?.type === 'circle' ? `Circle · ${geofence.radiusM} m` : `Polygon · ${geofence?.polygon?.length || 0} vertices`}
           </p>
         ) : (
@@ -254,22 +254,8 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         )}
       </Section>
 
-      {error && (
-        <div
-          className='p-3 text-sm text-center'
-          style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
-        >
-          {error}
-        </div>
-      )}
-      {saved && (
-        <div
-          className='p-3 text-sm text-center'
-          style={{ background: 'color-mix(in oklab, var(--present) 10%, transparent)', color: 'var(--green)', border: '1px solid color-mix(in oklab, var(--present) 30%, transparent)', borderRadius: 'var(--radius-btn)' }}
-        >
-          Saved.
-        </div>
-      )}
+      {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
+      {saved && <Alert variant='success' className='text-center'>Saved.</Alert>}
 
       <div className='flex gap-2'>
         <button
@@ -291,15 +277,12 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
   )
 }
 
-const inputStyle = { background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)' }
-const inputClasses = () => 'input-field'
-
 function Section({ title, lockedHint, children }: { title: string; lockedHint?: string | null; children: ReactNode }) {
   return (
     <section className='flex flex-col gap-3'>
       <div className='flex items-baseline justify-between gap-2'>
         <p className='eyebrow m-0'>{title}</p>
-        {lockedHint && <p className='text-[10px] m-0' style={{ color: 'var(--amber)' }}>{lockedHint}</p>}
+        {lockedHint && <p className='text-[10px] m-0 text-warning'>{lockedHint}</p>}
       </div>
       {children}
     </section>
@@ -308,7 +291,7 @@ function Section({ title, lockedHint, children }: { title: string; lockedHint?: 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className='flex flex-col gap-1.5'>
-      <label className='text-xs font-bold uppercase tracking-widest' style={{ color: 'var(--muted)' }}>{label}</label>
+      <label className='text-xs font-bold uppercase tracking-widest text-muted-foreground'>{label}</label>
       {children}
     </div>
   )
@@ -319,13 +302,10 @@ function Pill({ active, onClick, children, disabled }: { active: boolean; onClic
       type='button'
       onClick={onClick}
       disabled={disabled}
-      className='px-3 py-1.5 text-xs font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50'
-      style={{
-        background: active ? 'var(--cta-bg)' : 'var(--bg2)',
-        color: active ? 'var(--cta-text)' : 'var(--text)',
-        border: '1.5px solid var(--border)',
-        borderRadius: 'var(--radius-pill)',
-      }}
+      className={cn(
+        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50',
+        active && 'bg-primary text-primary-foreground border-primary',
+      )}
     >
       {children}
     </button>

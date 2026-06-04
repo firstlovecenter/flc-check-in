@@ -2,6 +2,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ScreenHeader from '../components/ScreenHeader'
 import Spinner from '../components/Spinner'
+import { PageShell, PageMainNarrow } from '../components/layout/PageShell'
+import { CenterCard as LayoutCenterCard } from '../components/layout/CenterCard'
+import { Card, CardContent } from '../components/ui/card'
+import { Badge } from '../components/ui/badge'
+import { Alert } from '../components/ui/alert'
+import { Button } from '../components/ui/button'
+import { cn } from '../lib/utils'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
@@ -147,8 +154,8 @@ export default function CheckInFormScreen() {
   if (error) {
     return (
       <CenterCard showLogout>
-        <h2 className='text-lg font-semibold mb-1' style={{ color: 'var(--coral)' }}>Cannot check-in with device</h2>
-        <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>{error}</p>
+        <h2 className='text-lg font-semibold mb-1 text-destructive'>Cannot check-in with device</h2>
+        <p className='text-sm m-0 text-muted-foreground'>{error}</p>
       </CenterCard>
     )
   }
@@ -166,15 +173,15 @@ export default function CheckInFormScreen() {
   const endsMs    = new Date(event.ends_at).getTime()
   const EARLY_MS  = 60 * 60 * 1000          // 1 hour — mirrors the server rule
   if (event.status === 'PAUSED') {
-    return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--amber)' }}>Event paused</h2><p style={{ color: 'var(--muted)' }}>{event.name} is currently paused.</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-warning'>Event paused</h2><p className='text-muted-foreground'>{event.name} is currently paused.</p></CenterCard>
   }
   if (event.status === 'ENDED' || now > endsMs) {
-    return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--muted)' }}>Event ended</h2><p style={{ color: 'var(--muted)' }}>{event.name} has ended.</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>Event ended</h2><p className='text-muted-foreground'>{event.name} has ended.</p></CenterCard>
   }
   if (now < startsMs - EARLY_MS) {
     const opensAt = new Date(startsMs - EARLY_MS)
     const timeStr = opensAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    return <CenterCard><h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--muted)' }}>Not open yet</h2><p style={{ color: 'var(--muted)' }}>Check-in for <strong>{event.name}</strong> opens at <strong>{timeStr}</strong> (1 hour before start).</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>Not open yet</h2><p className='text-muted-foreground'>Check-in for <strong>{event.name}</strong> opens at <strong>{timeStr}</strong> (1 hour before start).</p></CenterCard>
   }
 
   // ── Already checked in or checked out ────────────────────────────────────
@@ -187,71 +194,46 @@ export default function CheckInFormScreen() {
     const checkedOut = !!activeRecord.checked_out_at
 
     return (
-      <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+      <PageShell>
         <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
-        <main className='max-w-md mx-auto px-4 py-8 flex flex-col gap-4'>
+        <PageMainNarrow className='flex flex-col gap-4 py-8'>
+          <Card>
+            <CardContent className='p-6 text-center'>
+              {checkedOut ? (
+                <>
+                  <div className='mb-3 text-4xl'>👋</div>
+                  <h2 className='mb-1 text-xl font-bold tracking-tight text-foreground'>Checked Out</h2>
+                  <p className='text-sm text-muted-foreground'>{event.name}</p>
+                  <p className='mt-3 text-xs text-muted-foreground'>
+                    Checked in {fmt(activeRecord.checked_in_at)} · Checked out {fmt(activeRecord.checked_out_at)}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className='mb-3 text-4xl'>✅</div>
+                  <h2 className='mb-1 text-xl font-bold tracking-tight text-success'>You&apos;re checked in</h2>
+                  <p className='text-sm text-foreground'>{event.name}</p>
+                  <p className='mt-1 text-xs text-muted-foreground'>
+                    {event.scope_level} · {event.scope_church_name}
+                  </p>
+                  <div className='mt-4 flex flex-wrap justify-center gap-3'>
+                    <Badge variant='success'>{activeRecord.method || success?.method}</Badge>
+                    {(activeRecord.is_late ?? success?.is_late) && <Badge variant='warning'>Marked late</Badge>}
+                  </div>
+                  <p className='mt-3 text-xs text-muted-foreground'>
+                    Checked in at {fmt(activeRecord.checked_in_at)}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Summary card */}
-          <div
-            className='p-6 text-center'
-            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
-          >
-            {checkedOut ? (
-              <>
-                <div className='text-4xl mb-3'>👋</div>
-                <h2 className='text-xl font-bold mb-1' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>Checked Out</h2>
-                <p className='text-sm' style={{ color: 'var(--muted)' }}>{event.name}</p>
-                <p className='text-xs mt-3' style={{ color: 'var(--muted)' }}>
-                  Checked in {fmt(activeRecord.checked_in_at)} · Checked out {fmt(activeRecord.checked_out_at)}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className='text-4xl mb-3'>✅</div>
-                <h2 className='text-xl font-bold mb-1' style={{ color: 'var(--green)', letterSpacing: '-0.02em' }}>You're checked in</h2>
-                <p className='text-sm' style={{ color: 'var(--text)' }}>{event.name}</p>
-                <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>
-                  {event.scope_level} · {event.scope_church_name}
-                </p>
-                <div className='mt-4 flex justify-center gap-3 flex-wrap'>
-                  <span
-                    className='px-3 py-1 text-xs font-semibold'
-                    style={{ background: 'color-mix(in oklab, var(--present) 12%, transparent)', color: 'var(--green)', border: '1px solid color-mix(in oklab, var(--present) 30%, transparent)', borderRadius: 'var(--radius-pill)' }}
-                  >
-                    {activeRecord.method || success?.method}
-                  </span>
-                  {(activeRecord.is_late ?? success?.is_late) && (
-                    <span
-                      className='px-3 py-1 text-xs font-semibold'
-                      style={{ background: 'color-mix(in oklab, var(--late) 12%, transparent)', color: 'var(--amber)', border: '1px solid color-mix(in oklab, var(--late) 30%, transparent)', borderRadius: 'var(--radius-pill)' }}
-                    >
-                      Marked late
-                    </span>
-                  )}
-                </div>
-                <p className='text-xs mt-3' style={{ color: 'var(--muted)' }}>
-                  Checked in at {fmt(activeRecord.checked_in_at)}
-                </p>
-              </>
-            )}
-          </div>
+          {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
 
-          {/* Error */}
-          {error && (
-            <p className='text-sm text-center' style={{ color: 'var(--coral)' }}>{error}</p>
-          )}
+          <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
+            Back to Home
+          </Link>
 
-          {/* Actions — no self-checkout; checkout is system-driven:
-              1. Member leaves the geofence for >20 minutes (auto via heartbeat)
-              2. Admin ends the event (sets ends_at = now)
-              3. Event time runs out (cron / auto_checkout_expired_events) */}
-          <div className='flex flex-col gap-3'>
-            <Link to='/home' className='btn-pill btn-secondary w-full text-center' style={{ fontSize: '14px' }}>
-              Back to Home
-            </Link>
-          </div>
-
-          {/* Location heartbeat for auto-checkout while screen is open */}
           {!checkedOut && (
             <LocationHeartbeat
               eventId={event.id}
@@ -259,54 +241,29 @@ export default function CheckInFormScreen() {
               onCheckedOut={handleHeartbeatCheckedOut}
             />
           )}
-        </main>
-      </div>
+        </PageMainNarrow>
+      </PageShell>
     )
   }
 
   return (
     <GeofenceGuard event={event} initialPosition={initialPosition}>
       {(position) => (
-        <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
-          {/* Warm GPS here (scoped to check-in). It used to live globally in
-              RequireAuth, which fired a 20s getCurrentPosition + a 3-min watch
-              on every authed page. */}
+        <PageShell>
           <LocationPreWarmer />
           <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
-          <main className='max-w-md mx-auto px-4 py-6'>
-            <p className='eyebrow mb-4'>{event.scope_level} · {event.scope_church_name}</p>
-            {error && (
-              <div
-                className='p-3 mb-4 text-sm text-center'
-                style={{
-                  background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-                  color: 'var(--coral)',
-                  border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-                  borderRadius: 'var(--radius-btn)',
-                }}
-              >
-                {error}
-              </div>
-            )}
+          <PageMainNarrow className='py-6'>
+            <p className='section-heading mb-4'>{event.scope_level} · {event.scope_church_name}</p>
+            {error && <Alert variant='destructive' className='mb-4 text-center'>{error}</Alert>}
 
-            {/* Method tabs — pill toggle */}
             {event.allowed_check_in_methods.filter((m) => m !== 'MANUAL').length > 1 && (
-              <div
-                className='flex gap-1 mb-5 p-1'
-                style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}
-              >
+              <div className='tab-bar mb-5'>
                 {event.allowed_check_in_methods.filter((m) => m !== 'MANUAL').map((m) => (
                   <button
                     key={m}
+                    type='button'
                     onClick={() => { setActiveTab(m); setError(null) }}
-                    className='flex-1 py-2 text-xs font-semibold cursor-pointer transition-colors'
-                    style={{
-                      background: activeTab === m ? 'var(--cta-bg)' : 'transparent',
-                      color: activeTab === m ? 'var(--cta-text)' : 'var(--muted)',
-                      border: 'none',
-                      borderRadius: 'var(--radius-pill)',
-                      letterSpacing: '0.04em',
-                    }}
+                    className={cn('tab-item', activeTab === m && 'tab-item--active')}
                   >
                     {m}
                   </button>
@@ -316,11 +273,11 @@ export default function CheckInFormScreen() {
 
             {activeTab === 'QR' && (
               <div className='flex flex-col gap-3'>
-                <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+                <p className='text-sm text-center text-muted-foreground'>
                   Point your camera at the QR code displayed at the venue.
                 </p>
                 <QRScanner onDecode={(t) => handleQR(t, position)} onError={() => {}} />
-                {submitting && <p className='text-xs text-center' style={{ color: 'var(--muted)' }}>Submitting…</p>}
+                {submitting && <p className='text-xs text-center text-muted-foreground'>Submitting…</p>}
               </div>
             )}
 
@@ -339,22 +296,21 @@ export default function CheckInFormScreen() {
                 )}
 
                 {faceDescriptor === false && (
-                  <div
-                    className='p-4 flex flex-col gap-2'
-                    style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}
-                  >
-                    <p className='text-sm m-0 text-center' style={{ color: 'var(--text)' }}>
+                  <Card>
+                    <CardContent className='flex flex-col gap-2 p-4'>
+                    <p className='text-sm m-0 text-center text-foreground'>
                       Face ID is not set up for your account.
                     </p>
-                    <p className='text-xs m-0 text-center' style={{ color: 'var(--muted)' }}>
+                    <p className='text-xs m-0 text-center text-muted-foreground'>
                       Please contact an admin to enable Face ID, or use QR / PIN to check in.
                     </p>
-                  </div>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {faceDescriptor instanceof Float32Array && (
                   <>
-                    <p className='text-sm text-center' style={{ color: 'var(--muted)' }}>
+                    <p className='text-sm text-center text-muted-foreground'>
                       Look at the camera, then blink to confirm.
                     </p>
                     <FaceCapture
@@ -363,13 +319,13 @@ export default function CheckInFormScreen() {
                       onComplete={(d) => handleFaceVerified(d, position)}
                       onError={(err) => setError(err.message)}
                     />
-                    {submitting && <p className='text-xs text-center' style={{ color: 'var(--muted)' }}>Submitting…</p>}
+                    {submitting && <p className='text-xs text-center text-muted-foreground'>Submitting…</p>}
                   </>
                 )}
               </div>
             )}
-          </main>
-        </div>
+          </PageMainNarrow>
+        </PageShell>
       )}
     </GeofenceGuard>
   )
@@ -433,39 +389,19 @@ function CenterCard({
     window.location.assign('/')
   }
   return (
-    <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
-      <div
-        className='w-full max-w-md p-6 text-center flex flex-col gap-4'
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-2)' }}
-      >
+    <LayoutCenterCard>
+      <div className='flex flex-col gap-4'>
         {children}
-        <div className='flex flex-col gap-2 mt-2'>
-          {showLogout ? (
-            <button
-              type='button'
-              onClick={handleLogout}
-              className='btn-pill w-full'
-              style={{
-                background: 'transparent',
-                color: 'var(--coral)',
-                border: '1.5px solid var(--coral)',
-                fontSize: 14,
-                padding: '11px 20px',
-              }}
-            >
-              Logout
-            </button>
-          ) : (
-            <Link
-              to='/home'
-              className='btn-pill btn-secondary w-full text-center'
-              style={{ fontSize: 14, padding: '11px 20px' }}
-            >
-              Back to Home
-            </Link>
-          )}
-        </div>
+        {showLogout ? (
+          <Button type='button' variant='outline' className='w-full border-destructive text-destructive' onClick={handleLogout}>
+            Logout
+          </Button>
+        ) : (
+          <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
+            Back to Home
+          </Link>
+        )}
       </div>
-    </div>
+    </LayoutCenterCard>
   )
 }

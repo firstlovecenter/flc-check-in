@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import ScreenHeader from '../components/ScreenHeader'
 import Spinner from '../components/Spinner'
+import { PageShell, PageMainNarrow } from '../components/layout/PageShell'
+import { Card, CardContent } from '../components/ui/card'
+import { Alert } from '../components/ui/alert'
+import { Badge } from '../components/ui/badge'
+import { Label } from '../components/ui/label'
+import { cn } from '../lib/utils'
 import { getCurrentUser } from '../utils/auth'
 import { resolveCurrentMember } from '../utils/membersApi'
 import { getAttendanceStats } from '../utils/supabaseCheckins'
@@ -10,7 +16,7 @@ const LEVEL_ORDER = ['denomination', 'oversight', 'campus', 'stream', 'council',
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className='flex flex-col gap-3'>
-      <p className='eyebrow m-0' style={{ color: 'var(--muted)' }}>{title}</p>
+      <Label className='section-heading'>{title}</Label>
       {children}
     </div>
   )
@@ -20,8 +26,8 @@ function Row({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null
   return (
     <div className='flex flex-col gap-0.5'>
-      <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>{label}</p>
-      <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>{value}</p>
+      <p className='m-0 text-xs text-muted-foreground'>{label}</p>
+      <p className='m-0 text-sm font-semibold text-foreground'>{value}</p>
     </div>
   )
 }
@@ -40,10 +46,10 @@ function buildHierarchy(member) {
   }
 
   push('denomination', pickFirst(member.leadsDenomination) || pickFirst(member.isAdminForDenomination), pickFirst(member.leadsDenomination) ? 'Leader' : 'Admin')
-  push('oversight',    pickFirst(member.leadsOversight)    || pickFirst(member.isAdminForOversight),    pickFirst(member.leadsOversight)    ? 'Leader' : 'Admin')
-  push('campus',       pickFirst(member.leadsCampus)       || pickFirst(member.isAdminForCampus),       pickFirst(member.leadsCampus)       ? 'Leader' : 'Admin')
-  push('stream',       pickFirst(member.leadsStream)       || pickFirst(member.isAdminForStream),       pickFirst(member.leadsStream)       ? 'Leader' : 'Admin')
-  push('council',      pickFirst(member.leadsCouncil)      || pickFirst(member.isAdminForCouncil),      pickFirst(member.leadsCouncil)      ? 'Leader' : 'Admin')
+  push('oversight', pickFirst(member.leadsOversight) || pickFirst(member.isAdminForOversight), pickFirst(member.leadsOversight) ? 'Leader' : 'Admin')
+  push('campus', pickFirst(member.leadsCampus) || pickFirst(member.isAdminForCampus), pickFirst(member.leadsCampus) ? 'Leader' : 'Admin')
+  push('stream', pickFirst(member.leadsStream) || pickFirst(member.isAdminForStream), pickFirst(member.leadsStream) ? 'Leader' : 'Admin')
+  push('council', pickFirst(member.leadsCouncil) || pickFirst(member.isAdminForCouncil), pickFirst(member.leadsCouncil) ? 'Leader' : 'Admin')
   push('governorship', pickFirst(member.leadsGovernorship) || pickFirst(member.isAdminForGovernorship), pickFirst(member.leadsGovernorship) ? 'Leader' : 'Admin')
   if (leadsBackenta) push('bacenta', leadsBackenta, 'Leader')
   if (member.bacenta?.name && !leadsBackenta) push('bacenta', member.bacenta, 'Member')
@@ -89,211 +95,172 @@ export default function ProfileScreen() {
   const pictureUrl = member?.pictureUrl || null
 
   return (
-    <div className='min-h-dvh flex flex-col' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader title='My Profile' back={{ to: '/home', label: 'Home' }} />
-
-      <div className='flex-1 w-full max-w-lg mx-auto px-4 py-6 flex flex-col gap-6'>
-
-        {/* Avatar + name */}
-        <div
-          className='p-6 flex flex-col items-center gap-4'
-          style={{
-            background: 'var(--card)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-card)',
-          }}
-        >
-          {pictureUrl ? (
-            <img
-              src={pictureUrl}
-              alt={displayName}
-              width={88}
-              height={88}
-              decoding='async'
-              style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--border)' }}
-            />
-          ) : (
-            <div
-              className='flex items-center justify-center'
-              style={{
-                width: 88, height: 88,
-                borderRadius: '50%',
-                background: 'var(--bg2)',
-                border: '2px solid var(--border)',
-                fontSize: 32,
-                color: 'var(--muted)',
-                fontWeight: 700,
-              }}
-            >
-              {(displayName?.[0] || '?').toUpperCase()}
-            </div>
-          )}
-
-          {loading ? (
-            <Spinner />
-          ) : (
-            <>
-              <div className='text-center'>
-                <p className='text-lg font-bold m-0' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>
-                  {displayName || 'Unknown'}
-                </p>
-                {user?.email && (
-                  <p className='text-sm m-0 mt-0.5' style={{ color: 'var(--muted)' }}>{user.email}</p>
-                )}
+      <PageMainNarrow className='flex flex-col gap-6'>
+        <Card>
+          <CardContent className='flex flex-col items-center gap-4 p-6'>
+            {pictureUrl ? (
+              <img
+                src={pictureUrl}
+                alt={displayName}
+                width={88}
+                height={88}
+                decoding='async'
+                className='size-[88px] rounded-full border-2 border-border object-cover'
+              />
+            ) : (
+              <div className='flex size-[88px] items-center justify-center rounded-full border-2 border-border bg-secondary text-[32px] font-bold text-muted-foreground'>
+                {(displayName?.[0] || '?').toUpperCase()}
               </div>
-              {user?.level && (
-                <span
-                  className='text-xs font-bold uppercase tracking-wider px-3 py-1'
-                  style={{
-                    background: 'var(--accent)',
-                    color: 'var(--badge-text)',
-                    borderRadius: 'var(--radius-pill)',
-                    letterSpacing: '0.06em',
-                  }}
-                >
-                  {user.level}
-                </span>
-              )}
-            </>
-          )}
-        </div>
+            )}
+
+            {loading ? (
+              <Spinner fullPage={false} />
+            ) : (
+              <>
+                <div className='text-center'>
+                  <p className='m-0 text-lg font-bold tracking-tight text-foreground'>
+                    {displayName || 'Unknown'}
+                  </p>
+                  {user?.email && (
+                    <p className='m-0 mt-0.5 text-sm text-muted-foreground'>{user.email}</p>
+                  )}
+                </div>
+                {user?.level && <Badge className='uppercase tracking-wider'>{user.level}</Badge>}
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {error && (
-          <p
-            className='text-sm px-4 py-3 m-0 text-center'
-            style={{
-              color: 'var(--coral)',
-              background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-              border: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-              borderRadius: 'var(--radius-btn)',
-            }}
-          >
+          <Alert variant='destructive' className='text-center'>
             {error} — showing cached info only.
-          </p>
+          </Alert>
         )}
 
         {!loading && member && (
           <>
-            {/* Contact */}
             {(member.phoneNumber || member.whatsappNumber || member.email) && (
-              <div
-                className='p-5 flex flex-col gap-4'
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-card)',
-                }}
-              >
-                <Section title='Contact'>
-                  <Row label='Phone'    value={member.phoneNumber} />
-                  <Row label='WhatsApp' value={member.whatsappNumber !== member.phoneNumber ? member.whatsappNumber : null} />
-                  <Row label='Email'    value={member.email} />
-                </Section>
-              </div>
+              <Card>
+                <CardContent className='flex flex-col gap-4 p-5'>
+                  <Section title='Contact'>
+                    <Row label='Phone' value={member.phoneNumber} />
+                    <Row
+                      label='WhatsApp'
+                      value={member.whatsappNumber !== member.phoneNumber ? member.whatsappNumber : null}
+                    />
+                    <Row label='Email' value={member.email} />
+                  </Section>
+                </CardContent>
+              </Card>
             )}
 
-            {/* Church hierarchy */}
             {hierarchy.length > 0 && (
-              <div
-                className='p-5 flex flex-col gap-4'
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-card)',
-                }}
-              >
-                <Section title='Church Roles'>
-                  <div className='flex flex-col gap-3'>
-                    {hierarchy.map(({ level, name, role }) => (
-                      <div key={level} className='flex items-center justify-between'>
-                        <div>
-                          <p className='text-xs m-0 uppercase tracking-wider' style={{ color: 'var(--muted)' }}>{level}</p>
-                          <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>{name}</p>
+              <Card>
+                <CardContent className='flex flex-col gap-4 p-5'>
+                  <Section title='Church Roles'>
+                    <div className='flex flex-col gap-3'>
+                      {hierarchy.map(({ level, name, role }) => (
+                        <div key={level} className='flex items-center justify-between'>
+                          <div>
+                            <p className='m-0 text-xs uppercase tracking-wider text-muted-foreground'>{level}</p>
+                            <p className='m-0 text-sm font-semibold text-foreground'>{name}</p>
+                          </div>
+                          <Badge variant={role === 'Leader' ? 'default' : 'muted'}>{role}</Badge>
                         </div>
-                        <span
-                          className='text-xs font-bold px-2.5 py-1'
-                          style={{
-                            background: role === 'Leader' ? 'color-mix(in oklab, var(--accent) 15%, transparent)' : 'color-mix(in oklab, var(--purple) 15%, transparent)',
-                            color: role === 'Leader' ? 'var(--accent)' : 'var(--purple)',
-                            borderRadius: 'var(--radius-pill)',
-                            letterSpacing: '0.04em',
-                          }}
-                        >
-                          {role}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              </div>
+                      ))}
+                    </div>
+                  </Section>
+                </CardContent>
+              </Card>
             )}
 
-            {/* Attendance stats */}
             {stats && (
-              <div
-                className='p-5 flex flex-col gap-4'
-                style={{
-                  background: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-card)',
-                }}
-              >
-                <Section title='Attendance Stats'>
-                  <div className='grid grid-cols-2 gap-3'>
-                    <StatBox
-                      label='Events Attended'
-                      value={`${stats.attendedCount} / ${stats.scopedCount}`}
-                    />
-                    <StatBox
-                      label='Attendance Rate'
-                      value={stats.pct != null ? `${stats.pct}%` : '—'}
-                      color={stats.pct == null ? undefined : stats.pct >= 80 ? 'var(--green)' : stats.pct >= 50 ? 'var(--amber)' : 'var(--coral)'}
-                    />
-                    <StatBox label='On Time'  value={String(stats.onTimeCount)} color='var(--green)' />
-                    <StatBox label='Late'     value={String(stats.lateCount)}   color={stats.lateCount > 0 ? 'var(--amber)' : undefined} />
-                  </div>
-                  {stats.lastCheckIn && (
-                    <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>
-                      Last check-in: <span style={{ color: 'var(--text)' }}>{new Date(stats.lastCheckIn).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                    </p>
-                  )}
-                </Section>
-              </div>
+              <Card>
+                <CardContent className='flex flex-col gap-4 p-5'>
+                  <Section title='Attendance Stats'>
+                    <div className='metric-grid grid-cols-2'>
+                      <StatBox
+                        label='Events Attended'
+                        value={`${stats.attendedCount} / ${stats.scopedCount}`}
+                      />
+                      <StatBox
+                        label='Attendance Rate'
+                        value={stats.pct != null ? `${stats.pct}%` : '—'}
+                        tone={
+                          stats.pct == null
+                            ? undefined
+                            : stats.pct >= 80
+                              ? 'success'
+                              : stats.pct >= 50
+                                ? 'warning'
+                                : 'destructive'
+                        }
+                      />
+                      <StatBox label='On Time' value={String(stats.onTimeCount)} tone='success' />
+                      <StatBox
+                        label='Late'
+                        value={String(stats.lateCount)}
+                        tone={stats.lateCount > 0 ? 'warning' : undefined}
+                      />
+                    </div>
+                    {stats.lastCheckIn && (
+                      <p className='m-0 text-xs text-muted-foreground'>
+                        Last check-in:{' '}
+                        <span className='text-foreground'>
+                          {new Date(stats.lastCheckIn).toLocaleDateString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </p>
+                    )}
+                  </Section>
+                </CardContent>
+              </Card>
             )}
           </>
         )}
 
         {!loading && !member && !error && (
-          <div
-            className='p-5 text-center'
-            style={{
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-card)',
-            }}
-          >
-            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>
-              Profile details could not be loaded from the FLC directory. Your account information is still available above.
-            </p>
-          </div>
+          <Card>
+            <CardContent className='p-5 text-center'>
+              <p className='m-0 text-sm text-muted-foreground'>
+                Profile details could not be loaded from the FLC directory. Your account information is still available above.
+              </p>
+            </CardContent>
+          </Card>
         )}
-      </div>
-    </div>
+      </PageMainNarrow>
+    </PageShell>
   )
 }
 
-function StatBox({ label, value, color }: { label: string; value: string; color?: string }) {
+function StatBox({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: 'success' | 'warning' | 'destructive'
+}) {
   return (
-    <div
-      className='p-3 flex flex-col gap-0.5'
-      style={{
-        background: 'var(--bg2)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-btn)',
-      }}
-    >
-      <p className='text-xs m-0 uppercase tracking-wider' style={{ color: 'var(--muted)' }}>{label}</p>
-      <p className='text-xl font-bold m-0 tnum' style={{ color: color || 'var(--text)', letterSpacing: '-0.02em' }}>{value}</p>
+    <div className='metric-tile flex flex-col gap-0.5 p-3'>
+      <p className='m-0 text-xs uppercase tracking-wider text-muted-foreground'>{label}</p>
+      <p
+        className={cn(
+          'tnum m-0 text-xl font-bold tracking-tight',
+          tone === 'success' && 'text-success',
+          tone === 'warning' && 'text-warning',
+          tone === 'destructive' && 'text-destructive',
+          !tone && 'text-foreground',
+        )}
+      >
+        {value}
+      </p>
     </div>
   )
 }

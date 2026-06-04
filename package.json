@@ -19,6 +19,8 @@
     "@supabase/supabase-js": "^2.105.3",
     "@zxing/browser": "^0.2.0",
     "bcryptjs": "^3.0.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "face-api.js": "^0.22.2",
     "graphql-request": "^7.4.0",
@@ -30,6 +32,7 @@
     "react-dom": "^19.2.5",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.15.0",
+    "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.2.4",
     "tslib": "^2.8.1",
     "uuid": "^14.0.0"

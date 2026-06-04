@@ -1,17 +1,19 @@
 import { useRef } from 'react'
+import { Label } from '../ui/label'
+import { Button } from '../ui/button'
 
 export default function PhotoField({ field, value, onChange }) {
-  const inputRef = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  function handleFile(e) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => onChange({ dataUrl: ev.target.result, name: file.name, file })
+    reader.onload = (ev) => onChange({ dataUrl: ev.target?.result, name: file.name, file })
     reader.readAsDataURL(file)
   }
 
-  function handleClear(e) {
+  function handleClear(e: React.MouseEvent) {
     e.stopPropagation()
     onChange(null)
     if (inputRef.current) inputRef.current.value = ''
@@ -19,58 +21,34 @@ export default function PhotoField({ field, value, onChange }) {
 
   return (
     <div className='flex flex-col gap-2'>
-      <label className='eyebrow' style={{ color: 'var(--muted)' }}>
-        {field.label}
-      </label>
+      <Label>{field.label}</Label>
 
       {value?.dataUrl ? (
-        <div
-          className='relative overflow-hidden'
-          style={{ border: '1.5px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
-        >
-          <img
-            src={value.dataUrl}
-            alt='Preview'
-            className='w-full object-cover'
-            style={{ maxHeight: 220 }}
-          />
-          <button
+        <div className='surface-card relative overflow-hidden rounded-lg p-0'>
+          <img src={value.dataUrl} alt='Preview' className='max-h-[220px] w-full object-cover' />
+          <Button
             type='button'
+            variant='secondary'
+            size='icon-sm'
             onClick={handleClear}
-            className='absolute top-2 right-2 flex items-center justify-center text-xs font-bold cursor-pointer'
-            style={{
-              width: 28, height: 28,
-              background: 'rgba(0,0,0,0.6)',
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: '50%',
-            }}
+            className='absolute right-2 top-2 size-7 rounded-full bg-foreground/60 text-primary-foreground hover:bg-foreground/70'
+            aria-label='Remove photo'
           >
             ✕
-          </button>
+          </Button>
         </div>
       ) : (
         <button
           type='button'
           onClick={() => inputRef.current?.click()}
-          className='flex items-center gap-4 px-4 py-4 cursor-pointer w-full text-left'
-          style={{
-            background: 'var(--bg2)',
-            border: '1.5px solid var(--border)',
-            borderRadius: 'var(--radius-btn)',
-          }}
+          className='surface-card flex w-full cursor-pointer items-center gap-4 px-4 py-4 text-left transition-colors hover:border-primary/35'
         >
-          <div
-            className='flex items-center justify-center text-2xl flex-shrink-0'
-            style={{ width: 48, height: 48, background: 'var(--card)', borderRadius: 'var(--radius-sm)' }}
-          >
+          <div className='flex size-12 shrink-0 items-center justify-center rounded-md bg-secondary text-2xl'>
             📷
           </div>
           <div>
-            <p className='m-0 text-sm font-semibold' style={{ color: 'var(--text)' }}>
-              Add a photo
-            </p>
-            <p className='m-0 text-xs mt-0.5' style={{ color: 'var(--muted)' }}>
+            <p className='m-0 text-sm font-semibold text-foreground'>Add a photo</p>
+            <p className='m-0 mt-0.5 text-xs text-muted-foreground'>
               Take a photo or upload from gallery
             </p>
           </div>

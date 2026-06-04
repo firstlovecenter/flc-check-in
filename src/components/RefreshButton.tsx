@@ -30,27 +30,14 @@ export default function RefreshButton({ onClick }: Props) {
       onClick={handleClick}
       aria-label='Refresh'
       title='Refresh'
-      className='p-1.5 cursor-pointer shrink-0'
-      style={{
-        background: 'transparent',
-        border: 'none',
-        color: 'var(--muted)',
-        borderRadius: '50%',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        lineHeight: 0,
-      }}
+      className='icon-btn inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-1.5 text-muted-foreground leading-none'
     >
       <svg
         viewBox='0 0 24 24'
         width={18}
         height={18}
         fill='currentColor'
-        style={{
-          animation: spinning ? 'spin 0.7s linear' : 'none',
-          transformOrigin: 'center',
-        }}
+        className={spinning ? 'origin-center animate-[spin_0.7s_linear]' : 'origin-center'}
       >
         <path d='M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.74 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z' />
       </svg>

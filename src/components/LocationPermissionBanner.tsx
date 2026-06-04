@@ -59,16 +59,7 @@ export default function LocationPermissionBanner() {
   return (
     <div
       role='alert'
-      className='px-4 py-2.5 text-xs'
-      style={{
-        background: 'color-mix(in oklab, var(--absent) 8%, transparent)',
-        color: 'var(--coral)',
-        borderBottom: '1px solid color-mix(in oklab, var(--absent) 25%, transparent)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
-        textAlign: 'center',
-      }}
+      className='sticky top-0 z-40 border-b border-destructive/25 bg-destructive/10 px-4 py-2.5 text-center text-xs text-destructive'
     >
       <strong>Location is blocked.</strong> This app needs your location to
       verify check-ins. {platformHint(plat)}

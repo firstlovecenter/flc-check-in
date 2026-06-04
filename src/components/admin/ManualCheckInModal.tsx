@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { getCurrentPosition, pointInGeofence } from '../../utils/geo'
 import { submitManualCheckIn, addAuditLog } from '../../utils/supabaseCheckins'
 import { getCurrentUser, formatName } from '../../utils/auth'
+import { Modal } from '../ui/modal'
+import { Alert } from '../ui/alert'
+import { Label } from '../ui/label'
+import { Textarea } from '../ui/textarea'
+import { Button } from '../ui/button'
 import type { CheckinEventRow, MemberProfileRow, CheckinRecordRow, LatLng } from '../../types/app'
 
 interface Props {
@@ -35,11 +40,12 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
     return () => { cancelled = true }
   }, [event])
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!position) return
     if (!pointInGeofence({ lat: position.lat, lng: position.lng }, event)) {
-      setError('You are outside the venue area.'); return
+      setError('You are outside the venue area.')
+      return
     }
     setSubmitting(true)
     setError(null)
@@ -51,9 +57,15 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
           id: member.id,
           name: [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id,
           role: (member.roles || [])[0] || null,
-          unitName: member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || null,
+          unitName:
+            member.bacenta_name ||
+            member.governorship_name ||
+            member.council_name ||
+            member.stream_name ||
+            null,
         },
-        lat: position.lat, lng: position.lng,
+        lat: position.lat,
+        lng: position.lng,
         reason: reason.trim(),
         event,
       })
@@ -77,57 +89,34 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
   }
 
   return (
-    <div className='drawer-backdrop fixed inset-0 z-50 flex items-center justify-center px-4'
-      onClick={onClose}>
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className='modal-card w-full max-w-md p-6 flex flex-col gap-4'
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-3)' }}
-      >
+    <Modal open onClose={onClose}>
+      <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
         <div>
-          <h2 className='text-lg font-semibold m-0' style={{ color: 'var(--text)' }}>Manual check-in</h2>
-          <p className='text-xs m-0 mt-1' style={{ color: 'var(--muted)' }}>
+          <h2 className='m-0 text-lg font-semibold text-foreground'>Manual check-in</h2>
+          <p className='m-0 mt-1 text-xs text-muted-foreground'>
             {[member.first_name, member.last_name].filter(Boolean).join(' ')} · {member.bacenta_name || '—'}
           </p>
         </div>
         <div>
-          <label className='text-xs font-bold tracking-widest uppercase' style={{ color: 'var(--muted)' }}>
-            Reason (optional)
-          </label>
-          <textarea
+          <Label className='text-xs font-bold uppercase tracking-widest'>Reason (optional)</Label>
+          <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             placeholder='e.g. Phone not working, arrived late…'
-            className='input-field mt-1.5'
+            className='mt-1.5 min-h-0'
           />
         </div>
-        {error && (
-          <p
-            className='text-sm px-3 py-2 text-center'
-            style={{ color: 'var(--coral)', background: 'color-mix(in oklab, var(--absent) 10%, transparent)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
-          >
-            {error}
-          </p>
-        )}
+        {error && <Alert variant='destructive'>{error}</Alert>}
         <div className='flex gap-2'>
-          <button
-            type='button'
-            onClick={onClose}
-            className='btn-pill btn-secondary flex-1 py-2.5 text-sm font-semibold cursor-pointer'
-          >
+          <Button type='button' variant='outline' onClick={onClose} className='flex-1'>
             Cancel
-          </button>
-          <button
-            type='submit'
-            disabled={submitting || !position || !!error}
-            className='btn-pill btn-primary flex-1 py-2.5 text-sm font-semibold cursor-pointer disabled:opacity-50'
-          >
+          </Button>
+          <Button type='submit' disabled={submitting || !position || !!error} className='flex-1'>
             {submitting ? 'Checking in…' : 'Check in'}
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Modal>
   )
 }

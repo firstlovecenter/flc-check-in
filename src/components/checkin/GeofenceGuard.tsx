@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { getCurrentPosition, pointInGeofence, haversineMeters } from '../../utils/geo'
 import type { LatLng, CheckinEventRow } from '../../types/app'
 import Spinner from '../Spinner'
+import { PageShell } from '../layout/PageShell'
+import { Card, CardContent } from '../ui/card'
 
 type GuardState =
   | { status: 'loading' }
@@ -23,7 +25,7 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
     let cancelled = false
     ;(async () => {
       try {
-        const pos = initialPosition || await getCurrentPosition({ timeout: 15000 })
+        const pos = initialPosition || (await getCurrentPosition({ timeout: 15000 }))
         if (cancelled) return
         if (!event) {
           setState({ status: 'ok', position: pos })
@@ -34,8 +36,8 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
           let distance = null
           if (event.geofence_type === 'circle') {
             distance = Math.round(
-              haversineMeters(pos.lat, pos.lng, event.geofence_center_lat, event.geofence_center_lng)
-              - (event.geofence_radius_m || 0)
+              haversineMeters(pos.lat, pos.lng, event.geofence_center_lat!, event.geofence_center_lng!) -
+                (event.geofence_radius_m || 0),
             )
           }
           setState({ status: 'outside', position: pos, distance })
@@ -52,11 +54,11 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
   if (state.status === 'loading') {
     return (
       <Centered>
-        <Card>
-          <div className='flex flex-col items-center gap-3'>
-            <Spinner />
-            <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>Acquiring GPS…</p>
-          </div>
+        <Card className='w-full max-w-md text-center'>
+          <CardContent className='flex flex-col items-center gap-3 p-6'>
+            <Spinner fullPage={false} />
+            <p className='m-0 text-sm text-muted-foreground'>Acquiring GPS…</p>
+          </CardContent>
         </Card>
       </Centered>
     )
@@ -64,14 +66,16 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
   if (state.status === 'denied') {
     return (
       <Centered>
-        <Card>
-          <h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--coral)' }}>Location required</h2>
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>
-            We couldn't get your location: {state.error}
-          </p>
-          <p className='text-sm mt-2' style={{ color: 'var(--muted)' }}>
-            Enable location permissions in your browser and reload.
-          </p>
+        <Card className='w-full max-w-md text-center'>
+          <CardContent className='p-6'>
+            <h2 className='mb-2 text-lg font-semibold text-destructive'>Location required</h2>
+            <p className='text-sm text-muted-foreground'>
+              We couldn&apos;t get your location: {state.error}
+            </p>
+            <p className='mt-2 text-sm text-muted-foreground'>
+              Enable location permissions in your browser and reload.
+            </p>
+          </CardContent>
         </Card>
       </Centered>
     )
@@ -79,14 +83,17 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
   if (state.status === 'outside') {
     return (
       <Centered>
-        <Card>
-          <h2 className='text-lg font-semibold mb-2' style={{ color: 'var(--amber)' }}>You're not at the venue</h2>
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>
-            {state.distance != null
-              ? `You are about ${state.distance} m outside the check-in area.`
-              : 'You are outside the check-in area.'}
-            <br />Move closer and reload.
-          </p>
+        <Card className='w-full max-w-md text-center'>
+          <CardContent className='p-6'>
+            <h2 className='mb-2 text-lg font-semibold text-warning'>You&apos;re not at the venue</h2>
+            <p className='text-sm text-muted-foreground'>
+              {state.distance != null
+                ? `You are about ${state.distance} m outside the check-in area.`
+                : 'You are outside the check-in area.'}
+              <br />
+              Move closer and reload.
+            </p>
+          </CardContent>
         </Card>
       </Centered>
     )
@@ -96,16 +103,6 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
 
 function Centered({ children }: { children: ReactNode }) {
   return (
-    <div className='min-h-dvh flex items-center justify-center px-4' style={{ background: 'var(--bg)' }}>
-      {children}
-    </div>
-  )
-}
-function Card({ children }: { children: ReactNode }) {
-  return (
-    <div className='w-full max-w-md rounded-2xl p-6 text-center'
-      style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-      {children}
-    </div>
+    <PageShell className='items-center justify-center px-4'>{children}</PageShell>
   )
 }

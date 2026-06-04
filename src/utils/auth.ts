@@ -241,7 +241,11 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
     const { id, ...userFields } = data.user ?? {}
     // Persist church refs from the refresh response so getCurrentUser() can use them.
     persistChurchContext(userFields)
-    return enrichUser({ ...mergeChurchContext(payload), ...userFields, userId: payload.userId ?? id })
+    const user = enrichUser({ ...mergeChurchContext(payload), ...userFields, userId: payload.userId ?? id })
+    import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {
+      syncGraphProfileForUserBackground(user, { force: true })
+    })
+    return user
   } catch {
     return null
   }
@@ -395,42 +399,28 @@ export async function loginWithCredentials(email, password) {
 
   const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
 
-  // Fire-and-forget: resolve graph ID and sync to Supabase in the background.
-  // This must NOT block navigation — it's a best-effort profile sync.
-  ;(async () => {
-    try {
-      const { resolveCurrentMember, memberToProfileRow } = await import('./membersApi');
-      const member = await resolveCurrentMember(user);
-      if (member?.pictureUrl) localStorage.setItem('pictureUrl', member.pictureUrl);
-      const memberTitle = Array.isArray(member?.title) ? member.title[0]?.name : member?.title;
-      if (memberTitle) localStorage.setItem('memberTitle', memberTitle);
-      const { upsertMemberProfile } = await import('./supabaseCheckins');
-      const row = member ? memberToProfileRow(member) : user;
-      // Persist the full ancestor chain to localStorage for the CURRENT session.
-      // The home screen may have already rendered with an incomplete JWT — this
-      // ensures the next data refresh (pull-to-refresh / tab re-focus) picks up
-      // the correct hierarchy without requiring the user to log out and back in.
-      if (member) persistChurchContextFromProfileRow(row);
-      // Always key the Supabase row by the auth-system userId, not the FLC graph
-      // node id. The graph may use a different UUID/ObjectId format, so if we
-      // store under member.id the getMemberProfile(user.userId) lookup in
-      // LeaderHomeScreen will never find it.
-      await upsertMemberProfile({ ...row, id: user.userId });
-    } catch (err: any) {
-      console.warn('[auth] post-login sync failed:', err.message);
-    }
-  })();
+  // Every login: fresh graph probe → member_profiles + churchContext (see graphProfileSync.ts).
+  import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {
+    syncGraphProfileForUserBackground(user, { force: true })
+  })
 
   return user;
 }
 
 export function logout() {
+  const uid = decodeJWT(localStorage.getItem('accessToken') || '')?.userId
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('pictureUrl');
   localStorage.removeItem('memberTitle');
   localStorage.removeItem('superAdminOverride');
   localStorage.removeItem('churchContext');
+  import('./graphProfileSync').then(({ clearGraphProfileSyncMarker }) => {
+    clearGraphProfileSyncMarker(uid)
+  })
+  import('./membersApi').then(({ clearResolveCurrentMemberCache }) => {
+    clearResolveCurrentMemberCache()
+  })
 }
 
 export async function requestPasswordReset(email: string) {

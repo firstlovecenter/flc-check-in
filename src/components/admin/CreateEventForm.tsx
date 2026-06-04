@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
@@ -13,6 +13,7 @@ import {
   searchChurches, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
+import { cn } from '../../lib/utils'
 
 interface AdminScope { level: string; id: string; name: string }
 
@@ -286,11 +287,8 @@ export default function CreateEventForm() {
   // Superadmins skip this — they pick any church via the search picker.
   if (!isSuperAdmin && !scopesLoading && scopes.length === 0) {
     return (
-      <div
-        className='p-5 text-sm text-center'
-        style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)', color: 'var(--muted)' }}
-      >
-        <p className='mb-2' style={{ color: 'var(--coral)' }}>No admin scope found.</p>
+      <div className='surface-card p-5 text-center text-sm text-muted-foreground'>
+        <p className='mb-2 text-destructive'>No admin scope found.</p>
         <p>You don't appear in the FLC member graph as an admin of any church. Ask your stream lead to update your relationships.</p>
       </div>
     )
@@ -314,7 +312,7 @@ export default function CreateEventForm() {
       {/* Scope: hidden if exactly 1 admin scope; dropdown if 2+ */}
       <Section title='Scope'>
         {scopesLoading && <Spinner />}
-        {scopesError && <p className='text-sm' style={{ color: 'var(--coral)' }}>{scopesError}</p>}
+        {scopesError && <p className='text-sm text-destructive'>{scopesError}</p>}
 
         {/* Superadmin: multi-scope church picker OR saved group. */}
         {isSuperAdmin && (
@@ -333,16 +331,14 @@ export default function CreateEventForm() {
                     {superScopes.map((s) => (
                       <span
                         key={`${s.level}:${s.id}`}
-                        className='flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold'
-                        style={{ background: 'var(--cta-bg)', color: 'var(--cta-text)', borderRadius: 'var(--radius-pill)', border: '1.5px solid var(--border)' }}
+                        className='chip flex items-center gap-1.5 border-primary/30 bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground'
                       >
-                        <span className='opacity-70 uppercase tracking-wide' style={{ fontSize: 9 }}>{s.level}</span>
+                        <span className='text-[9px] uppercase tracking-wide opacity-70'>{s.level}</span>
                         {s.name}
                         <button
                           type='button'
                           onClick={() => removeSuperScope(`${s.level}:${s.id}`)}
-                          className='cursor-pointer ml-0.5 opacity-70 hover:opacity-100'
-                          style={{ background: 'none', border: 'none', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
+                          className='ml-0.5 cursor-pointer border-0 bg-transparent p-0 text-sm leading-none opacity-70 hover:opacity-100'
                           aria-label={`Remove ${s.name}`}
                         >×</button>
                       </span>
@@ -350,7 +346,7 @@ export default function CreateEventForm() {
                   </div>
                 )}
                 {/* Church search */}
-                <div style={{ position: 'relative' }}>
+                <div className='relative'>
                   <input
                     type='text'
                     value={superSearch}
@@ -360,7 +356,7 @@ export default function CreateEventForm() {
                     autoComplete='off'
                   />
                   {superSearching && (
-                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>
+                    <p className='text-xs mt-1 text-muted-foreground'>Searching…</p>
                   )}
                   {superResults.length > 0 && (
                     <SearchDropdown>
@@ -380,7 +376,7 @@ export default function CreateEventForm() {
                     </SearchDropdown>
                   )}
                   {!superSearching && superSearch.trim().length >= 2 && superResults.length === 0 && (
-                    <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+                    <p className='text-xs mt-1 text-muted-foreground'>No matches.</p>
                   )}
                 </div>
               </div>
@@ -390,13 +386,13 @@ export default function CreateEventForm() {
               <div className='flex flex-col gap-2'>
                 {groupsLoading && <Spinner />}
                 {!groupsLoading && groups.length === 0 && (
-                  <p className='text-xs' style={{ color: 'var(--muted)' }}>
+                  <p className='text-xs text-muted-foreground'>
                     No groups yet. Create one from the Special Groups page first.
                   </p>
                 )}
                 {!groupsLoading && groups.length > 0 && (
                   <>
-                    <p className='text-xs' style={{ color: 'var(--muted)' }}>
+                    <p className='text-xs text-muted-foreground'>
                       Select one or more groups — members from all selected groups will be in scope.
                     </p>
                     <div className='flex flex-col gap-1.5'>
@@ -409,25 +405,22 @@ export default function CreateEventForm() {
                             onClick={() => setSelectedGroupIds((prev) =>
                               prev.includes(g.id) ? prev.filter((id) => id !== g.id) : [...prev, g.id]
                             )}
-                            className='w-full text-left px-3 py-2.5 cursor-pointer flex items-center gap-3'
-                            style={{
-                              background: selected ? 'var(--cta-bg)' : 'var(--bg2)',
-                              border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
-                              borderRadius: 'var(--radius-btn)',
-                              color: selected ? 'var(--cta-text)' : 'var(--text)',
-                            }}
+                            className={cn('check-row', selected && 'check-row--selected')}
                           >
-                            {/* Checkbox indicator */}
-                            <div className='shrink-0' style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${selected ? 'var(--cta-text)' : 'var(--border)'}`, background: selected ? 'var(--cta-text)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              {selected && <svg viewBox='0 0 10 8' width='10' height='8' fill='none'><path d='M1 4l3 3 5-6' stroke='var(--cta-bg)' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round'/></svg>}
-                            </div>
-                            <div className='min-w-0 flex-1'>
-                              <p className='text-sm font-semibold m-0 truncate'>{g.name}</p>
-                              {g.description && (
-                                <p className='text-xs m-0 mt-0.5 truncate' style={{ color: selected ? 'var(--cta-text)' : 'var(--muted)', opacity: 0.8 }}>{g.description}</p>
+                            <div className='check-row__box'>
+                              {selected && (
+                                <svg viewBox='0 0 10 8' width='10' height='8' fill='none' aria-hidden>
+                                  <path d='M1 4l3 3 5-6' stroke='hsl(var(--primary))' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round' />
+                                </svg>
                               )}
                             </div>
-                            <span className='shrink-0 text-xs font-semibold px-2 py-0.5' style={{ background: 'rgba(0,0,0,0.15)', borderRadius: 'var(--radius-pill)' }}>
+                            <div className='min-w-0 flex-1'>
+                              <p className='m-0 truncate text-sm font-semibold'>{g.name}</p>
+                              {g.description && (
+                                <p className={cn('m-0 mt-0.5 truncate text-xs opacity-80', selected ? 'text-primary-foreground' : 'text-muted-foreground')}>{g.description}</p>
+                              )}
+                            </div>
+                            <span className='chip shrink-0 px-2 py-0.5 text-xs font-semibold normal-case tracking-normal'>
                               {g.member_count ?? 0}
                             </span>
                           </button>
@@ -444,11 +437,10 @@ export default function CreateEventForm() {
         {/* Non-superadmin: the user's own admin scopes. */}
         {!isSuperAdmin && scopes.length === 1 && selectedScope && (
           <div
-            className='px-4 py-3'
-            style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+            className='px-4 py-3 rounded-lg border border-border bg-secondary'
           >
             <p className='eyebrow m-0'>{selectedScope.level}</p>
-            <p className='text-sm font-semibold m-0 mt-0.5' style={{ color: 'var(--text)' }}>{selectedScope.name}</p>
+            <p className='text-sm font-semibold m-0 mt-0.5 text-foreground'>{selectedScope.name}</p>
           </div>
         )}
         {!isSuperAdmin && scopes.length > 1 && (
@@ -496,13 +488,12 @@ export default function CreateEventForm() {
         </div>
         {methods.includes('PIN') && (
           <div className='mt-3 flex items-center gap-3'>
-            <label className='text-xs' style={{ color: 'var(--muted)' }}>PIN</label>
+            <label className='text-xs text-muted-foreground'>PIN</label>
             <input type='text' inputMode='numeric' maxLength={6} value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g,'').slice(0, 6))}
               className='input-field font-mono tracking-widest flex-1' />
             <button type='button' onClick={() => setPin(generatePin())}
-              className='text-xs px-3 py-1 cursor-pointer'
-              style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius-btn)' }}>
+              className='text-xs px-3 py-1 cursor-pointer btn-pill btn-secondary'>
               Regenerate
             </button>
           </div>
@@ -511,12 +502,12 @@ export default function CreateEventForm() {
 
       {!(isSuperAdmin && superMode === 'group') && <Section title='Allowed roles'>
         {availableRoles.length === 0 ? (
-          <p className='text-sm' style={{ color: 'var(--muted)' }}>
+          <p className='text-sm text-muted-foreground'>
             No leader levels exist below this scope.
           </p>
         ) : (
           <>
-            <p className='text-xs mb-1' style={{ color: 'var(--muted)' }}>
+            <p className='text-xs mb-1 text-muted-foreground'>
               Leaders within this {selectedScope?.level}.
             </p>
             <div className='flex flex-wrap gap-2'>
@@ -561,37 +552,34 @@ export default function CreateEventForm() {
           <button
             type='button'
             onClick={() => setIsPublic((v) => !v)}
-            className='w-full text-left px-4 py-3 cursor-pointer flex items-center justify-between gap-3'
-            style={{
-              background: 'var(--bg2)',
-              border: `1.5px solid ${isPublic ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius-btn)',
-            }}
+            className={cn(
+              'flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
+              isPublic ? 'border-primary bg-secondary' : 'border-border bg-secondary',
+            )}
           >
             <div>
-              <p className='text-sm font-semibold m-0' style={{ color: 'var(--text)' }}>
+              <p className='m-0 text-sm font-semibold text-foreground'>
                 {isPublic ? 'Visible on public page' : 'Hidden from public page'}
               </p>
-              <p className='text-xs m-0 mt-0.5' style={{ color: 'var(--muted)' }}>
+              <p className='m-0 mt-0.5 text-xs text-muted-foreground'>
                 {isPublic
                   ? 'Anyone can scan the QR code from the public events page.'
                   : 'Only invited members and superadmins can see this event.'}
               </p>
             </div>
-            {/* Toggle pill */}
             <div
-              className='shrink-0'
-              style={{
-                width: 44, height: 24, borderRadius: 12,
-                background: isPublic ? 'var(--accent)' : 'var(--border)',
-                position: 'relative', transition: 'background 0.2s',
-              }}
+              className={cn(
+                'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+                isPublic ? 'bg-primary' : 'bg-border',
+              )}
+              aria-hidden
             >
-              <div style={{
-                position: 'absolute', top: 3, left: isPublic ? 23 : 3,
-                width: 18, height: 18, borderRadius: 9,
-                background: '#fff', transition: 'left 0.2s',
-              }} />
+              <div
+                className={cn(
+                  'absolute top-0.5 h-[18px] w-[18px] rounded-full bg-white transition-[left]',
+                  isPublic ? 'left-[23px]' : 'left-0.5',
+                )}
+              />
             </div>
           </button>
         </Section>
@@ -599,8 +587,7 @@ export default function CreateEventForm() {
 
       {error && (
         <div
-          className='p-3 text-sm text-center'
-          style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}
+          className='p-3 text-sm text-center rounded-lg border border-destructive/20 bg-destructive/10 text-destructive'
         >
           {error}
         </div>
@@ -626,27 +613,8 @@ export default function CreateEventForm() {
   )
 }
 
-const inputStyle = { background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)' }
-
-function SearchDropdown({ children }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 'calc(100% + 4px)',
-        left: 0, right: 0,
-        zIndex: 100,
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-btn)',
-        maxHeight: 320,
-        overflowY: 'auto',
-        boxShadow: 'var(--shadow-2)',
-      }}
-    >
-      {children}
-    </div>
-  )
+function SearchDropdown({ children }: { children: ReactNode }) {
+  return <div className='search-dropdown max-h-80'>{children}</div>
 }
 
 function SearchDropdownItem({ label, sublabel, disabled, onClick }: {
@@ -657,21 +625,10 @@ function SearchDropdownItem({ label, sublabel, disabled, onClick }: {
       type='button'
       onClick={onClick}
       disabled={disabled}
-      className='w-full text-left px-3 py-2.5 cursor-pointer'
-      style={{
-        background: 'transparent',
-        border: 'none',
-        borderBottom: '1px solid var(--border)',
-        color: disabled ? 'var(--muted)' : 'var(--text)',
-        fontFamily: 'var(--sans)',
-        opacity: disabled ? 0.5 : 1,
-        cursor: disabled ? 'default' : 'pointer',
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--bg2)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+      className='search-dropdown-item block w-full'
     >
       <div className='text-sm font-semibold truncate'>{label}</div>
-      {sublabel && <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>{sublabel}</div>}
+      {sublabel && <div className='text-xs truncate mt-0.5 text-muted-foreground'>{sublabel}</div>}
     </button>
   )
 }
@@ -687,7 +644,7 @@ function Section({ title, children }) {
 function Field({ label, children }) {
   return (
     <div className='flex flex-col gap-1.5'>
-      <label className='text-xs font-bold uppercase tracking-widest' style={{ color: 'var(--muted)' }}>{label}</label>
+      <label className='text-xs font-bold uppercase tracking-widest text-muted-foreground'>{label}</label>
       {children}
     </div>
   )
@@ -697,13 +654,7 @@ function Pill({ active, onClick, children }) {
     <button
       type='button'
       onClick={onClick}
-      className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-      style={{
-        background: active ? 'var(--cta-bg)' : 'var(--bg2)',
-        color: active ? 'var(--cta-text)' : 'var(--text)',
-        border: '1.5px solid var(--border)',
-        borderRadius: 'var(--radius-pill)',
-      }}
+      className={cn('chip cursor-pointer px-3 py-1.5 text-xs font-semibold', active && 'border-primary bg-primary text-primary-foreground')}
     >
       {children}
     </button>
@@ -758,22 +709,17 @@ function RecurrencePreview({ startsAt, endsAt, pattern, count }: {
   const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   return (
     <div className='flex flex-col gap-1 mt-1'>
-      <p className='text-xs' style={{ color: 'var(--muted)' }}>{occurrences.length} events will be created:</p>
-      <div
-        className='flex flex-col gap-0.5 rounded-md overflow-hidden'
-        style={{ border: '1px solid var(--border)', background: 'var(--bg2)', maxHeight: 180, overflowY: 'auto' }}
-      >
+      <p className='text-xs text-muted-foreground'>{occurrences.length} events will be created:</p>
+      <div className='flex max-h-[180px] flex-col gap-0.5 overflow-hidden overflow-y-auto rounded-md border border-border bg-secondary'>
         {occurrences.map((o, i) => (
           <div
             key={i}
-            className='flex items-center gap-2 px-3 py-2 text-xs'
-            style={{ borderBottom: i < occurrences.length - 1 ? '1px solid var(--border)' : 'none' }}
+            className='flex items-center gap-2 border-b border-border px-3 py-2 text-xs last:border-b-0'
           >
-            <span
-              className='shrink-0 font-mono font-bold text-center'
-              style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: 'var(--bg)', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >{i + 1}</span>
-            <span style={{ color: 'var(--text)' }}>{fmt(o.startsAt)}</span>
+            <span className='flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground'>
+              {i + 1}
+            </span>
+            <span className='text-foreground'>{fmt(o.startsAt)}</span>
           </div>
         ))}
       </div>

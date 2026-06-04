@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
+import { syncGraphProfileForUserBackground } from '../utils/graphProfileSync'
 import BiometricEnrolGate from './BiometricEnrolGate'
 import LocationPermissionBanner from './LocationPermissionBanner'
 
@@ -19,12 +20,20 @@ export default function RequireAuth({ children }) {
     if (state !== 'checking') return
     refreshSession().then((user) => {
       if (user) {
+        syncGraphProfileForUserBackground(user, { force: true })
         setState('ok')
       } else {
         logout()
         setState('redirect')
       }
     })
+  }, [state])
+
+  // Returning session (valid token): re-probe graph periodically for scope moves.
+  useEffect(() => {
+    if (state !== 'ok') return
+    const user = getCurrentUser()
+    if (user) syncGraphProfileForUserBackground(user)
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ScreenHeader from '../../components/ScreenHeader'
+import { PageShell, PageMain } from '../../components/layout/PageShell'
 import Spinner from '../../components/Spinner'
 import { getCurrentUser } from '../../utils/auth'
 import { searchMembersByName } from '../../utils/membersApi'
@@ -29,7 +30,7 @@ export default function SpecialGroupsScreen() {
   const [view, setView] = useState<View>({ kind: 'list' })
 
   return (
-    <div className='min-h-dvh' style={{ background: 'var(--bg)' }}>
+    <PageShell>
       <ScreenHeader
         title='Special Groups'
         back={view.kind !== 'list' ? undefined : undefined}
@@ -38,12 +39,12 @@ export default function SpecialGroupsScreen() {
           if (view.kind === 'form') setView(view.groupId ? { kind: 'detail', groupId: view.groupId } : { kind: 'list' })
         } : undefined}
       />
-      <main className='max-w-2xl mx-auto px-4 sm:px-6 py-6'>
+      <PageMain className='max-w-2xl'>
         {view.kind === 'list'   && <GroupList   userId={user.userId} onSelect={(id) => setView({ kind: 'detail', groupId: id })} onCreate={() => setView({ kind: 'form', groupId: null })} />}
         {view.kind === 'detail' && <GroupDetail groupId={view.groupId} onBack={() => setView({ kind: 'list' })} onEdit={(id) => setView({ kind: 'form', groupId: id })} />}
         {view.kind === 'form'   && <GroupForm   groupId={view.groupId} userId={user.userId} onSaved={(id) => setView({ kind: 'detail', groupId: id })} onCancel={() => setView(view.groupId ? { kind: 'detail', groupId: view.groupId } : { kind: 'list' })} />}
-      </main>
-    </div>
+      </PageMain>
+    </PageShell>
   )
 }
 
@@ -66,7 +67,7 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
   return (
     <div className='flex flex-col gap-5'>
       <div className='flex items-center justify-between'>
-        <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>
+        <p className='text-xs m-0 text-muted-foreground'>
           Groups let you define a reusable set of people that cuts across church scopes, for use when creating special meetings.
         </p>
       </div>
@@ -80,8 +81,8 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
       </button>
 
       {groups.length === 0 && (
-        <div className='p-8 text-center' style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}>
-          <p className='text-sm m-0' style={{ color: 'var(--muted)' }}>No groups yet.</p>
+        <div className='p-8 text-center surface-card'>
+          <p className='text-sm m-0 text-muted-foreground'>No groups yet.</p>
         </div>
       )}
 
@@ -91,17 +92,16 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
             key={g.id}
             type='button'
             onClick={() => onSelect(g.id)}
-            className='w-full text-left px-4 py-3.5 cursor-pointer transition-all hover:brightness-105 active:scale-[0.99]'
-            style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-1)' }}
+            className='surface-card w-full cursor-pointer px-4 py-3.5 text-left transition-all hover:border-primary/30 active:scale-[0.99]'
           >
             <div className='flex items-center justify-between gap-3'>
               <div className='min-w-0'>
-                <p className='text-sm font-bold m-0 truncate' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{g.name}</p>
+                <p className='text-sm font-bold m-0 truncate tracking-tight text-foreground'>{g.name}</p>
                 {g.description && (
-                  <p className='text-xs m-0 mt-0.5 truncate' style={{ color: 'var(--muted)' }}>{g.description}</p>
+                  <p className='text-xs m-0 mt-0.5 truncate text-muted-foreground'>{g.description}</p>
                 )}
               </div>
-              <span className='shrink-0 text-xs font-semibold px-2 py-0.5' style={{ background: 'var(--bg2)', color: 'var(--muted)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}>
+              <span className='chip shrink-0 px-2 py-0.5 text-xs font-semibold'>
                 {g.member_count ?? 0} {g.member_count === 1 ? 'person' : 'people'}
               </span>
             </div>
@@ -198,27 +198,25 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
   return (
     <div className='flex flex-col gap-5'>
       {/* Header card */}
-      <div className='px-4 py-4 flex flex-col gap-3' style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-card)' }}>
+      <div className='px-4 py-4 flex flex-col gap-3 surface-card'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <button type='button' onClick={onBack} className='text-xs cursor-pointer mb-1' style={{ background: 'none', border: 'none', color: 'var(--accent)', padding: 0 }}>← All groups</button>
-            <h2 className='text-lg font-bold m-0' style={{ color: 'var(--text)', letterSpacing: '-0.02em' }}>{group.name}</h2>
-            {group.description && <p className='text-sm m-0 mt-1' style={{ color: 'var(--muted)' }}>{group.description}</p>}
+            <button type='button' onClick={onBack} className='text-xs cursor-pointer mb-1 border-0 bg-transparent p-0 text-primary'>← All groups</button>
+            <h2 className='text-lg font-bold m-0 tracking-tight text-foreground'>{group.name}</h2>
+            {group.description && <p className='text-sm m-0 mt-1 text-muted-foreground'>{group.description}</p>}
           </div>
           <div className='flex gap-2 shrink-0'>
             <button type='button' onClick={() => onEdit(groupId)}
-              className='text-xs px-3 py-1.5 cursor-pointer font-semibold'
-              style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius-btn)' }}>
+              className='text-xs px-3 py-1.5 cursor-pointer font-semibold btn-pill btn-secondary'>
               Edit
             </button>
             <button type='button' onClick={handleDelete} disabled={deleting}
-              className='text-xs px-3 py-1.5 cursor-pointer font-semibold disabled:opacity-50'
-              style={{ background: 'transparent', border: '1.5px solid color-mix(in oklab, var(--absent) 40%, transparent)', color: 'var(--coral)', borderRadius: 'var(--radius-btn)' }}>
+              className='btn-destructive-outline cursor-pointer px-3 py-1.5 text-xs font-semibold disabled:opacity-50'>
               {deleting ? '…' : 'Delete'}
             </button>
           </div>
         </div>
-        <p className='text-xs m-0' style={{ color: 'var(--muted)' }}>
+        <p className='text-xs m-0 text-muted-foreground'>
           {members.length} {members.length === 1 ? 'person' : 'people'}
         </p>
       </div>
@@ -227,7 +225,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
 
       {/* Add people search */}
       <Section title='Add people'>
-        <div style={{ position: 'relative' }}>
+        <div className='relative'>
           <input
             type='text'
             value={search}
@@ -237,7 +235,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
             autoComplete='off'
             disabled={adding}
           />
-          {searching && <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>Searching…</p>}
+          {searching && <p className='text-xs mt-1 text-muted-foreground'>Searching…</p>}
           {searchResults.length > 0 && (
             <SearchDropdown>
               {searchResults.map((m) => {
@@ -257,7 +255,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
             </SearchDropdown>
           )}
           {!searching && search.trim().length >= 2 && searchResults.length === 0 && (
-            <p className='text-xs mt-1' style={{ color: 'var(--muted)' }}>No matches.</p>
+            <p className='text-xs mt-1 text-muted-foreground'>No matches.</p>
           )}
         </div>
       </Section>
@@ -265,7 +263,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
       {/* Member list */}
       <Section title={`Members (${members.length})`}>
         {members.length === 0 && (
-          <p className='text-sm text-center py-4' style={{ color: 'var(--muted)' }}>No members yet. Search above to add people.</p>
+          <p className='text-sm text-center py-4 text-muted-foreground'>No members yet. Search above to add people.</p>
         )}
         <div className='flex flex-col gap-1.5'>
           {members.map((m) => {
@@ -274,17 +272,16 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
             return (
             <div
               key={m.member_id}
-              className='flex items-center justify-between gap-3 px-3 py-2.5'
-              style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+              className='flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-border bg-secondary'
             >
               <div className='flex items-center gap-2.5 min-w-0'>
-                <div className='shrink-0' style={{ width: 30, height: 30, borderRadius: '50%', overflow: 'hidden', background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className='avatar avatar--sm'>
                   {m.picture_url
-                    ? <img src={m.picture_url} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+                    ? <img src={m.picture_url} alt={name} />
+                    : <span className='avatar-fallback'>{initials}</span>
                   }
                 </div>
-                <p className='text-sm font-semibold m-0 truncate' style={{ color: 'var(--text)' }}>
+                <p className='text-sm font-semibold m-0 truncate text-foreground'>
                   {name}
                 </p>
               </div>
@@ -292,8 +289,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
                 type='button'
                 onClick={() => handleRemove(m.member_id)}
                 disabled={removing === m.member_id}
-                className='shrink-0 text-xs px-2.5 py-1 cursor-pointer disabled:opacity-50'
-                style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)', borderRadius: 'var(--radius-pill)' }}
+                className='chip shrink-0 cursor-pointer px-2.5 py-1 text-xs disabled:opacity-50'
               >
                 {removing === m.member_id ? '…' : 'Remove'}
               </button>
@@ -368,10 +364,9 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className='input-field'
+            className='input-field resize-y'
             placeholder='What is this group for?'
             rows={3}
-            style={{ resize: 'vertical' }}
           />
         </Field>
       </Section>
@@ -380,8 +375,7 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
 
       <div className='flex gap-3'>
         <button type='button' onClick={onCancel}
-          className='flex-1 py-3 font-semibold text-sm cursor-pointer'
-          style={{ background: 'var(--bg2)', border: '1.5px solid var(--border)', color: 'var(--text)', borderRadius: 'var(--radius-btn)' }}>
+          className='flex-1 py-3 font-semibold text-sm cursor-pointer btn-pill btn-secondary'>
           Cancel
         </button>
         <button type='submit' disabled={saving || !name.trim()}
@@ -426,7 +420,7 @@ function Section({ title, children }) {
 function Field({ label, children }) {
   return (
     <div className='flex flex-col gap-1.5'>
-      <label className='text-xs font-bold uppercase tracking-widest' style={{ color: 'var(--muted)' }}>{label}</label>
+      <label className='text-xs font-bold uppercase tracking-widest text-muted-foreground'>{label}</label>
       {children}
     </div>
   )
@@ -434,25 +428,14 @@ function Field({ label, children }) {
 
 function ErrorBox({ children }) {
   return (
-    <div className='p-3 text-sm' style={{ background: 'color-mix(in oklab, var(--absent) 10%, transparent)', color: 'var(--coral)', border: '1px solid color-mix(in oklab, var(--absent) 20%, transparent)', borderRadius: 'var(--radius-btn)' }}>
+    <div className='p-3 text-sm rounded-lg border border-destructive/20 bg-destructive/10 text-destructive'>
       {children}
     </div>
   )
 }
 
 function SearchDropdown({ children }) {
-  return (
-    <div
-      style={{
-        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 100,
-        background: 'var(--card)', border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-btn)', maxHeight: 300, overflowY: 'auto',
-        boxShadow: 'var(--shadow-2)',
-      }}
-    >
-      {children}
-    </div>
-  )
+  return <div className='search-dropdown'>{children}</div>
 }
 
 function SearchDropdownItem({ label, sublabel, pictureUrl, disabled, onClick }: {
@@ -464,25 +447,17 @@ function SearchDropdownItem({ label, sublabel, pictureUrl, disabled, onClick }: 
       type='button'
       onClick={onClick}
       disabled={disabled}
-      className='w-full text-left px-3 py-2 cursor-pointer flex items-center gap-3'
-      style={{
-        background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)',
-        color: disabled ? 'var(--muted)' : 'var(--text)', fontFamily: 'var(--sans)',
-        opacity: disabled ? 0.5 : 1, cursor: disabled ? 'default' : 'pointer',
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--bg2)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+      className='search-dropdown-item'
     >
-      {/* Avatar */}
-      <div className='shrink-0' style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', background: 'var(--bg2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className='avatar avatar--md bg-secondary'>
         {pictureUrl
-          ? <img src={pictureUrl} alt={label} width={32} height={32} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
-          : <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{initials}</span>
+          ? <img src={pictureUrl} alt={label} width={32} height={32} />
+          : <span className='avatar-fallback'>{initials}</span>
         }
       </div>
       <div className='min-w-0'>
         <div className='text-sm font-semibold truncate'>{label}</div>
-        {sublabel && <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 1 }}>{sublabel}</div>}
+        {sublabel && <div className='text-xs truncate mt-px text-muted-foreground'>{sublabel}</div>}
       </div>
     </button>
   )

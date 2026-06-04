@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { cn } from '../../lib/utils'
 import { MapContainer, TileLayer, LayersControl, Circle, Polygon, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -220,52 +221,30 @@ export default function GeoFencePicker({ value, onChange }: Props) {
           Scoped to the picker so it only fires on event create/edit, not on
           every authed page. */}
       <LocationPreWarmer />
-      <div style={{ position: 'relative' }}>
+      <div className='relative'>
         <input
           type='text'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={searching ? 'Searching…' : '🔍 Search for a venue, address, or place name'}
-          className='input-field'
+          className='input-field text-[15px]'
           autoComplete='off'
-          style={{ fontSize: 15 }}
         />
         {searchResults.length > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 'calc(100% + 4px)',
-              left: 0,
-              right: 0,
-              zIndex: 1000,
-              background: 'var(--card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-btn)',
-              maxHeight: 320,
-              overflowY: 'auto',
-              boxShadow: 'var(--shadow-2)',
-            }}
-          >
+          <div className='search-dropdown z-[1000] max-h-80'>
             {searchResults.map((r, i) => (
               <button
                 key={r.placeId || `${r.lat},${r.lon}` || i}
                 type='button'
                 onClick={() => selectResult(r)}
-                className='w-full text-left px-3 py-2.5 cursor-pointer'
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: i < searchResults.length - 1 ? '1px solid var(--border)' : 'none',
-                  color: 'var(--text)',
-                  fontFamily: 'var(--sans)',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                className='search-dropdown-item block w-full'
               >
-                <div className='text-sm font-semibold truncate'>{r.primary}</div>
-                {r.secondary && (
-                  <div className='text-xs truncate' style={{ color: 'var(--muted)', marginTop: 2 }}>{r.secondary}</div>
-                )}
+                <div className='min-w-0'>
+                  <div className='text-sm font-semibold truncate'>{r.primary}</div>
+                  {r.secondary && (
+                    <div className='text-xs truncate mt-0.5 text-muted-foreground'>{r.secondary}</div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -273,55 +252,33 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       </div>
 
       <div className='flex items-center gap-2 flex-wrap'>
-        <div
-          className='flex gap-1 p-1'
-          style={{ background: 'var(--bg2)', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)' }}
-        >
+        <div className='tab-bar flex gap-1 p-1'>
           <button
             type='button'
             onClick={() => setMode('circle')}
-            className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-            style={{
-              background: mode === 'circle' ? 'var(--cta-bg)' : 'transparent',
-              color: mode === 'circle' ? 'var(--cta-text)' : 'var(--muted)',
-              border: 'none',
-              borderRadius: 'var(--radius-pill)',
-            }}
+            className={cn('tab-item flex-none px-3 py-1.5 text-xs', mode === 'circle' && 'tab-item--active')}
           >Circle</button>
           <button
             type='button'
             onClick={() => setMode('polygon')}
-            className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-            style={{
-              background: mode === 'polygon' ? 'var(--cta-bg)' : 'transparent',
-              color: mode === 'polygon' ? 'var(--cta-text)' : 'var(--muted)',
-              border: 'none',
-              borderRadius: 'var(--radius-pill)',
-            }}
+            className={cn('tab-item flex-none px-3 py-1.5 text-xs', mode === 'polygon' && 'tab-item--active')}
           >Polygon</button>
         </div>
         <button
           type='button'
           onClick={snapToMyLocation}
           disabled={gpsBusy}
-          className='ml-auto px-3 py-1.5 text-xs cursor-pointer'
-          style={{
-            background: 'transparent',
-            color: 'var(--muted)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-pill)',
-            opacity: gpsBusy ? 0.5 : 1,
-          }}
+          className='chip ml-auto cursor-pointer px-3 py-1.5 text-xs normal-case tracking-normal disabled:opacity-50'
           title='Use device location (may be inaccurate on desktop)'
         >{gpsBusy ? '📍 Locating…' : '📍 Use my location'}</button>
       </div>
       {gpsError && (
-        <p className='text-xs' style={{ color: 'var(--coral)', margin: 0 }}>{gpsError}</p>
+        <p className='m-0 text-xs text-destructive'>{gpsError}</p>
       )}
 
       {PRESET_VENUES.length > 0 && (
         <div className='flex flex-wrap gap-1.5'>
-          <span className='text-xs self-center mr-1' style={{ color: 'var(--muted)' }}>Quick venues:</span>
+          <span className='text-xs self-center mr-1 text-muted-foreground'>Quick venues:</span>
           {PRESET_VENUES.map((v) => {
             const isSelected = selectedVenueId === v.id
             const onClick = () => {
@@ -351,16 +308,13 @@ export default function GeoFencePicker({ value, onChange }: Props) {
                 key={v.id}
                 type='button'
                 onClick={onClick}
-                className='px-3 py-1.5 text-xs font-semibold cursor-pointer'
-                style={{
-                  background: isSelected ? 'var(--cta-bg)' : 'var(--bg2)',
-                  color: isSelected ? 'var(--cta-text)' : 'var(--muted)',
-                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-pill)',
-                }}
+                className={cn(
+                  'chip cursor-pointer px-3 py-1.5 text-xs font-semibold normal-case tracking-normal',
+                  isSelected && 'border-primary bg-primary text-primary-foreground',
+                )}
                 title={v.type === 'polygon' ? 'Polygon boundary' : 'Circle radius'}
               >
-                <span style={{ marginRight: 4, opacity: 0.7 }}>
+                <span className='mr-1 opacity-70'>
                   {v.type === 'polygon' ? '⬡' : '●'}
                 </span>
                 {v.name}
@@ -371,10 +325,9 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       )}
 
       <div
-        className='overflow-hidden'
-        style={{ height: 320, border: '1px solid var(--border)', borderRadius: 'var(--radius-btn)' }}
+        className='overflow-hidden h-80 overflow-hidden rounded-lg border border-border'
       >
-        <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
+        <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom={true} className='h-full w-full'>
           <LayersControl position='topright'>
             <LayersControl.BaseLayer checked name='Street'>
               <TileLayer
@@ -429,7 +382,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       </div>
 
       {gpsFix && (
-        <p className='text-xs' style={{ color: 'var(--muted)', margin: 0 }}>
+        <p className='m-0 text-xs text-muted-foreground'>
           📡 GPS accuracy: ±{Math.round(gpsFix.accuracy)} m
           {gpsFix.accuracy > 100 && ' — drag the marker or search to refine.'}
         </p>
@@ -437,27 +390,26 @@ export default function GeoFencePicker({ value, onChange }: Props) {
 
       {mode === 'circle' && (
         <div className='flex items-center gap-3'>
-          <label className='text-xs' style={{ color: 'var(--muted)' }}>Radius</label>
+          <label className='text-xs text-muted-foreground'>Radius</label>
           <input
             type='range' min={10} max={500} step={5}
             value={radius} onChange={(e) => { setRadius(Number(e.target.value)); setSelectedVenueId(null) }}
             className='flex-1'
           />
-          <span className='text-xs font-mono' style={{ color: 'var(--text)', minWidth: 50, textAlign: 'right' }}>{radius} m</span>
+          <span className='min-w-[50px] text-right text-xs font-mono text-foreground'>{radius} m</span>
         </div>
       )}
 
       {mode === 'polygon' && (
         <div className='flex items-center justify-between'>
-          <p className='text-xs' style={{ color: 'var(--muted)' }}>
+          <p className='text-xs text-muted-foreground'>
             Tap on the map to add vertices ({polygon.length} so far). Need 3+.
           </p>
           {polygon.length > 0 && (
             <button
               type='button'
               onClick={() => setPolygon([])}
-              className='text-xs underline'
-              style={{ color: 'var(--coral)' }}
+              className='text-xs underline text-destructive'
             >Clear</button>
           )}
         </div>
