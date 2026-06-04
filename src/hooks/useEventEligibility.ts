@@ -61,10 +61,14 @@ function normalizeCacheEntry(raw: any): CachedEligibility | null {
   if (!raw || Date.now() - (raw.ts ?? 0) > ELIGIBILITY_PERSIST_TTL) return null
   if (!raw.event || !raw.viewerCaps) return null
   return {
-    eligible: Array.isArray(raw.eligible) ? raw.eligible : [],
+      eligible: Array.isArray(raw.eligible)
+        ? raw.eligible.filter((r: any) => r != null && r.id != null && r.id !== '')
+        : [],
     eligibleIds: new Set<string>(raw.eligibleIds || []),
     viewerCaps: raw.viewerCaps,
-    viewerSlice: Array.isArray(raw.viewerSlice) ? raw.viewerSlice : [],
+      viewerSlice: Array.isArray(raw.viewerSlice)
+        ? raw.viewerSlice.filter((r: any) => r != null && r.id != null && r.id !== '')
+        : [],
     adminScopes: Array.isArray(raw.adminScopes) ? raw.adminScopes : [],
     childCount: raw.childCount ?? null,
     event: raw.event,
@@ -172,10 +176,11 @@ export function useEventEligibility(
       ? memCandidate
       : readPersistedEligibility(cacheKey)
     if (hit) {
-      setEligible(hit.eligible)
+      const withId = (rows: any[]) => rows.filter((r) => r != null && r.id != null && r.id !== '')
+      setEligible(withId(hit.eligible))
       setEligibleIds(hit.eligibleIds)
       setViewerCaps(hit.viewerCaps)
-      setViewerSlice(hit.viewerSlice)
+      setViewerSlice(withId(hit.viewerSlice))
       setAdminScopes(hit.adminScopes)
       setChildCount(hit.childCount)
       setEvent(hit.event)
@@ -278,9 +283,10 @@ export function useEventEligibility(
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
         // Special-group: membership IS eligibility. Superadmin: full scope snapshot.
-        const eligibleRows = isSpecialGroup || bypassesScopeAndRoleLimits(user)
+        const eligibleRows = (isSpecialGroup || bypassesScopeAndRoleLimits(user)
           ? allRows
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
+        ).filter((r) => r != null && r.id != null && r.id !== '')
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
 
         // getViewerCapabilities requires a graph viewer node. When the graph is

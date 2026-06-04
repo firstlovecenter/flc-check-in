@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Spinner from '../Spinner'
-import { format, formatDistanceToNowStrict } from 'date-fns'
+import { format } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
@@ -24,6 +24,7 @@ import {
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { resolveReportEligible } from '../../utils/reportEligible'
 
 const TABS = [
   { id: 'checked-in', label: 'Checked In' },
@@ -33,6 +34,11 @@ const TABS = [
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
+
+/** Drop null/blank rows from snapshots — prevents `null.id` crashes in memos. */
+function membersWithId(list: any[] | null | undefined): any[] {
+  return (list || []).filter((m) => m != null && m.id != null && m.id !== '')
+}
 
 export default function FullReport({ eventId }: { eventId: string }) {
   const user = getCurrentUser()
@@ -50,6 +56,9 @@ export default function FullReport({ eventId }: { eventId: string }) {
     event, eligible: allEligible, viewerSlice, viewerCaps, adminScopes, records,
     error: eligibilityError, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { refreshKey })
+
+  const safeAllEligible = useMemo(() => membersWithId(allEligible), [allEligible])
+  const safeViewerSlice = useMemo(() => membersWithId(viewerSlice), [viewerSlice])
 
   const [search, setSearch] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -122,7 +131,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
     const idCol = `${topChildLevel}_id`
     const nameCol = `${topChildLevel}_name`
     const seen = new Map<string, string>()
-    for (const m of allEligible) {
+    for (const m of safeAllEligible) {
       if (m[idCol] && !seen.has(m[idCol])) seen.set(m[idCol], m[nameCol] || m[idCol])
     }
     return [
@@ -131,7 +140,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
         .map(([id, name]) => ({ level: topChildLevel, id, name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     ]
-  }, [event, allEligible])
+  }, [event, safeAllEligible])
 
   async function refresh() {
     try {
@@ -142,15 +151,21 @@ export default function FullReport({ eventId }: { eventId: string }) {
     }
   }
 
+  // Mirror EventDashboard: leaders use viewerSlice; scope URL from stat cards may
+  // match viewerScope without hierarchy columns on every profile row.
   const eligible = useMemo(() => {
-    const base =
-      filterChurchId && filterChurchId !== '__all__' && filterLevel
-        ? allEligible.filter((m) => m[`${filterLevel}_id`] === filterChurchId)
-        : !viewerCaps?.canManage && viewerSlice.length > 0
-          ? viewerSlice
-          : allEligible
-    return base
-  }, [allEligible, viewerSlice, viewerCaps?.canManage, filterLevel, filterChurchId])
+    const isAdmin = !!viewerCaps?.canManage
+    const base = isAdmin
+      ? safeAllEligible
+      : safeViewerSlice.length > 0
+        ? safeViewerSlice
+        : safeAllEligible
+    const vs = viewerCaps?.viewerScope
+    if (!filterLevel || !filterChurchId || filterChurchId === '__all__') return base
+    if (!isAdmin && vs?.level === filterLevel && vs?.id === filterChurchId) return base
+    const idCol = `${filterLevel}_id`
+    return base.filter((m) => m[idCol] === filterChurchId)
+  }, [safeAllEligible, safeViewerSlice, viewerCaps?.canManage, viewerCaps?.viewerScope, filterLevel, filterChurchId])
 
   const buckets = useMemo(() => {
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
@@ -229,7 +244,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
     setResetting(memberId)
     try {
       await adminClearFaceDescriptor(memberId)
-      const target = allEligible.find((r) => r.id === memberId)
+      const target = safeAllEligible.find((r) => r.id === memberId)
       addAuditLog({
         action: 'face.descriptor_clear',
         actorId: user!.userId,
@@ -280,7 +295,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
     )
   }
 
-  const confirmMember = confirmResetId ? allEligible.find((r) => r.id === confirmResetId) : null
+  const confirmMember = confirmResetId ? safeAllEligible.find((r) => r.id === confirmResetId) : null
   const confirmName = confirmMember
     ? [confirmMember.first_name, confirmMember.last_name].filter(Boolean).join(' ') || confirmMember.id
     : confirmResetId
@@ -627,7 +642,7 @@ function ListRow({
   )
 }
 
-function MethodTag({ children }: { children: React.ReactNode }) {
+function MethodTag({ children }: { children: ReactNode }) {
   return <Badge variant='outline' className='text-[10px] uppercase tracking-wide'>{children}</Badge>
 }
 
@@ -676,8 +691,9 @@ function StatusBadge({ status }: { status: string }) {
 
 function filterRows(rows: { member: any; record: any }[], q: string) {
   const s = q.trim().toLowerCase()
-  if (!s) return rows
-  return rows.filter((b) => {
+  const valid = rows.filter((b) => b?.member?.id)
+  if (!s) return valid
+  return valid.filter((b) => {
     const m = b.member
     return [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name].some((v) =>
       (v || '').toLowerCase().includes(s),
