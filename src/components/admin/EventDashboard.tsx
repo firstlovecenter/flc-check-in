@@ -141,7 +141,7 @@ export default function EventDashboard({ eventId }) {
   const scopedMembers = useMemo(() => {
     if (!scopeLevel || !scopeChurchId) return null
     const idCol = `${scopeLevel}_id`
-    return eligible.filter((m) => (m as any)[idCol] === scopeChurchId)
+    return eligible.filter((m) => m != null && m.id != null && (m as any)[idCol] === scopeChurchId)
   }, [eligible, scopeLevel, scopeChurchId])
 
   // Stat slice: use scoped subset when a filter is active, otherwise the viewer's own slice.

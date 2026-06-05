@@ -24,7 +24,6 @@ import {
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
-import { resolveReportEligible } from '../../utils/reportEligible'
 
 const TABS = [
   { id: 'checked-in', label: 'Checked In' },
