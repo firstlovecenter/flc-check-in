@@ -199,8 +199,8 @@ export default function EventDashboard({ eventId }) {
     )
   }
 
-  // For non-admin leaders with no URL scope params, anchor the child-count card and
-  // report links to their own scope instead of the full event scope.
+  // For non-admin leaders with no URL scope params, anchor the child-count card
+  // to their own scope instead of the full event scope.
   const isViewerScopedLeader = !viewerCaps.canManage && !scopeLevel && !!viewerCaps.viewerScope
 
   const activeScopeLevel      = scopeLevel      ?? (isViewerScopedLeader ? viewerCaps.viewerScope!.level : event.scope_level)
@@ -210,7 +210,6 @@ export default function EventDashboard({ eventId }) {
   const childLabel        = activeScopeLevel !== 'governorship' ? childScopeLabel(activeScopeLevel) : null
   const displayChildCount = scopeLevel ? scopedChildCount : isViewerScopedLeader ? viewerScopeChildCount : childCount
   const childCountLink    = `/events/${event.id}/scopes?level=${activeScopeLevel}&churchId=${activeScopeChurchId}&churchName=${encodeURIComponent(activeScopeChurchName)}`
-  // Append scope filter to report URLs so FullReport pre-selects the right scope.
   const scopeFilter = activeScopeLevel !== event.scope_level || activeScopeChurchId !== event.scope_church_id
     ? `level=${activeScopeLevel}&churchId=${activeScopeChurchId}&churchName=${encodeURIComponent(activeScopeChurchName)}`
     : ''

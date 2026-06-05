@@ -22,6 +22,7 @@ export default function ReportsList() {
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
@@ -91,18 +92,35 @@ export default function ReportsList() {
     )
   }
 
+  const filteredEvents = events.filter((evt) => {
+    const s = search.trim().toLowerCase()
+    if (!s) return true
+    return [evt.name, evt.scope_church_name, evt.scope_level, evt.status]
+      .some((v) => (v || '').toLowerCase().includes(s))
+  })
+
   return (
     <PageShell>
       <ScreenHeader
         title='Reports'
-        right={<span className='text-xs text-muted-foreground'>{events.length}</span>}
+        right={<span className='text-xs text-muted-foreground'>{filteredEvents.length}</span>}
       />
       <PageMain className='flex flex-col gap-3'>
-        {events.length === 0 && (
-          <EmptyState title='No events yet' description='Reports will appear when events exist in your scope.' />
+        <input
+          type='search'
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder='Search events…'
+          className='input-field'
+        />
+        {filteredEvents.length === 0 && (
+          <EmptyState
+            title={search ? 'No matches' : 'No events yet'}
+            description={search ? 'Try a different search term.' : 'Reports will appear when events exist in your scope.'}
+          />
         )}
         <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-          {events.map((evt) => (
+          {filteredEvents.map((evt) => (
             <Card key={evt.id}>
               <CardContent className='p-0'>
                 <div className='flex items-center justify-between gap-3 p-4'>

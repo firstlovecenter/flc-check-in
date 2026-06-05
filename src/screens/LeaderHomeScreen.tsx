@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
-import TopBar from '../components/TopBar'
 import Spinner from '../components/Spinner'
+import NavDrawer from '../components/NavDrawer'
+import PullToRefreshIndicator from '../components/PullToRefreshIndicator'
 import { PageShell, PageMain } from '../components/layout/PageShell'
 import { EmptyState } from '../components/layout/EmptyState'
 import { Alert } from '../components/ui/alert'
@@ -13,7 +14,163 @@ import {
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
-import type { CheckinEventRow } from '../types/app'
+import type { AppUser, CheckinEventRow } from '../types/app'
+
+const ADMIN_GREETINGS = [
+  'the harvest is plentiful — let\'s make sure every leader is accounted for.',
+  'Hineni means "here I am" — let\'s see which leaders answer today.',
+  'every leader on the list matters. Let\'s check them in.',
+  'the doors are open. Which leaders are showing up?',
+  'faithful and present — that\'s the standard for every leader. Let\'s track it.',
+  'today\'s leader attendance starts with you being here.',
+  'the roll has been called — let\'s see which leaders answer.',
+  'every check-in tells a story. Let\'s write today\'s.',
+  'a good overseer knows their leaders. Let\'s count them in.',
+  'presence is the first proof of a leader\'s commitment.',
+  'which leaders said yes today? Let\'s find out.',
+  'the work begins when the leaders arrive.',
+  'leader accountability starts here — one check-in at a time.',
+  'you can\'t develop leaders who don\'t show up.',
+  'faithfulness is trackable. Let\'s track it.',
+  'every leader present is a win. Let\'s count them.',
+  'the record doesn\'t lie — let\'s make sure every leader is in.',
+  'which leaders answered the call today?',
+  'showing up is non-negotiable for leaders. Let\'s hold the standard.',
+  'the fields need leaders who show up. Let\'s see who\'s in.',
+]
+
+const LEADER_GREETINGS = [
+  'every meeting starts with showing up... and on time.',
+  'your presence as a leader matters — let\'s mark it.',
+  'Hineni — here I am. Ready to be counted.',
+  'faithfulness is showing up, every single time.',
+  'the harvest needs leaders who show up.',
+  'present and accounted for — that\'s the goal.',
+  'Hineni — the answer that changes everything.',
+  'your seat is waiting. Don\'t leave it empty.',
+  'consistency builds character. Show up again today.',
+  'your presence is your vote of confidence in the vision.',
+  'be where you\'re supposed to be, when you\'re supposed to be there.',
+  'early is on time. On time is late. You know the standard.',
+  'leaders show up — every part of the body matters.',
+  'another day, another chance to be counted faithful.',
+  'the register is open. Let your name be found.',
+  'here and ready — that\'s all it takes to start.',
+  'someone is always watching how leaders show up.',
+  'your commitment shows up before you do.',
+  'check in — let them know their leader is here.',
+  'small faithfulness, big impact. Start by showing up.',
+]
+
+const MORNING_GREETINGS = [
+  'the morning belongs to those who show up early.',
+  'rise and be counted — the day is just starting.',
+  'a new morning, a fresh chance to be faithful.',
+  'the early bird gets checked in.',
+  'good things happen when you start the day present.',
+  'the morning watch is set. Are you in position?',
+]
+
+const MIDDAY_GREETINGS = [
+  'the midday watch — still showing up. That\'s the standard.',
+  'halfway through the day and still faithful. Keep going.',
+  'the afternoon session needs you here.',
+  'midday and still showing up — that\'s dedication.',
+  'the day isn\'t over and neither is your faithfulness.',
+  'noon check-in — still counts, always matters.',
+]
+
+const EVENING_GREETINGS = [
+  'the evening watch is open. Be where you need to be.',
+  'evening meetings matter too — and so does your presence.',
+  'the day winds down, but faithfulness doesn\'t.',
+  'end the day where you\'re supposed to be.',
+  'showing up in the evening takes extra commitment. Noted.',
+  'the third watch — faithful to the end of the day.',
+]
+
+const NIGHT_GREETINGS = [
+  'the fourth watch — and still you show up. Remarkable.',
+  'night meetings demand a different kind of commitment. You have it.',
+  'the night watch is for the truly dedicated. Welcome.',
+  'darkness doesn\'t stop the faithful from showing up.',
+  'even at this hour, presence matters.',
+  'the night belongs to those who refuse to be absent.',
+]
+
+function getWatch(): number {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return 0   // morning watch
+  if (hour >= 12 && hour < 17) return 1  // midday watch
+  if (hour >= 17 && hour < 21) return 2  // evening watch
+  return 3                                // night watch
+}
+
+function getTimePool(): string[] {
+  const watch = getWatch()
+  if (watch === 0) return MORNING_GREETINGS
+  if (watch === 1) return MIDDAY_GREETINGS
+  if (watch === 2) return EVENING_GREETINGS
+  return NIGHT_GREETINGS
+}
+
+function buildPool(isAdmin: boolean, isLeader: boolean): string[] {
+  const pool: string[] = [...getTimePool()]
+  if (isLeader) pool.push(...LEADER_GREETINGS)
+  if (isAdmin) pool.push(...ADMIN_GREETINGS)
+  return pool
+}
+
+function getDailyGreeting(isAdmin: boolean, isLeader: boolean): string {
+  const pool = buildPool(isAdmin, isLeader)
+  const now = new Date()
+  const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
+  const seed = dateSeed * 4 + getWatch()
+  return pool[seed % pool.length]
+}
+
+function HomeGreeting({ user }: { user: AppUser | null }) {
+  const firstName = user?.firstName || 'Friend'
+  const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
+  const isLeader = !!(user?.roles?.length)
+  const now = new Date()
+  const dateLabel = format(now, 'EEEE d MMMM').toUpperCase()
+
+  const chips: string[] = []
+  if (user?.unitName) chips.push(user.unitName)
+  if (user?.level) chips.push(user.level.charAt(0).toUpperCase() + user.level.slice(1))
+  if (user?.isAdmin) chips.push('Admin')
+  if (user?.isSuperAdmin) chips.push('Super Admin')
+
+  return (
+    <div className='relative mb-6 px-1'>
+      <PullToRefreshIndicator />
+      <div className='absolute right-0 top-0'>
+        <NavDrawer user={user} />
+      </div>
+      <p className='m-0 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
+        {dateLabel}
+      </p>
+      <h1 className='m-0 text-2xl font-bold leading-tight text-foreground'>
+        <span className='text-primary'>{firstName}</span>
+        {', '}
+        {getDailyGreeting(isAdmin, isLeader)}
+      </h1>
+      {chips.length > 0 && (
+        <div className='mt-3 flex flex-wrap gap-1.5'>
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type HomeState =
   | { status: 'loading' }
@@ -167,15 +324,8 @@ export default function LeaderHomeScreen() {
 
   return (
     <PageShell>
-      <TopBar
-        user={user}
-        right={(
-          <Link to='/events' className='btn-pill btn-secondary px-3 py-1.5 text-xs no-underline'>
-            QR
-          </Link>
-        )}
-      />
       <PageMain>
+        <HomeGreeting user={user} />
         {isAdmin && (
           <div className='mb-6'>
             <Button type='button' onClick={() => navigate('/admin/events/new')} className='gap-2'>

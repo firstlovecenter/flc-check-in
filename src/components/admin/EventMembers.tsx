@@ -10,15 +10,13 @@ import { CenterCard } from '../layout/CenterCard'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Label } from '../ui/label'
-import { Textarea } from '../ui/textarea'
 import { Modal } from '../ui/modal'
 import { cn } from '../../lib/utils'
 import {
-  listCheckedIn, adminClearFaceDescriptor,
-  listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
+  listCheckedIn, listAbsenceNotesForEvent, getRiskyCheckIns,
 } from '../../utils/supabaseCheckins'
-import { childScopeLevel, adminCoversMember } from '../../utils/membersApi'
-import { getCurrentUser, formatName } from '../../utils/auth'
+import { childScopeLevel } from '../../utils/membersApi'
+import { getCurrentUser } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
@@ -61,12 +59,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   const [search, setSearch]       = useState('')
   const [error, setError]         = useState<string | null>(null)
   const [modalMember, setModalMember] = useState<any>(null)
-  const [resetting, setResetting] = useState<string | null>(null)
-  const [confirmResetId, setConfirmResetId] = useState<string | null>(null)
-  const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
-  const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
-  const [absenceInput, setAbsenceInput]   = useState('')
-  const [absenceSaving, setAbsenceSaving] = useState(false)
+  const [absenceNotes, setAbsenceNotes] = useState<Map<string, string>>(new Map())
   const [riskyIds, setRiskyIds] = useState<Set<string>>(new Set())
   const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
   const [filterChurchId,   setFilterChurchId]   = useState<string | null>(urlChurchId)
@@ -138,45 +131,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     catch (err: any) { setError(err.message) }
   }
 
-  async function saveAbsenceNote() {
-    if (!absenceTarget || !absenceInput.trim()) return
-    setAbsenceSaving(true)
-    try {
-      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user!.userId)
-      setAbsenceNotes((m) => new Map(m).set(absenceTarget.id, absenceInput.trim()))
-      addAuditLog({
-        action: 'absence.note_set', actorId: user!.userId, actorName: formatName(user), eventId,
-        targetId: absenceTarget.id,
-        targetName: [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id,
-        details: { reason: absenceInput.trim() },
-      }).catch(() => {})
-      setAbsenceTarget(null)
-      setAbsenceInput('')
-    } catch (err: any) {
-      setError(err.message || 'Could not save note')
-    } finally {
-      setAbsenceSaving(false)
-    }
-  }
-
-  async function confirmResetFaceId(memberId: string) {
-    setConfirmResetId(null)
-    setResetting(memberId)
-    try {
-      await adminClearFaceDescriptor(memberId)
-      const t = safeAllEligible.find((r) => r.id === memberId)
-      addAuditLog({
-        action: 'face.descriptor_clear', actorId: user!.userId, actorName: formatName(user), eventId,
-        targetId: memberId,
-        targetName: t ? [t.first_name, t.last_name].filter(Boolean).join(' ') : memberId,
-      }).catch(() => {})
-    } catch (err: any) {
-      setError(err.message || 'Could not reset Face ID')
-    } finally {
-      setResetting(null)
-    }
-  }
-
   function exportCsv() {
     if (!event) return
     const csv = Papa.unparse(filteredRows.map(({ member: m, record: r }) => ({
@@ -208,10 +162,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   }
 
   const title = STATUS_TITLES[status] || 'Members'
-  const confirmMember = confirmResetId ? safeAllEligible.find((r) => r.id === confirmResetId) : null
-  const confirmName = confirmMember
-    ? [confirmMember.first_name, confirmMember.last_name].filter(Boolean).join(' ') || confirmMember.id
-    : confirmResetId
 
   return (
     <PageShell>
@@ -268,17 +218,9 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               entry={b}
               status={status}
               canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
-              canResetFaceId={!!user?.isSuperAdmin || adminCoversMember(adminScopes, b.member)}
-              resetting={resetting === b.member.id}
               isRisky={riskyIds.has(b.member.id)}
               absenceNote={status !== 'present' ? absenceNotes.get(b.member.id) : undefined}
               onManual={() => setModalMember(b.member)}
-              onResetFaceId={() => setConfirmResetId(b.member.id)}
-              onAddNote={
-                status !== 'present' && viewerCaps.canManage
-                  ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
-                  : undefined
-              }
             />
           ))}
         </div>
@@ -293,55 +235,22 @@ export default function EventMembers({ eventId }: { eventId: string }) {
         />
       )}
 
-      <Modal open={!!confirmResetId} onClose={() => setConfirmResetId(null)} variant='sheet'>
-        <h2 className='m-0 text-base font-semibold text-foreground'>Reset Face ID for {confirmName}?</h2>
-        <p className='m-0 mt-1 text-sm text-muted-foreground'>They will be prompted to re-enrol on their next login.</p>
-        <div className='mt-4 flex gap-3'>
-          <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmResetId(null)}>Cancel</Button>
-          <Button type='button' variant='destructive' className='flex-1' onClick={() => confirmResetId && confirmResetFaceId(confirmResetId)}>Reset</Button>
-        </div>
-      </Modal>
-
-      <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
-        <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
-        <p className='m-0 mt-1 text-sm text-muted-foreground'>
-          {absenceTarget &&
-            ([absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id)}
-        </p>
-        <Textarea value={absenceInput} onChange={(e) => setAbsenceInput(e.target.value)} placeholder='Enter absence reason…' rows={3} className='mt-3 min-h-0' />
-        <div className='mt-4 flex gap-3'>
-          <Button type='button' variant='outline' className='flex-1' onClick={() => setAbsenceTarget(null)}>Cancel</Button>
-          <Button type='button' className='flex-1' disabled={absenceSaving || !absenceInput.trim()} onClick={saveAbsenceNote}>
-            {absenceSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </Modal>
     </PageShell>
   )
 }
 
 // ─── MemberCard ───────────────────────────────────────────────────────────────
 
-function toWaPhone(phone: string | null | undefined): string | null {
-  if (!phone) return null
-  const d = phone.replace(/\D/g, '')
-  if (d.startsWith('0') && d.length === 10) return '233' + d.slice(1)
-  return d || null
-}
 
 function MemberCard({
-  entry, status, canManuallyCheckIn, canResetFaceId, resetting,
-  onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false,
+  entry, status, canManuallyCheckIn,
+  onManual, absenceNote, isRisky = false,
 }: {
   entry: { member: any; record: any }
   status: Status
   canManuallyCheckIn: boolean
-  canResetFaceId: boolean
-  resetting: boolean
   onManual: () => void
-  onResetFaceId: () => void
   absenceNote?: string
-  onAddNote?: () => void
   isRisky?: boolean
 }) {
   const { member: m, record: r } = entry
@@ -349,10 +258,9 @@ function MemberCard({
   const unit     = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
   const initials = [(m.first_name || '')[0], (m.last_name || '')[0]].filter(Boolean).join('').toUpperCase() || '?'
   const phone: string | null = m.phone || null
-  const waPhone  = toWaPhone(phone)
 
   const isAbsent = !r
-  const hasActions = phone || isAbsent || canResetFaceId
+  const hasActions = phone || (isAbsent && canManuallyCheckIn)
 
   return (
     <div className={cn('overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
@@ -404,31 +312,11 @@ function MemberCard({
                 <PhoneIcon />
                 Call
               </a>
-              {waPhone && (
-                <a
-                  href={`https://wa.me/${waPhone}`}
-                  target='_blank' rel='noreferrer'
-                  className='flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#25D366]/50 py-2 text-xs font-semibold text-[#25D366] no-underline active:bg-[#25D366]/10'
-                >
-                  <WhatsAppIcon />
-                  WhatsApp
-                </a>
-              )}
             </>
           )}
           {isAbsent && canManuallyCheckIn && (
             <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={onManual}>
               Check In
-            </Button>
-          )}
-          {isAbsent && onAddNote && (
-            <Button type='button' variant='outline' size='sm' className='flex-1' onClick={onAddNote}>
-              {absenceNote ? 'Edit Note' : 'Add Note'}
-            </Button>
-          )}
-          {canResetFaceId && (
-            <Button type='button' variant='outline' size='sm' className='border-destructive text-destructive' onClick={onResetFaceId} disabled={resetting}>
-              {resetting ? '…' : 'Reset Face ID'}
             </Button>
           )}
         </div>
@@ -445,10 +333,3 @@ function PhoneIcon() {
   )
 }
 
-function WhatsAppIcon() {
-  return (
-    <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
-      <path d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z' />
-    </svg>
-  )
-}
