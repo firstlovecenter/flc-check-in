@@ -485,7 +485,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
         <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
         <p className='m-0 mt-1 text-sm text-muted-foreground'>
           {absenceTarget &&
-            [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id}
+            ([absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id)}
         </p>
         <Textarea
           value={absenceInput}

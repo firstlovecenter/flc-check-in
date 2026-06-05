@@ -291,11 +291,10 @@ export default function EventDashboard({ eventId }) {
 
         <div>
           <p className='section-heading mb-3'>Check-in monitoring</p>
-          <div className='metric-grid'>
-            <StatCard value={stats.stillIn} label='Still in' tone='present' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.left} label='Left' tone='late' to={`/events/${event.id}/report?tab=checked-out${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.absent} label='Absent' tone='absent' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.total} label='Total expected' tone='primary' to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
+          <div className='metric-grid' style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+            <StatCard value={stats.attended} label='Leaders Present' tone='present' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.absent} label='Leaders Absent' tone='absent' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
+            <StatCard value={stats.total} label='Total Expected' tone='primary' to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
           </div>
           {viewerCaps.canManage && riskyCount > 0 && (
             <Link to={`/events/${event.id}/report?tab=checked-in`} className='mt-3 block no-underline'>
