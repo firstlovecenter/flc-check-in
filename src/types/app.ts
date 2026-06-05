@@ -83,7 +83,7 @@ export interface AppUser {
 
 // ─── Supabase rows ──────────────────────────────────────────────────────────
 export type EventStatus = 'ACTIVE' | 'PAUSED' | 'ENDED'
-export type CheckInMethod = 'QR' | 'PIN' | 'MANUAL' | 'FACE_ID'
+export type CheckInMethod = 'QR' | 'PIN' | 'MANUAL'
 export type GeofenceType = 'circle' | 'polygon'
 
 export interface CheckinEventRow {

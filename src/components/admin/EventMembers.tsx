@@ -14,10 +14,10 @@ import { Textarea } from '../ui/textarea'
 import { Modal } from '../ui/modal'
 import { cn } from '../../lib/utils'
 import {
-  listCheckedIn, adminClearFaceDescriptor,
+  listCheckedIn,
   listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
 } from '../../utils/supabaseCheckins'
-import { childScopeLevel, adminCoversMember } from '../../utils/membersApi'
+import { childScopeLevel } from '../../utils/membersApi'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
@@ -51,7 +51,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   const {
-    event, eligible: allEligible, viewerSlice, viewerCaps, adminScopes, records,
+    event, eligible: allEligible, viewerSlice, viewerCaps, records,
     error: eligibilityError, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { refreshKey })
 
@@ -61,8 +61,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   const [search, setSearch]       = useState('')
   const [error, setError]         = useState<string | null>(null)
   const [modalMember, setModalMember] = useState<any>(null)
-  const [resetting, setResetting] = useState<string | null>(null)
-  const [confirmResetId, setConfirmResetId] = useState<string | null>(null)
   const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
   const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
   const [absenceInput, setAbsenceInput]   = useState('')
@@ -159,24 +157,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     }
   }
 
-  async function confirmResetFaceId(memberId: string) {
-    setConfirmResetId(null)
-    setResetting(memberId)
-    try {
-      await adminClearFaceDescriptor(memberId)
-      const t = safeAllEligible.find((r) => r.id === memberId)
-      addAuditLog({
-        action: 'face.descriptor_clear', actorId: user!.userId, actorName: formatName(user), eventId,
-        targetId: memberId,
-        targetName: t ? [t.first_name, t.last_name].filter(Boolean).join(' ') : memberId,
-      }).catch(() => {})
-    } catch (err: any) {
-      setError(err.message || 'Could not reset Face ID')
-    } finally {
-      setResetting(null)
-    }
-  }
-
   function exportCsv() {
     if (!event) return
     const csv = Papa.unparse(filteredRows.map(({ member: m, record: r }) => ({
@@ -208,10 +188,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   }
 
   const title = STATUS_TITLES[status] || 'Members'
-  const confirmMember = confirmResetId ? safeAllEligible.find((r) => r.id === confirmResetId) : null
-  const confirmName = confirmMember
-    ? [confirmMember.first_name, confirmMember.last_name].filter(Boolean).join(' ') || confirmMember.id
-    : confirmResetId
 
   return (
     <PageShell>
@@ -268,12 +244,9 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               entry={b}
               status={status}
               canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
-              canResetFaceId={!!user?.isSuperAdmin || adminCoversMember(adminScopes, b.member)}
-              resetting={resetting === b.member.id}
               isRisky={riskyIds.has(b.member.id)}
               absenceNote={status !== 'present' ? absenceNotes.get(b.member.id) : undefined}
               onManual={() => setModalMember(b.member)}
-              onResetFaceId={() => setConfirmResetId(b.member.id)}
               onAddNote={
                 status !== 'present' && viewerCaps.canManage
                   ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
@@ -292,15 +265,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
           onSuccess={() => { setModalMember(null); refresh() }}
         />
       )}
-
-      <Modal open={!!confirmResetId} onClose={() => setConfirmResetId(null)} variant='sheet'>
-        <h2 className='m-0 text-base font-semibold text-foreground'>Reset Face ID for {confirmName}?</h2>
-        <p className='m-0 mt-1 text-sm text-muted-foreground'>They will be prompted to re-enrol on their next login.</p>
-        <div className='mt-4 flex gap-3'>
-          <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmResetId(null)}>Cancel</Button>
-          <Button type='button' variant='destructive' className='flex-1' onClick={() => confirmResetId && confirmResetFaceId(confirmResetId)}>Reset</Button>
-        </div>
-      </Modal>
 
       <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
         <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
@@ -330,16 +294,13 @@ function toWaPhone(phone: string | null | undefined): string | null {
 }
 
 function MemberCard({
-  entry, status, canManuallyCheckIn, canResetFaceId, resetting,
-  onManual, onResetFaceId, absenceNote, onAddNote, isRisky = false,
+  entry, status, canManuallyCheckIn,
+  onManual, absenceNote, onAddNote, isRisky = false,
 }: {
   entry: { member: any; record: any }
   status: Status
   canManuallyCheckIn: boolean
-  canResetFaceId: boolean
-  resetting: boolean
   onManual: () => void
-  onResetFaceId: () => void
   absenceNote?: string
   onAddNote?: () => void
   isRisky?: boolean
@@ -352,7 +313,7 @@ function MemberCard({
   const waPhone  = toWaPhone(phone)
 
   const isAbsent = !r
-  const hasActions = phone || isAbsent || canResetFaceId
+  const hasActions = phone || isAbsent
 
   return (
     <div className={cn('overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
@@ -424,11 +385,6 @@ function MemberCard({
           {isAbsent && onAddNote && (
             <Button type='button' variant='outline' size='sm' className='flex-1' onClick={onAddNote}>
               {absenceNote ? 'Edit Note' : 'Add Note'}
-            </Button>
-          )}
-          {canResetFaceId && (
-            <Button type='button' variant='outline' size='sm' className='border-destructive text-destructive' onClick={onResetFaceId} disabled={resetting}>
-              {resetting ? '…' : 'Reset Face ID'}
             </Button>
           )}
         </div>

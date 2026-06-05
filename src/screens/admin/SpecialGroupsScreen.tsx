@@ -4,11 +4,10 @@ import ScreenHeader from '../../components/ScreenHeader'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
 import Spinner from '../../components/Spinner'
 import { getCurrentUser } from '../../utils/auth'
-import { searchMembersByName } from '../../utils/membersApi'
 import {
   listSpecialGroups, getSpecialGroup, createSpecialGroup, updateSpecialGroup,
   deleteSpecialGroup, listSpecialGroupMembers, addMembersToSpecialGroup,
-  removeMemberFromSpecialGroup,
+  removeMemberFromSpecialGroup, searchMemberProfiles,
   type SpecialGroup, type SpecialGroupMember,
 } from '../../utils/supabaseCheckins'
 
@@ -149,7 +148,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
     setSearching(true)
     const t = setTimeout(async () => {
       try {
-        const res = await searchMembersByName(q, 10)
+        const res = await searchMemberProfiles(q, 10)
         if (!cancelled) setSearchResults(res)
       } catch {
         if (!cancelled) setSearchResults([])
@@ -161,7 +160,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
   }, [search])
 
   async function handleAdd(m: any) {
-    const name = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
+    const name = [m.title, m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || m.id
     if (members.some((x) => x.member_id === m.id)) return
     setAdding(true)
     try {
@@ -239,14 +238,15 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
           {searchResults.length > 0 && (
             <SearchDropdown>
               {searchResults.map((m) => {
-                const name = m.fullName || `${m.firstName || ''} ${m.lastName || ''}`.trim()
+                const name = [m.title, m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || m.id
+                const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || m.campus_name || ''
                 const already = memberSet.has(m.id)
                 return (
                   <SearchDropdownItem
                     key={m.id}
                     label={name}
-                    sublabel={memberLeadsLabel(m)}
-                    pictureUrl={m.pictureUrl}
+                    sublabel={unit}
+                    pictureUrl={m.picture_url}
                     disabled={already}
                     onClick={() => handleAdd(m)}
                   />
@@ -384,26 +384,6 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
         </button>
       </div>
     </form>
-  )
-}
-
-// ─── memberLeadsLabel ─────────────────────────────────────────────────────────
-// Returns the most specific "leads X" label from a graph member object.
-function memberLeadsLabel(m: any): string {
-  const pick = (arr: any[]) => (Array.isArray(arr) && arr[0]?.name) ? arr[0].name : null
-  return (
-    pick(m.leadsBacenta)       && `Leads Bacenta · ${pick(m.leadsBacenta)}`       ||
-    pick(m.leadsGovernorship)  && `Leads Governorship · ${pick(m.leadsGovernorship)}`  ||
-    pick(m.leadsCouncil)       && `Leads Council · ${pick(m.leadsCouncil)}`       ||
-    pick(m.leadsStream)        && `Leads Stream · ${pick(m.leadsStream)}`         ||
-    pick(m.leadsCampus)        && `Leads Campus · ${pick(m.leadsCampus)}`         ||
-    pick(m.leadsOversight)     && `Leads Oversight · ${pick(m.leadsOversight)}`   ||
-    pick(m.leadsDenomination)  && `Leads Denomination · ${pick(m.leadsDenomination)}` ||
-    pick(m.isAdminForCouncil)  && `Admin · ${pick(m.isAdminForCouncil)}`          ||
-    pick(m.isAdminForStream)   && `Admin · ${pick(m.isAdminForStream)}`           ||
-    pick(m.isAdminForCampus)   && `Admin · ${pick(m.isAdminForCampus)}`           ||
-    pick(m.isAdminForOversight)&& `Admin · ${pick(m.isAdminForOversight)}`        ||
-    ''
   )
 }
 

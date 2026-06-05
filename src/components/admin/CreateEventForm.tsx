@@ -17,7 +17,7 @@ import { cn } from '../../lib/utils'
 
 interface AdminScope { level: string; id: string; name: string }
 
-const ALL_METHODS = ['QR', 'PIN', 'FACE_ID', 'MANUAL']
+const ALL_METHODS = ['QR', 'PIN', 'MANUAL']
 
 export default function CreateEventForm() {
   const navigate = useNavigate()

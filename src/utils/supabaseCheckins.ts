@@ -9,10 +9,7 @@ import { getUserChurchRefs } from './userScope'
 import type { AppUser } from '../types/app'
 
 // ─── Column projections (Phase 2.1) ──────────────────────────────────────
-// Explicit column lists keep transferred-bytes small. The biggest wins:
-//   • MEMBER_PROFILE_LIST_COLUMNS — drops face_descriptor (~1 KB / row)
-//     from every dashboard / scope-member fetch. Multiplied across a 500-
-//     member scope this saves ~500 KB per call.
+// Explicit column lists keep transferred-bytes small. The biggest win:
 //   • CHECKIN_EVENT_LIST_COLUMNS — drops geofence_polygon (jsonb, can be
 //     large) from list queries that only need to render an event card.
 //     Detail/edit screens use CHECKIN_EVENT_FULL_COLUMNS = '*'.
@@ -21,7 +18,7 @@ const MEMBER_PROFILE_LIST_COLUMNS =
   'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
   'council_id, council_name, stream_id, stream_name, ' +
   'campus_id, campus_name, oversight_id, oversight_name, ' +
-  'denomination_id, denomination_name, has_face_id, updated_at'
+  'denomination_id, denomination_name, updated_at'
 
 const CHECKIN_EVENT_LIST_COLUMNS =
   'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
@@ -164,10 +161,7 @@ export async function bulkUpsertMemberProfiles(rows) {
   return data || []
 }
 
-/** Read a member's flat profile row.
- *  Excludes face_descriptor (128-float array, ~1KB) — that column is only
- *  needed by face-enrolment and biometrics admin screens, which fetch it
- *  via dedicated helpers (getMyFaceDescriptor / listMembersForBiometricsAdmin). */
+/** Read a member's flat profile row. */
 export async function getMemberProfile(memberId) {
   const { data, error } = await supabase
     .from('member_profiles')
@@ -182,166 +176,36 @@ export async function getMemberProfile(memberId) {
   return data
 }
 
-// ─── Face ID ───────────────────────────────────────────────────────────────
-// Descriptors are 128-float vectors from face-api.js. Stored on
-// member_profiles.face_descriptor (double precision[]).
-
-export async function getMyFaceDescriptor(memberId: string): Promise<Float32Array | null> {
-  const { data, error } = await supabase
-    .from('member_profiles').select('face_descriptor').eq('id', memberId).maybeSingle()
-  if (error) throw error
-  const arr = data?.face_descriptor
-  if (!Array.isArray(arr) || arr.length === 0) return null
-  return new Float32Array(arr)
-}
-
-/** Lightweight enrollment check — reads the boolean generated column instead
- *  of fetching the full face_descriptor blob. Used by BiometricEnrolGate to
- *  skip the enrolment prompt for users who have already set up Face ID. */
-export async function checkHasFaceId(memberId: string): Promise<boolean> {
-  const { data, error } = await supabase
+export async function listMemberProfilesPaginated(
+  page: number, pageSize: number,
+): Promise<{ data: any[]; count: number }> {
+  const from = page * pageSize
+  const to = from + pageSize - 1
+  const { data, error, count } = await supabase
     .from('member_profiles')
-    .select('has_face_id')
-    .eq('id', memberId)
-    .maybeSingle()
-  if (error) throw error
-  return !!data?.has_face_id
-}
-
-// Self-service first-time enrolment. Refuses to overwrite an existing
-// descriptor — once a user has Face ID set up, only an admin can clear it
-// (which then re-enables this path on the user's next login).
-//
-// Uses a check-then-upsert pattern so enrollment succeeds even when the
-// member_profiles row hasn't been written yet (the post-login profile sync
-// is fire-and-forget and may not have landed by the time the user completes
-// the face sweep).
-export async function setMyFaceDescriptor(memberId: string, descriptor: Float32Array): Promise<void> {
-  // Read current state first (maybeSingle → null if row doesn't exist yet)
-  const { data: existing, error: checkErr } = await supabase
-    .from('member_profiles')
-    .select('face_descriptor')
-    .eq('id', memberId)
-    .maybeSingle()
-  if (checkErr) throw checkErr
-
-  if (existing?.face_descriptor) {
-    throw new Error('Face ID is already set up. Contact an admin to reset it.')
-  }
-
-  // Row either doesn't exist yet (upsert will create it) or exists with
-  // face_descriptor = null (upsert will update just that column).
-  const { error } = await supabase
-    .from('member_profiles')
-    .upsert({ id: memberId, face_descriptor: Array.from(descriptor) }, { onConflict: 'id' })
-  if (error) throw error
-}
-
-// Admin-only: wipe a member's Face ID. After this the member's next login
-// will re-trigger the first-time enrolment modal.
-export async function adminClearFaceDescriptor(memberId: string): Promise<void> {
-  const { error } = await supabase
-    .from('member_profiles')
-    .update({ face_descriptor: null })
-    .eq('id', memberId)
-  if (error) throw error
-}
-
-// Fetches member profile rows for an admin's biometrics dashboard. Returns
-// every member within the OR of the given (level, churchId) scope pairs,
-// with a boolean `has_face_id` derived from face_descriptor presence.
-//
-// scopes: [{ level, id }] — typically getAdminScopes(member).
-//
-// Uses the `has_face_id` generated column (migration 009) instead of pulling
-// the 128-float face_descriptor over the wire. For large scopes this turns a
-// multi-MB payload into a few KB.
-const MEMBER_PROFILE_BIOMETRICS_COLUMNS =
-  'id, first_name, last_name, email, roles, picture_url, ' +
-  'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
-  'council_id, council_name, stream_id, stream_name, ' +
-  'campus_id, campus_name, oversight_id, oversight_name, ' +
-  'denomination_id, denomination_name, has_face_id'
-
-// Only leaders/admins — rows where roles[] contains at least one leader/admin role.
-const LEADER_ADMIN_ROLES = [
-  'leaderBacenta','leaderGovernorship','leaderCouncil','leaderStream',
-  'leaderCampus','leaderOversight','leaderDenomination',
-  'adminGovernorship','adminCouncil','adminStream',
-  'adminCampus','adminOversight','adminDenomination',
-]
-
-export async function getBiometricsTotals(
-  scopes?: Array<{ level: string; id: string }>
-): Promise<{ total: number; enrolled: number }> {
-  const orFilter = scopes?.length ? scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',') : null
-
-  const totalQ = supabase
-    .from('member_profiles')
-    .select('id', { count: 'exact', head: true })
-    .overlaps('roles', LEADER_ADMIN_ROLES)
-  const enrolledQ = supabase
-    .from('member_profiles')
-    .select('id', { count: 'exact', head: true })
-    .overlaps('roles', LEADER_ADMIN_ROLES)
-    .eq('has_face_id', true)
-
-  const [totalRes, enrolledRes] = await Promise.all([
-    orFilter ? totalQ.or(orFilter) : totalQ,
-    orFilter ? enrolledQ.or(orFilter) : enrolledQ,
-  ])
-
-  return {
-    total: totalRes.count ?? 0,
-    enrolled: enrolledRes.count ?? 0,
-  }
-}
-
-export async function listAllMembersForBiometrics(search?: string): Promise<Array<any>> {
-  let query = supabase
-    .from('member_profiles')
-    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
-    .overlaps('roles', LEADER_ADMIN_ROLES)
-    .order('first_name', { ascending: true })
-    .limit(5000)
-
-  if (search && search.trim().length >= 2) {
-    const q = search.trim()
-    query = query.or(
-      `first_name.ilike.%${q}%,last_name.ilike.%${q}%`
+    .select(
+      'id, title, first_name, last_name, email, picture_url, roles, ' +
+      'bacenta_name, governorship_name, council_name, stream_name, campus_name',
+      { count: 'exact' },
     )
-  }
-
-  const { data, error } = await query
+    .order('first_name', { ascending: true })
+    .range(from, to)
   if (error) throw error
-  return data || []
+  return { data: data || [], count: count ?? 0 }
 }
 
-export async function listMembersForBiometricsAdmin(
-  scopes: Array<{ level: string; id: string }>
-): Promise<Array<any>> {
-  if (!scopes?.length) return []
-  const orFilter = scopes.map((s) => `${s.level}_id.eq.${s.id}`).join(',')
+export async function searchMemberProfiles(query: string, limit = 50): Promise<any[]> {
+  const q = query.trim()
+  if (q.length < 2) return []
   const { data, error } = await supabase
     .from('member_profiles')
-    .select(MEMBER_PROFILE_BIOMETRICS_COLUMNS)
-    .overlaps('roles', LEADER_ADMIN_ROLES)
-    .or(orFilter)
+    .select('id, title, first_name, last_name, email, picture_url, roles, ' +
+            'bacenta_name, governorship_name, council_name, stream_name, campus_name')
+    .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
     .order('first_name', { ascending: true })
+    .limit(limit)
   if (error) throw error
   return data || []
-}
-
-// Records a server-side claim that the client just matched the user's face
-// locally. submit_checkin requires a fresh claim (<60s) for FACE_ID and
-// consumes it on success.
-export async function claimFaceMatch(eventId: string, memberId: string) {
-  const { data, error } = await supabase.rpc('claim_face_match', {
-    p_event_id: eventId,
-    p_member_id: memberId,
-  })
-  if (error) return { ok: false, reason: 'rpc_error', error: error.message }
-  return data
 }
 
 // ─── checkin_events ─────────────────────────────────────────────────────────
@@ -755,7 +619,6 @@ export async function listMemberProfilesByScope(
   scopeChurchId: string,
 ): Promise<any[]> {
   const col = `${scopeLevel}_id`
-  // Exclude face_descriptor (~1KB / row) — fallback path never needs it.
   const { data, error } = await supabase
     .from('member_profiles')
     .select(MEMBER_PROFILE_LIST_COLUMNS)
@@ -981,7 +844,6 @@ export async function listDefaulted(eventId, eligibleMemberIds) {
   const checkedIn = new Set((records || []).map((r) => r.member_id))
   const defaultedIds = eligibleMemberIds.filter((id) => !checkedIn.has(id))
   if (!defaultedIds.length) return []
-  // Defaulted-list rendering never needs face_descriptor.
   const { data: profiles, error: pe } = await supabase
     .from('member_profiles')
     .select(MEMBER_PROFILE_LIST_COLUMNS)

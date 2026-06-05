@@ -1,7 +1,3 @@
-// Admin-only member detail page. Reached from MemberBiometrics by clicking
-// a row. Shows everything we know about a member from member_profiles plus
-// a list of events they've personally checked in to.
-
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { format } from 'date-fns'
@@ -9,10 +5,9 @@ import ScreenHeader from '../../components/ScreenHeader'
 import Spinner from '../../components/Spinner'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
 import { Badge } from '../../components/ui/badge'
-import { Button } from '../../components/ui/button'
 import { cn } from '../../lib/utils'
 import {
-  getMemberProfile, listEventsAttendedByMember, adminClearFaceDescriptor,
+  getMemberProfile, listEventsAttendedByMember,
 } from '../../utils/supabaseCheckins'
 
 type Status = 'loading' | 'ok' | 'error'
@@ -33,9 +28,6 @@ export default function MemberDetailScreen() {
   const [profile, setProfile] = useState<any | null>(null)
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [resetBusy, setResetBusy] = useState(false)
-  const [confirmReset, setConfirmReset] = useState(false)
-
   async function load() {
     setStatus('loading')
     setError(null)
@@ -55,22 +47,6 @@ export default function MemberDetailScreen() {
 
   useEffect(() => { if (memberId) load() }, [memberId]) // eslint-disable-line
 
-  async function handleClearFace() {
-    setResetBusy(true)
-    setError(null)
-    try {
-      await adminClearFaceDescriptor(memberId)
-      // Re-fetch the profile so the badge updates.
-      const p = await getMemberProfile(memberId)
-      setProfile(p)
-      setConfirmReset(false)
-    } catch (err: any) {
-      setError(err.message || 'Reset failed')
-    } finally {
-      setResetBusy(false)
-    }
-  }
-
   const name = profile
     ? [profile.title, profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.id
     : '—'
@@ -80,7 +56,7 @@ export default function MemberDetailScreen() {
 
   return (
     <PageShell>
-      <ScreenHeader title='Member' back={{ to: '/admin/biometrics', label: 'Biometrics' }} />
+      <ScreenHeader title='Member' back={{ to: '/admin/members', label: 'Members' }} />
       <PageMain className='max-w-3xl flex flex-col gap-4'>
 
         {status === 'loading' && <Spinner />}
@@ -146,45 +122,6 @@ export default function MemberDetailScreen() {
                   <p className='text-sm text-muted-foreground'>No hierarchy data on this member.</p>
                 )}
               </div>
-            </Section>
-
-            {/* Biometrics */}
-            <Section title='Biometrics'>
-              <div
-                className='px-4 py-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary'
-              >
-                <div className='min-w-0'>
-                  <p className='text-sm font-semibold m-0 text-foreground'>Face ID</p>
-                  <p className='text-xs m-0 mt-0.5 text-muted-foreground'>
-                    {profile.has_face_id ? 'Enrolled — descriptor on file.' : 'Not enrolled yet.'}
-                  </p>
-                </div>
-                {profile.has_face_id && (
-                  confirmReset ? (
-                    <div className='flex gap-1.5 shrink-0'>
-                      <button
-                        type='button'
-                        onClick={() => setConfirmReset(false)}
-                        disabled={resetBusy}
-                        className='btn-pill btn-secondary cursor-pointer px-3 py-1.5 text-xs'
-                      >Cancel</button>
-                      <button
-                        type='button'
-                        onClick={handleClearFace}
-                        disabled={resetBusy}
-                        className='cursor-pointer rounded-lg border border-destructive bg-transparent px-3 py-1.5 text-xs text-destructive disabled:opacity-50'
-                      >{resetBusy ? 'Resetting…' : 'Confirm reset'}</button>
-                    </div>
-                  ) : (
-                    <button
-                      type='button'
-                      onClick={() => setConfirmReset(true)}
-                      className='shrink-0 cursor-pointer rounded-lg border border-destructive bg-transparent px-3 py-1.5 text-xs text-destructive'
-                    >Reset Face ID</button>
-                  )
-                )}
-              </div>
-              {error && <p className='text-xs mt-2 text-destructive'>{error}</p>}
             </Section>
 
             {/* Attendance */}

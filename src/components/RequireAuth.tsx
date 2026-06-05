@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 import { syncGraphProfileForUserBackground } from '../utils/graphProfileSync'
-import BiometricEnrolGate from './BiometricEnrolGate'
 import LocationPermissionBanner from './LocationPermissionBanner'
 
 type State = 'checking' | 'ok' | 'redirect'
@@ -47,7 +46,7 @@ export default function RequireAuth({ children }) {
   return (
     <>
       <LocationPermissionBanner />
-      <BiometricEnrolGate>{children}</BiometricEnrolGate>
+      {children}
     </>
   )
 }
