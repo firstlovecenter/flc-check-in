@@ -46,6 +46,9 @@ export default function EventDashboard({ eventId }) {
     childCount, records, error, initialLoading, setEvent, setRecords,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey })
 
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date())
+  useEffect(() => { setLastUpdatedAt(new Date()) }, [records])
+
   // Supabase Realtime: push check-in record changes to the UI without waiting
   // for the poll tick. Falls back to the 60 s poll if Realtime is unavailable.
   useEffect(() => {
@@ -290,14 +293,53 @@ export default function EventDashboard({ eventId }) {
         )}
 
         <div>
-          <p className='section-heading mb-3'>Check-in monitoring</p>
-          <div className='metric-grid' style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
-            <StatCard value={stats.attended} label='Leaders Present' tone='present' to={`/events/${event.id}/report?tab=checked-in${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.absent} label='Leaders Absent' tone='absent' to={`/events/${event.id}/report?tab=defaulted${scopeFilter ? `&${scopeFilter}` : ''}`} />
-            <StatCard value={stats.total} label='Total Expected' tone='primary' to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`} />
+          <div className='mb-2 flex items-center justify-between'>
+            <p className='section-heading m-0 text-xs uppercase tracking-widest'>Live Check-Ins</p>
+            <span className='text-[11px] text-muted-foreground'>
+              Updated {formatDistanceToNowStrict(lastUpdatedAt, { addSuffix: true })}
+            </span>
+          </div>
+          <div className='mb-3 flex items-center gap-1.5'>
+            <span className='relative flex h-2 w-2'>
+              <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60' />
+              <span className='relative inline-flex h-2 w-2 rounded-full bg-success' />
+            </span>
+            <span className='text-[11px] font-semibold uppercase tracking-wider text-success'>Realtime</span>
+          </div>
+          <div className='flex flex-col gap-3'>
+            <div className='overflow-hidden rounded-2xl border border-border bg-card'>
+              <LiveRow
+                icon='pct'
+                label='Attendance'
+                count={`${stats.pct}%`}
+                valueClass={stats.pct >= 80 ? 'text-success' : stats.pct >= 50 ? 'text-warning' : 'text-destructive'}
+              />
+            </div>
+            <div className='overflow-hidden rounded-2xl border border-border bg-card'>
+              <LiveRow
+                icon='present'
+                label='Leaders Checked In'
+                count={stats.attended}
+                to={`/events/${event.id}/members?status=present${scopeFilter ? `&${scopeFilter}` : ''}`}
+              />
+              <div className='h-px bg-border' />
+              <LiveRow
+                icon='absent'
+                label='Leaders Absent'
+                count={stats.absent}
+                to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
+              />
+              <div className='h-px bg-border' />
+              <LiveRow
+                icon='primary'
+                label='Total Expected'
+                count={stats.total}
+                to={`/events/${event.id}/members?status=all${scopeFilter ? `&${scopeFilter}` : ''}`}
+              />
+            </div>
           </div>
           {viewerCaps.canManage && riskyCount > 0 && (
-            <Link to={`/events/${event.id}/report?tab=checked-in`} className='mt-3 block no-underline'>
+            <Link to={`/events/${event.id}/members?status=present`} className='mt-3 block no-underline'>
               <Alert variant='destructive' className='flex items-center gap-2'>
                 <span>⚠</span>
                 <span>{riskyCount} member{riskyCount > 1 ? 's' : ''} flagged for shared device — possible proxy check-in</span>
@@ -306,33 +348,22 @@ export default function EventDashboard({ eventId }) {
           )}
         </div>
 
-        <div className='mt-auto flex items-center gap-3 pt-1'>
-          <Card className='flex-1'>
-            <CardContent className='py-3 text-center pt-3'>
-              <p className='m-0 text-xs text-muted-foreground'>Attendance</p>
-              <p className={cn(
-                'm-0 text-lg font-bold tnum',
-                stats.pct >= 80 ? 'text-success' : stats.pct >= 50 ? 'text-warning' : 'text-destructive',
-              )}>
-                {stats.pct}%
-              </p>
-            </CardContent>
-          </Card>
-          <Link
-            to={`/events/${event.id}/report${scopeFilter ? `?${scopeFilter}` : ''}`}
-            className='btn-pill btn-primary flex-[2] py-3 text-center text-sm font-semibold no-underline'
-          >
-            View full report
+        {viewerCaps.canManage && (
+          <Link to={`/events/${event.id}/audit`} className='block no-underline'>
+            <div className='flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5 transition-colors active:bg-muted/50'>
+              <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground'>
+                <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+                  <circle cx='12' cy='12' r='10' />
+                  <polyline points='12 6 12 12 16 14' />
+                </svg>
+              </div>
+              <span className='flex-1 text-sm font-semibold text-foreground'>Manual check-in history</span>
+              <svg viewBox='0 0 24 24' width='16' height='16' className='shrink-0 text-muted-foreground/40' fill='none' stroke='currentColor' strokeWidth='2'>
+                <path d='M9 6l6 6-6 6' strokeLinecap='round' strokeLinejoin='round' />
+              </svg>
+            </div>
           </Link>
-          {viewerCaps.canManage && (
-            <Link
-              to={`/events/${event.id}/audit`}
-              className='btn-pill btn-secondary whitespace-nowrap px-3 py-3 text-center text-sm font-semibold no-underline'
-            >
-              Audit log
-            </Link>
-          )}
-        </div>
+        )}
 
         {isSuperAdmin && !scopeChurchName && (
           <Button variant='outline' className='mt-1 w-full border-dashed text-muted-foreground' onClick={() => setShowAddMember(true)}>
@@ -349,28 +380,74 @@ export default function EventDashboard({ eventId }) {
   )
 }
 
-type StatTone = 'present' | 'late' | 'absent' | 'primary'
+type LiveTone = 'present' | 'absent' | 'primary' | 'pct'
 
-interface StatCardProps {
-  value: number
-  label: string
-  tone: StatTone
-  to?: string
+const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
+  present: (
+    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M20 6L9 17l-5-5' />
+    </svg>
+  ),
+  absent: (
+    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' />
+      <line x1='12' y1='9' x2='12' y2='13' />
+      <line x1='12' y1='17' x2='12.01' y2='17' />
+    </svg>
+  ),
+  primary: (
+    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' />
+      <circle cx='9' cy='7' r='4' />
+      <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
+      <path d='M16 3.13a4 4 0 0 1 0 7.75' />
+    </svg>
+  ),
+  pct: (
+    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+      <line x1='19' y1='5' x2='5' y2='19' />
+      <circle cx='6.5' cy='6.5' r='2.5' />
+      <circle cx='17.5' cy='17.5' r='2.5' />
+    </svg>
+  ),
 }
 
-function StatCard({ value, label, tone, to }: StatCardProps) {
+const LIVE_ICON_BG: Record<LiveTone, string> = {
+  present: 'bg-success/15 text-success',
+  absent:  'bg-destructive/15 text-destructive',
+  primary: 'bg-primary/15 text-primary',
+  pct:     'bg-muted/60 text-muted-foreground',
+}
+
+const LIVE_VALUE_COLOR: Record<LiveTone, string> = {
+  present: 'text-success',
+  absent:  'text-destructive',
+  primary: 'text-foreground',
+  pct:     'text-foreground',
+}
+
+function LiveRow({ icon, label, count, to, valueClass }: {
+  icon: LiveTone
+  label: string
+  count: number | string
+  to?: string
+  valueClass?: string
+}) {
   const body = (
-    <div className={cn('metric-tile', `metric-tile--${tone}`)}>
-      <p className='metric-tile__value tnum'>{value}</p>
-      <p className='metric-tile__label'>{label}</p>
+    <div className='flex items-center gap-3 px-4 py-3.5 transition-colors active:bg-muted/50'>
+      <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', LIVE_ICON_BG[icon])}>
+        {LIVE_ICONS[icon]}
+      </div>
+      <span className='flex-1 text-sm font-semibold text-foreground'>{label}</span>
+      <span className={cn('tnum text-xl font-bold', valueClass ?? LIVE_VALUE_COLOR[icon])}>{count}</span>
       {to && (
-        <svg viewBox='0 0 24 24' width='12' height='12' className='mt-1.5 opacity-50' fill='none' stroke='currentColor' strokeWidth='2.5'>
+        <svg viewBox='0 0 24 24' width='16' height='16' className='shrink-0 text-muted-foreground/40' fill='none' stroke='currentColor' strokeWidth='2'>
           <path d='M9 6l6 6-6 6' strokeLinecap='round' strokeLinejoin='round' />
         </svg>
       )}
     </div>
   )
-  if (to) return <Link to={to} className='block no-underline transition-all hover:brightness-[1.02] active:scale-[0.98]'>{body}</Link>
+  if (to) return <Link to={to} className='block no-underline'>{body}</Link>
   return body
 }
 

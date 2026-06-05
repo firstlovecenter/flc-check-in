@@ -14,7 +14,7 @@ const QRDisplayScreen        = lazy(() => import('./screens/QRDisplayScreen'))
 const CheckInFormScreen      = lazy(() => import('./screens/CheckInFormScreen'))
 const EventDashboardScreen   = lazy(() => import('./screens/admin/EventDashboardScreen'))
 const EventEditScreen        = lazy(() => import('./screens/admin/EventEditScreen'))
-const FullReportScreen       = lazy(() => import('./screens/admin/FullReportScreen'))
+const EventMembersScreen     = lazy(() => import('./screens/admin/EventMembersScreen'))
 const ScopeBreakdownScreen   = lazy(() => import('./screens/admin/ScopeBreakdownScreen'))
 const AuditLogScreen         = lazy(() => import('./screens/admin/AuditLogScreen'))
 const CreateEventScreen      = lazy(() => import('./screens/admin/CreateEventScreen'))
@@ -35,10 +35,10 @@ function RouteFallback() {
   return <Spinner fullPage />
 }
 
-// Backwards-compat redirect: /events/:id/checked-in → /events/:id/report?tab=checked-in
-function RedirectToReportTab({ tab }) {
+// Backwards-compat redirect: /events/:id/checked-in → /events/:id/members?status=present
+function RedirectToMembersStatus({ status }: { status: string }) {
   const { eventId } = useParams()
-  return <Navigate to={`/events/${eventId}/report?tab=${tab}`} replace />
+  return <Navigate to={`/events/${eventId}/members?status=${status}`} replace />
 }
 
 // Backwards-compat redirect: /admin/events/:id/* → /events/:id/*
@@ -65,14 +65,16 @@ export default function App() {
         {/* Universal event views — dashboard + report adapt to the viewer */}
         <Route path='/events/:eventId' element={<RequireAuth><EventDashboardScreen /></RequireAuth>} />
         <Route path='/events/:eventId/edit' element={<RequireAuth><EventEditScreen /></RequireAuth>} />
-        <Route path='/events/:eventId/report' element={<RequireAuth><FullReportScreen /></RequireAuth>} />
+        <Route path='/events/:eventId/members' element={<RequireAuth><EventMembersScreen /></RequireAuth>} />
+        {/* Legacy /report URL → all-members list */}
+        <Route path='/events/:eventId/report' element={<RedirectToMembersStatus status='all' />} />
         <Route path='/events/:eventId/scopes' element={<RequireAuth><ScopeBreakdownScreen /></RequireAuth>} />
         <Route path='/events/:eventId/audit'  element={<RequireAuth><AuditLogScreen /></RequireAuth>} />
 
-        {/* Old drilldown URLs → report tabs */}
-        <Route path='/events/:eventId/checked-in'  element={<RedirectToReportTab tab='checked-in' />} />
-        <Route path='/events/:eventId/defaulted'   element={<RedirectToReportTab tab='defaulted' />} />
-        <Route path='/events/:eventId/checked-out' element={<RedirectToReportTab tab='checked-out' />} />
+        {/* Old drilldown URLs → member list by status */}
+        <Route path='/events/:eventId/checked-in'  element={<RedirectToMembersStatus status='present' />} />
+        <Route path='/events/:eventId/defaulted'   element={<RedirectToMembersStatus status='absent' />} />
+        <Route path='/events/:eventId/checked-out' element={<RedirectToMembersStatus status='present' />} />
 
         {/* Profile */}
         <Route path='/profile' element={<RequireAuth><ProfileScreen /></RequireAuth>} />
@@ -89,8 +91,8 @@ export default function App() {
 
         {/* Old /admin/events/:id/* URLs redirect to /events/:id/* */}
         <Route path='/admin/events/:eventId' element={<RedirectAdminEvent />} />
-        <Route path='/admin/events/:eventId/checked-in' element={<RedirectAdminEvent tail='/report?tab=checked-in' />} />
-        <Route path='/admin/events/:eventId/defaulted' element={<RedirectAdminEvent tail='/report?tab=defaulted' />} />
+        <Route path='/admin/events/:eventId/checked-in' element={<RedirectAdminEvent tail='/members?status=present' />} />
+        <Route path='/admin/events/:eventId/defaulted' element={<RedirectAdminEvent tail='/members?status=absent' />} />
         <Route path='/admin/events/:eventId/scopes' element={<RedirectAdminEvent tail='/scopes' />} />
 
         <Route path='*' element={<Navigate to='/' replace />} />
