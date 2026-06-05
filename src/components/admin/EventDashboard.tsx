@@ -42,8 +42,8 @@ export default function EventDashboard({ eventId }) {
   // Records are refreshed instantly via Supabase Realtime (see effect below).
   // The expensive graph pipeline is SWR-cached; navigation back here is instant.
   const {
-    event, eligible, eligibleIds, viewerCaps, viewerSlice,
-    childCount, records, error, initialLoading, setEvent, setRecords,
+    event, eligible, viewerCaps, viewerSlice,
+    childCount, records, error, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey })
 
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date())
@@ -215,6 +215,13 @@ export default function EventDashboard({ eventId }) {
     : ''
   const endsRel = formatDistanceToNowStrict(new Date(event.ends_at), { addSuffix: true })
 
+  const adminName = event.created_by_name || 'Admin'
+  const adminInitials = adminName.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
+  const isOwnEvent = event.created_by_id === user?.userId
+  const pictureUrl = isOwnEvent && typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
+  const roleLabel = 'Check-in Admin'
+
+
   return (
     <PageShell>
       <ScreenHeader
@@ -245,6 +252,33 @@ export default function EventDashboard({ eventId }) {
                 <span className='uppercase tracking-wider'>{scopeLevel}</span>
                 {' · '}ends {endsRel}
               </p>
+              <div className='mt-4 flex items-center gap-2'>
+                <div className='flex items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 pr-4'>
+                  {pictureUrl ? (
+                    <img src={pictureUrl} alt={adminName} className='h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-border' />
+                  ) : (
+                    <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground ring-2 ring-primary/30'>
+                      {adminInitials}
+                    </div>
+                  )}
+                  <div className='flex flex-col'>
+                    <span className='text-sm font-semibold text-foreground'>{adminName}</span>
+                    <span className='text-[10px] font-medium text-primary'>{roleLabel}</span>
+                  </div>
+                </div>
+                {childLabel && displayChildCount != null && (
+                  <Link
+                    to={childCountLink}
+                    className='flex shrink-0 self-stretch items-center gap-1.5 rounded-full border border-border bg-background px-4 no-underline hover:bg-accent'
+                  >
+                    <span className='text-sm font-bold text-foreground'>{displayChildCount}</span>
+                    <span className='text-sm font-medium text-muted-foreground'>{childLabel}</span>
+                    <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round' className='text-muted-foreground'>
+                      <path d='M9 18l6-6-6-6'/>
+                    </svg>
+                  </Link>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -263,11 +297,36 @@ export default function EventDashboard({ eventId }) {
                 <span className='uppercase tracking-wider'>{event.scope_level}</span>
                 {' · '}{event.scope_church_name}{' · '}ends {endsRel}
               </p>
-              {!viewerCaps.canManage && (
-                <p className='text-xs mt-1 m-0 text-muted-foreground'>
-                  Viewing as <span className='text-primary'>leader</span> — {viewerCaps.viewerScope.name}
-                </p>
-              )}
+              <div className='mt-4 flex items-center gap-2'>
+                {/* Identity pill */}
+                <div className='flex items-center gap-2 rounded-full border border-border bg-card px-1.5 py-1.5 pr-4'>
+                  {pictureUrl ? (
+                    <img src={pictureUrl} alt={adminName} className='h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-border' />
+                  ) : (
+                    <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground ring-2 ring-primary/30'>
+                      {adminInitials}
+                    </div>
+                  )}
+                  <div className='flex flex-col'>
+                    <span className='text-sm font-semibold text-foreground'>{adminName}</span>
+                    <span className='text-[10px] font-medium text-primary'>{roleLabel}</span>
+                  </div>
+                </div>
+
+                {/* Child-scope drill pill */}
+                {childLabel && displayChildCount != null && (
+                  <Link
+                    to={childCountLink}
+                    className='flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-4 py-2.5 no-underline hover:bg-accent'
+                  >
+                    <span className='text-sm font-bold text-foreground'>{displayChildCount}</span>
+                    <span className='text-sm font-medium text-muted-foreground'>{childLabel}</span>
+                    <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round' className='text-muted-foreground'>
+                      <path d='M9 18l6-6-6-6'/>
+                    </svg>
+                  </Link>
+                )}
+              </div>
             </>
           )}
           </CardContent>
@@ -284,12 +343,6 @@ export default function EventDashboard({ eventId }) {
           </Alert>
         )}
 
-        {childLabel && displayChildCount != null && (
-          <Link to={childCountLink} className='stat-link-card block py-4 text-center no-underline active:scale-[0.99]'>
-            <p className='section-heading m-0'>{childLabel}</p>
-            <p className='m-0 mt-1 text-3xl font-bold tracking-tight text-foreground tnum'>{displayChildCount}</p>
-          </Link>
-        )}
 
         <div>
           <div className='mb-2 flex items-center justify-between'>

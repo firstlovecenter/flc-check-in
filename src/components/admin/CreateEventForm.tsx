@@ -226,7 +226,7 @@ export default function CreateEventForm() {
           allowedRoles: roles,
           geofence,
           pin: methods.includes('PIN') ? pin : null,
-          createdBy: { id: user.userId, name: formatName(user) },
+          createdBy: { id: user.userId, name: [user.firstName, user.lastName].filter(Boolean).join(' ') || formatName(user) },
           seriesId,
           seriesIndex: i + 1,
           isPublic: isSuperAdmin ? isPublic : true,

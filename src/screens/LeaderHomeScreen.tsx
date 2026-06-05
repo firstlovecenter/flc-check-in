@@ -159,10 +159,7 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
       {chips.length > 0 && (
         <div className='mt-3 flex flex-wrap gap-1.5'>
           {chips.map((chip) => (
-            <span
-              key={chip}
-              className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
-            >
+            <span key={chip} className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
               {chip}
             </span>
           ))}

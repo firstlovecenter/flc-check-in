@@ -288,7 +288,7 @@ function ScopeCard({
           <img src={leader.picture_url} alt={leaderName} className='h-12 w-12 shrink-0 rounded-full object-cover' />
         ) : (
           <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>
-            {initials}
+            {adminInitials}
           </div>
         )}
         <div className='min-w-0 flex-1'>
@@ -399,7 +399,7 @@ function MemberRow({ member: m, record: r, status }: { member: any; record: any;
         <img src={m.picture_url} alt={name} className='h-12 w-12 shrink-0 rounded-full object-cover' />
       ) : (
         <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>
-          {initials}
+          {adminInitials}
         </div>
       )}
       <div className='min-w-0 flex-1'>
