@@ -216,6 +216,12 @@ export default function EventDashboard({ eventId }) {
     : ''
   const endsRel = formatDistanceToNowStrict(new Date(event.ends_at), { addSuffix: true })
 
+  const adminName = event.created_by_name || 'Admin'
+  const adminInitials = adminName.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
+  const isOwnEvent = event.created_by_id === user?.userId
+  const pictureUrl = isOwnEvent && typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
+  const roleLabel = 'Check-in Admin'
+
   return (
     <PageShell>
       <ScreenHeader
@@ -246,6 +252,7 @@ export default function EventDashboard({ eventId }) {
                 <span className='uppercase tracking-wider'>{scopeLevel}</span>
                 {' · '}ends {endsRel}
               </p>
+              <IdentityRow adminName={adminName} adminInitials={adminInitials} pictureUrl={pictureUrl} roleLabel={roleLabel} childLabel={childLabel} displayChildCount={displayChildCount} childCountLink={childCountLink} />
             </>
           ) : (
             <>
@@ -264,11 +271,7 @@ export default function EventDashboard({ eventId }) {
                 <span className='uppercase tracking-wider'>{event.scope_level}</span>
                 {' · '}{event.scope_church_name}{' · '}ends {endsRel}
               </p>
-              {!viewerCaps.canManage && (
-                <p className='text-xs mt-1 m-0 text-muted-foreground'>
-                  Viewing as <span className='text-primary'>leader</span> — {viewerCaps.viewerScope.name}
-                </p>
-              )}
+              <IdentityRow adminName={adminName} adminInitials={adminInitials} pictureUrl={pictureUrl} roleLabel={roleLabel} childLabel={childLabel} displayChildCount={displayChildCount} childCountLink={childCountLink} />
             </>
           )}
           </CardContent>
@@ -285,12 +288,6 @@ export default function EventDashboard({ eventId }) {
           </Alert>
         )}
 
-        {childLabel && displayChildCount != null && (
-          <Link to={childCountLink} className='stat-link-card block py-4 text-center no-underline active:scale-[0.99]'>
-            <p className='section-heading m-0'>{childLabel}</p>
-            <p className='m-0 mt-1 text-3xl font-bold tracking-tight text-foreground tnum'>{displayChildCount}</p>
-          </Link>
-        )}
 
         <div>
           <div className='mb-2 flex items-center justify-between'>
@@ -449,6 +446,49 @@ function LiveRow({ icon, label, count, to, valueClass }: {
   )
   if (to) return <Link to={to} className='block no-underline'>{body}</Link>
   return body
+}
+
+function IdentityRow({ adminName, adminInitials, pictureUrl, roleLabel, childLabel, displayChildCount, childCountLink }: {
+  adminName: string; adminInitials: string; pictureUrl: string | null
+  roleLabel: string; childLabel: string | null; displayChildCount: number | null; childCountLink: string
+}) {
+  return (
+    <div className='mt-4 flex items-center gap-2'>
+      <div className='flex items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 pr-4'>
+        {pictureUrl ? (
+          <img src={pictureUrl} alt={adminName} className='h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-border' />
+        ) : (
+          <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground ring-2 ring-primary/30'>
+            {adminInitials}
+          </div>
+        )}
+        <div className='flex flex-col'>
+          <span className='text-sm font-semibold text-foreground'>{adminName}</span>
+          <span className='text-[10px] font-medium text-primary'>{roleLabel}</span>
+        </div>
+      </div>
+
+      {childLabel && displayChildCount != null && (
+        <Link
+          to={childCountLink}
+          className='flex items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 pr-4 no-underline hover:bg-accent'
+        >
+          <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-foreground'>
+            {displayChildCount}
+          </div>
+          <div className='flex flex-col'>
+            <span className='text-sm font-semibold text-foreground'>{childLabel}</span>
+            <span className='flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground'>
+              View
+              <svg viewBox='0 0 24 24' width='10' height='10' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
+                <path d='M9 18l6-6-6-6'/>
+              </svg>
+            </span>
+          </div>
+        </Link>
+      )}
+    </div>
+  )
 }
 
 function StatusPill({ status, className = '' }: { status: string; className?: string }) {
