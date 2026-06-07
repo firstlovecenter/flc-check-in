@@ -162,9 +162,10 @@ function getAssignedChurchBadges(user: AppUser | null): ChurchBadge[] {
       const key = `${level}:${leaderRef.id}:leader`
       if (!seen.has(key)) {
         seen.add(key)
+        const leaderTitle = level === 'governorship' ? 'Governor' : 'Leader'
         out.push({
           id: key,
-          label: `${leaderRef.name || toTitleCase(level)} · ${toTitleCase(level)} · Leader`,
+          label: `${leaderRef.name || toTitleCase(level)} · ${toTitleCase(level)} · ${leaderTitle}`,
         })
       }
     }
