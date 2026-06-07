@@ -20,6 +20,7 @@ import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
   listEventScopeMembersWithProfiles, snapshotEventScopeMembers,
   listMemberProfilesByScope, listSpecialGroupMembers,
+  countEventScopeMembers,
 } from '../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -48,6 +49,8 @@ interface CachedEligibility {
   viewerSlice: any[]
   adminScopes: any[]
   childCount: number | null
+  /** Fixed event-scope snapshot size — the stable "Total Expected" count. */
+  scopeMemberCount: number | null
   event?: CheckinEventRow | null
   records?: any[]
   ts: number
@@ -71,6 +74,7 @@ function normalizeCacheEntry(raw: any): CachedEligibility | null {
         : [],
     adminScopes: Array.isArray(raw.adminScopes) ? raw.adminScopes : [],
     childCount: raw.childCount ?? null,
+    scopeMemberCount: raw.scopeMemberCount ?? null,
     event: raw.event,
     records: Array.isArray(raw.records) ? raw.records : [],
     ts: raw.ts,
@@ -128,6 +132,9 @@ export interface EventEligibilityResult {
   viewerSlice: any[]      // eligible members scoped to the viewer's unit
   adminScopes: any[]
   childCount: number | null
+  /** Fixed event-scope snapshot size — the stable "Total Expected" count.
+   *  null until the snapshot has been resolved. */
+  scopeMemberCount: number | null
   records: any[]
   error: string | null
   /** true only on the very first load for this event — not on poll ticks or
@@ -149,6 +156,7 @@ export function useEventEligibility(
   const [viewerSlice, setViewerSlice] = useState<any[]>([])
   const [adminScopes, setAdminScopes] = useState<any[]>([])
   const [childCount, setChildCount]   = useState<number | null>(null)
+  const [scopeMemberCount, setScopeMemberCount] = useState<number | null>(null)
   const [records, setRecords]         = useState<any[]>([])
   const [error, setError]             = useState<string | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -183,6 +191,7 @@ export function useEventEligibility(
       setViewerSlice(withId(hit.viewerSlice))
       setAdminScopes(hit.adminScopes)
       setChildCount(hit.childCount)
+      setScopeMemberCount(hit.scopeMemberCount ?? null)
       setEvent(hit.event)
       setRecords(hit.records)
       setInitialLoading(false)
@@ -205,11 +214,12 @@ export function useEventEligibility(
         // resolveCurrentMember / getChurchAncestors are graph calls — swallow
         // their errors so a graph outage degrades gracefully instead of crashing.
         const isSpecialGroup = evt.scope_level === 'special_group'
-        const [viewer, ancestors, snapshotProfiles, childTotal] = await Promise.all([
+        const [viewer, ancestors, snapshotProfiles, childTotal, scopeCountFetched] = await Promise.all([
           resolveCurrentMember(user).catch(() => null),
           isSpecialGroup ? Promise.resolve([]) : getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
           listEventScopeMembersWithProfiles(eventId),
           isSpecialGroup ? Promise.resolve(null) : countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
+          countEventScopeMembers(eventId).catch(() => 0),
         ])
         if (cancelled) return
 
@@ -372,6 +382,12 @@ export function useEventEligibility(
           }
         }
 
+        // "Total Expected" denominator: prefer the authoritative snapshot count
+        // (fixed at creation). When no snapshot exists yet (legacy events / the
+        // graph-fallback path that snapshots below), use the resolved scope size
+        // so the number is still stable on the next load.
+        const resolvedScopeCount = scopeCountFetched > 0 ? scopeCountFetched : allMemberIdSet.size
+
         if (!cancelled) {
           setEligible(eligibleRows)
           setEligibleIds(eligibleIdSet)
@@ -379,6 +395,7 @@ export function useEventEligibility(
           setViewerSlice(slice)
           setAdminScopes(scopes)
           setChildCount(childTotal)
+          setScopeMemberCount(resolvedScopeCount)
           setInitialLoading(false)
           // Update cache so the next navigation is instant.
           const entry: CachedEligibility = {
@@ -388,6 +405,7 @@ export function useEventEligibility(
             viewerSlice: slice,
             adminScopes: scopes,
             childCount: childTotal,
+            scopeMemberCount: resolvedScopeCount,
             event: evt,
             records: recs,
             ts: Date.now(),
@@ -431,7 +449,7 @@ export function useEventEligibility(
 
   return {
     event, eligible, eligibleIds, viewerCaps, viewerSlice,
-    adminScopes, childCount, records, error, initialLoading,
+    adminScopes, childCount, scopeMemberCount, records, error, initialLoading,
     setEvent, setRecords,
   }
 }

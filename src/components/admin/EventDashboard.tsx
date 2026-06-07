@@ -45,7 +45,7 @@ export default function EventDashboard({ eventId }) {
   // The expensive graph pipeline is SWR-cached; navigation back here is instant.
   const {
     event, eligible, viewerCaps, viewerSlice,
-    childCount, records, error, initialLoading, setRecords,
+    childCount, scopeMemberCount, records, error, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey })
 
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date())
@@ -156,7 +156,8 @@ export default function EventDashboard({ eventId }) {
   //   • attended  = anyone who has a record (cumulative — includes those who later left)
   //   • stillIn   = checked in AND not yet checked out (currently present)
   //   • left      = checked out (the "outgoing" tally for the event)
-  //   • absent    = no record at all (never showed)
+  //   • absent    = expected but no record (never showed)
+  //   • total     = "Total Expected" — fixed at event creation, never drifts
   // Invariants:
   //   stillIn + left   === attended
   //   attended + absent === total
@@ -166,20 +167,32 @@ export default function EventDashboard({ eventId }) {
     const leftCount = sliceRecords.filter((r) => r.checked_out_at != null).length
     const attendedIds = new Set(sliceRecords.map((r) => r.member_id))
     const stillIn = sliceRecords.length - leftCount
-    const total = sliceIds.size
+    const attended = attendedIds.size
+
+    // "Total Expected" is anchored to the fixed event-scope snapshot size so it
+    // never changes on refresh/revisit. The slice-derived count drifts because
+    // it depends on which members have a member_profiles row yet (created lazily
+    // as people log in). Fall back to the slice size when viewing a child-scope
+    // subset (the whole-event snapshot can't be filtered by scope) or when no
+    // snapshot is available.
+    const fullEventView = !scopedMembers && (viewerCaps?.canManage || !!user?.isSuperViewer)
+    const total = fullEventView && scopeMemberCount != null && scopeMemberCount > 0
+      ? scopeMemberCount
+      : sliceIds.size
+
     // No one can be absent before the event is live — check-in window hasn't opened yet.
     const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
-    const absent = notStarted ? 0 : displaySlice.filter((m) => !attendedIds.has(m.id)).length
-    const pct = total > 0 ? Math.round((attendedIds.size / total) * 100) : 0
+    const absent = notStarted ? 0 : Math.max(0, total - attended)
+    const pct = total > 0 ? Math.round((attended / total) * 100) : 0
     return {
       total,
-      attended: attendedIds.size,
+      attended,
       stillIn,
       left: leftCount,
       absent,
       pct,
     }
-  }, [records, displaySlice])
+  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, user?.isSuperViewer, event?.starts_at])
 
   // A member who has checked in — even if they later checked out — is still
   // considered "checked in" for button / banner purposes.

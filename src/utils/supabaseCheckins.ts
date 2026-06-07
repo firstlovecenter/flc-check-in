@@ -583,6 +583,21 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   return results.flatMap((r) => r.data || [])
 }
 
+/** Count of members in an event's scope snapshot — the stable "Total Expected"
+ *  denominator. Unlike listEventScopeMembersWithProfiles (which inner-joins
+ *  member_profiles and so only counts members who have logged in), this counts
+ *  every snapshotted member. The snapshot is written once at event creation, so
+ *  this number is fixed and does not drift on refresh as members log in. */
+export async function countEventScopeMembers(eventId: string): Promise<number> {
+  if (!eventId) return 0
+  const { count, error } = await supabase
+    .from('event_scope_members')
+    .select('member_id', { count: 'exact', head: true })
+    .eq('event_id', eventId)
+  if (error) throw error
+  return count ?? 0
+}
+
 /** Events where the given graph member ID appears in the scope snapshot.
  *  Used by EventHistory to include events a member was scoped to even if
  *  they didn't check in and were later moved to a different scope. */
