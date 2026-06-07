@@ -42,9 +42,146 @@ function NavItem({ to, icon, label, onClick }: { to: string; icon: string; label
   )
 }
 
+interface PanelBodyProps {
+  user?: AppUser | null
+  onClose: () => void
+  userMenuOpen: boolean
+  setUserMenuOpen: (fn: boolean | ((v: boolean) => boolean)) => void
+  isDark: boolean
+  onToggleTheme: () => void
+  onSignOut: () => void
+  fullName: string
+  initials: string
+  pictureUrl: string | null
+}
+
+function PanelBody({ user, onClose, userMenuOpen, setUserMenuOpen, isDark, onToggleTheme, onSignOut, fullName, initials, pictureUrl }: PanelBodyProps) {
+  const navigate = useNavigate()
+  const isAdmin    = !!user?.isAdmin
+  const isSuperAdmin = !!user?.isSuperAdmin
+
+  return (
+    <>
+      {/* App identity */}
+      <div className='flex items-center gap-2.5 px-4 pt-5 pb-4'>
+        <img src='/app-icon.svg' alt='Hineni' width={36} height={36} className='rounded-xl' />
+        <div>
+          <p className='m-0 text-[15px] font-bold tracking-tight text-foreground leading-none'>Hineni</p>
+          <p className='m-0 mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary'>FLC Check-In Portal</p>
+        </div>
+      </div>
+
+      {/* Search bar */}
+      <div className='px-3 pb-3'>
+        <div className='flex items-center gap-2 rounded-xl bg-secondary px-3 py-2.5'>
+          <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-muted-foreground'>
+            <path d='M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z' />
+          </svg>
+          <input
+            type='search'
+            placeholder='Search…'
+            className='flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0'
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const q = (e.target as HTMLInputElement).value.trim()
+                onClose()
+                navigate(q ? `/admin/members?q=${encodeURIComponent(q)}` : '/admin/members')
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Nav items */}
+      <nav className='flex-1 overflow-y-auto px-2 flex flex-col gap-0.5'>
+        <NavItem to='/home'         icon={ICONS.home}    label='Home'        onClick={onClose} />
+        <NavItem to='/events'       icon={ICONS.qr}      label='Live Events' onClick={onClose} />
+        {isAdmin && (
+          <>
+            <NavItem to='/admin/members' icon={ICONS.profile} label='Members'  onClick={onClose} />
+            <NavItem to='/admin/reports' icon={ICONS.report}  label='Reports'  onClick={onClose} />
+          </>
+        )}
+        {isSuperAdmin && (
+          <NavItem to='/admin/groups' icon={ICONS.groups} label='Groups'   onClick={onClose} />
+        )}
+        <NavItem to='/admin/history' icon={ICONS.history} label='History'  onClick={onClose} />
+      </nav>
+
+      {/* Footer — expandable user section */}
+      <div className='border-t border-border'>
+        {userMenuOpen && (
+          <div className='px-3 pt-3 pb-1 flex flex-col gap-1'>
+            <button
+              type='button'
+              onClick={() => { onToggleTheme(); setUserMenuOpen(false) }}
+              className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground hover:bg-secondary active:bg-secondary active:brightness-90'
+            >
+              {isDark ? (
+                <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                  <path d='M12 7a5 5 0 1 0 0 10A5 5 0 0 0 12 7zm0-5a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0v-1a1 1 0 0 1 1-1zm9-9a1 1 0 0 1 0 2h-1a1 1 0 0 1 0-2h1zM4 12a1 1 0 0 1-1 1H2a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1z' />
+                </svg>
+              ) : (
+                <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                  <path d='M12 3a9 9 0 1 1-6.36 15.36A9 9 0 0 0 12 3z' />
+                </svg>
+              )}
+              Switch to {isDark ? 'light' : 'dark'} mode
+            </button>
+            <Link
+              to='/profile'
+              onClick={onClose}
+              className='flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground no-underline hover:bg-secondary active:bg-secondary active:brightness-90'
+            >
+              <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                <path d={ICONS.profile} />
+              </svg>
+              My profile
+            </Link>
+            <button
+              type='button'
+              onClick={onSignOut}
+              className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive hover:bg-destructive/12 active:bg-destructive/18'
+            >
+              <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor'>
+                <path d={ICONS.signout} />
+              </svg>
+              Log out
+            </button>
+          </div>
+        )}
+
+        <button
+          type='button'
+          onClick={() => setUserMenuOpen((v) => !v)}
+          className='flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 hover:bg-secondary active:bg-secondary active:brightness-90'
+        >
+          {pictureUrl ? (
+            <img src={pictureUrl} alt={fullName} width={34} height={34} decoding='async' className='size-[34px] shrink-0 rounded-full object-cover' />
+          ) : (
+            <div className='flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground'>
+              {initials}
+            </div>
+          )}
+          <div className='min-w-0 flex-1 text-left'>
+            <p className='m-0 text-[11px] text-muted-foreground leading-none'>Signed in as</p>
+            <p className='m-0 mt-0.5 truncate text-[13px] font-semibold text-foreground leading-tight'>{fullName}</p>
+          </div>
+          <svg
+            viewBox='0 0 24 24' width='16' height='16' fill='currentColor'
+            className={`shrink-0 text-muted-foreground transition-transform ${userMenuOpen ? 'rotate-180' : ''}`}
+          >
+            <path d='M7 10l5 5 5-5z' />
+          </svg>
+        </button>
+      </div>
+    </>
+  )
+}
+
 export default function NavDrawer({ user }: { user?: AppUser | null }) {
-  const [open, setOpen] = useState(false)
-  const [closing, setClosing] = useState(false)
+  const [open, setOpen]               = useState(false)
+  const [closing, setClosing]         = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const navigate = useNavigate()
@@ -72,12 +209,10 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  const isAdmin = !!user?.isAdmin
-  const isSuperAdmin = !!user?.isSuperAdmin
-  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'
+  const fullName   = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'
   const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
-  const initials = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
-  const isDark = resolved === 'dark'
+  const initials   = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
+  const isDark     = resolved === 'dark'
 
   function handleSignOut() {
     setOpen(false)
@@ -85,21 +220,32 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
     navigate('/', { replace: true })
   }
 
+  const panelProps: PanelBodyProps = {
+    user, onClose: close, userMenuOpen, setUserMenuOpen,
+    isDark, onToggleTheme: toggleTheme, onSignOut: handleSignOut,
+    fullName, initials, pictureUrl,
+  }
+
   return (
     <>
-      {/* Trigger — subtle ghost button matching the reference */}
+      {/* ── Desktop: always-visible sidebar ─────────────────────────── */}
+      <aside className='max-md:hidden md:flex fixed inset-y-0 left-0 z-30 w-64 flex-col bg-card border-r border-border shadow-sm'>
+        <PanelBody {...panelProps} onClose={() => {}} />
+      </aside>
+
+      {/* ── Mobile: hamburger trigger ────────────────────────────────── */}
       <button
         type='button'
         aria-label='Open menu'
         onClick={() => setOpen(true)}
-        className='cursor-pointer rounded-xl border border-border/60 bg-secondary/70 p-2 leading-none text-foreground/70 shadow-sm hover:bg-secondary hover:text-foreground'
+        className='md:hidden cursor-pointer rounded-xl border border-border/60 bg-secondary/70 p-2 leading-none text-foreground/70 shadow-sm hover:bg-secondary hover:text-foreground'
       >
-        {/* Sidebar panel icon */}
         <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
           <path d='M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v14h5V5H4zm7 0v14h10V5H11z' />
         </svg>
       </button>
 
+      {/* ── Mobile: slide-over drawer ─────────────────────────────────── */}
       {open && (
         <>
           <div
@@ -113,119 +259,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             role='dialog'
             aria-label='Navigation'
           >
-            {/* App identity */}
-            <div className='flex items-center gap-2.5 px-4 pt-5 pb-4'>
-              <img src='/app-icon.svg' alt='Hineni' width={36} height={36} className='rounded-xl' />
-              <div>
-                <p className='m-0 text-[15px] font-bold tracking-tight text-foreground leading-none'>Hineni</p>
-                <p className='m-0 mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary'>FLC Check-In Portal</p>
-              </div>
-            </div>
-
-            {/* Search bar */}
-            <div className='px-3 pb-3'>
-              <div className='flex items-center gap-2 rounded-xl bg-secondary px-3 py-2.5'>
-                <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-muted-foreground'>
-                  <path d='M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z' />
-                </svg>
-                <input
-                  type='search'
-                  placeholder='Search…'
-                  className='flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0'
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const q = (e.target as HTMLInputElement).value.trim()
-                      close()
-                      navigate(q ? `/admin/members?q=${encodeURIComponent(q)}` : '/admin/members')
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Nav items */}
-            <nav className='flex-1 overflow-y-auto px-2 flex flex-col gap-0.5'>
-              <NavItem to='/home'         icon={ICONS.home}    label='Home'     onClick={close} />
-              <NavItem to='/events'       icon={ICONS.qr}      label='Live Events' onClick={close} />
-              {isAdmin && (
-                <>
-                  <NavItem to='/admin/members' icon={ICONS.profile} label='Members'  onClick={close} />
-                  <NavItem to='/admin/reports' icon={ICONS.report}  label='Reports'  onClick={close} />
-                </>
-              )}
-              {isSuperAdmin && (
-                <NavItem to='/admin/groups' icon={ICONS.groups} label='Groups'   onClick={close} />
-              )}
-              <NavItem to='/admin/history' icon={ICONS.history} label='History'  onClick={close} />
-            </nav>
-
-            {/* Footer — expandable user section */}
-            <div className='border-t border-border'>
-              {userMenuOpen && (
-                <div className='px-3 pt-3 pb-1 flex flex-col gap-1'>
-                  <button
-                    type='button'
-                    onClick={() => { toggleTheme(); setUserMenuOpen(false) }}
-                    className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground hover:bg-secondary active:bg-secondary active:brightness-90'
-                  >
-                    {isDark ? (
-                      <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
-                        <path d='M12 7a5 5 0 1 0 0 10A5 5 0 0 0 12 7zm0-5a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0v-1a1 1 0 0 1 1-1zm9-9a1 1 0 0 1 0 2h-1a1 1 0 0 1 0-2h1zM4 12a1 1 0 0 1-1 1H2a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1z' />
-                      </svg>
-                    ) : (
-                      <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
-                        <path d='M12 3a9 9 0 1 1-6.36 15.36A9 9 0 0 0 12 3z' />
-                      </svg>
-                    )}
-                    Switch to {isDark ? 'light' : 'dark'} mode
-                  </button>
-                  <Link
-                    to='/profile'
-                    onClick={close}
-                    className='flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground no-underline hover:bg-secondary active:bg-secondary active:brightness-90'
-                  >
-                    <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
-                      <path d={ICONS.profile} />
-                    </svg>
-                    My profile
-                  </Link>
-                  <button
-                    type='button'
-                    onClick={handleSignOut}
-                    className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive hover:bg-destructive/12 active:bg-destructive/18'
-                  >
-                    <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor'>
-                      <path d={ICONS.signout} />
-                    </svg>
-                    Log out
-                  </button>
-                </div>
-              )}
-
-              <button
-                type='button'
-                onClick={() => setUserMenuOpen((v) => !v)}
-                className='flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 hover:bg-secondary active:bg-secondary active:brightness-90'
-              >
-                {pictureUrl ? (
-                  <img src={pictureUrl} alt={fullName} width={34} height={34} decoding='async' className='size-[34px] shrink-0 rounded-full object-cover' />
-                ) : (
-                  <div className='flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground'>
-                    {initials}
-                  </div>
-                )}
-                <div className='min-w-0 flex-1 text-left'>
-                  <p className='m-0 text-[11px] text-muted-foreground leading-none'>Signed in as</p>
-                  <p className='m-0 mt-0.5 truncate text-[13px] font-semibold text-foreground leading-tight'>{fullName}</p>
-                </div>
-                <svg
-                  viewBox='0 0 24 24' width='16' height='16' fill='currentColor'
-                  className={`shrink-0 text-muted-foreground transition-transform ${userMenuOpen ? 'rotate-180' : ''}`}
-                >
-                  <path d='M7 10l5 5 5-5z' />
-                </svg>
-              </button>
-            </div>
+            <PanelBody {...panelProps} onClose={close} />
           </aside>
         </>
       )}

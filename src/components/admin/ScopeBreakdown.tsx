@@ -134,15 +134,16 @@ export default function ScopeBreakdown({ eventId }) {
       const g = map.get(key)!
       g.total++
       const rec = recordByMember.get(m.id)
+      const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
       if (rec) { g.attended++; if (rec.checked_out_at) g.left++; else g.stillIn++ }
-      else g.absent++
+      else if (!notStarted) g.absent++
     }
     const statusOrder = { 'Checked In': 0, 'Checked Out': 1, 'Defaulted': 2 }
     return {
       groups: [...map.values()].sort((a, b) => b.total - a.total),
       unassignedRows: unassigned.sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)),
     }
-  }, [sliceRows, childLevel, records, childChurches])
+  }, [sliceRows, childLevel, records, childChurches, event?.starts_at])
 
   const memberRows = useMemo(() => {
     if (currentLevel !== 'governorship' && childLevel !== null && childLevel !== 'bacenta') return []

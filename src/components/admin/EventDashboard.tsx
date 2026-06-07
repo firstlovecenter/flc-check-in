@@ -167,7 +167,9 @@ export default function EventDashboard({ eventId }) {
     const attendedIds = new Set(sliceRecords.map((r) => r.member_id))
     const stillIn = sliceRecords.length - leftCount
     const total = sliceIds.size
-    const absent = displaySlice.filter((m) => !attendedIds.has(m.id)).length
+    // No one can be absent before the event is live — check-in window hasn't opened yet.
+    const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
+    const absent = notStarted ? 0 : displaySlice.filter((m) => !attendedIds.has(m.id)).length
     const pct = total > 0 ? Math.round((attendedIds.size / total) * 100) : 0
     return {
       total,

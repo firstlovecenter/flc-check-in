@@ -4,12 +4,14 @@ import { cn } from '../../lib/utils'
 interface PageShellProps {
   children: ReactNode
   className?: string
+  /** Set true on screens without a persistent sidebar (e.g. public-facing QR/check-in pages). */
+  noSidebar?: boolean
 }
 
 /** Full-page authenticated layout (gray canvas). */
-export function PageShell({ children, className }: PageShellProps) {
+export function PageShell({ children, className, noSidebar }: PageShellProps) {
   return (
-    <div className={cn('page-shell flex min-h-dvh flex-col', className)}>
+    <div className={cn('page-shell flex min-h-dvh flex-col', !noSidebar && 'md:pl-64', className)}>
       {children}
     </div>
   )

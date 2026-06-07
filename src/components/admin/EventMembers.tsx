@@ -116,10 +116,14 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     const byMember = new Map(records.map((r) => [r.member_id, r]))
     if (status === 'present')
       return eligible.filter((m) => byMember.has(m.id)).map((m) => ({ member: m, record: byMember.get(m.id) }))
-    if (status === 'absent')
-      return eligible.filter((m) => !byMember.has(m.id)).map((m) => ({ member: m, record: null }))
+    if (status === 'absent') {
+      const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
+      return notStarted
+        ? []
+        : eligible.filter((m) => !byMember.has(m.id)).map((m) => ({ member: m, record: null }))
+    }
     return eligible.map((m) => ({ member: m, record: byMember.get(m.id) || null }))
-  }, [eligible, records, status])
+  }, [eligible, records, status, event?.starts_at])
 
   const filteredRows = useMemo(() => {
     const s = search.trim().toLowerCase()

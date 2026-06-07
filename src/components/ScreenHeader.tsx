@@ -65,7 +65,7 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           )}
         </div>
 
-        {/* Right — refresh · extra slot · NavDrawer */}
+        {/* Right — refresh · extra slot · NavDrawer (hamburger hidden on desktop) */}
         <div className='flex items-center gap-1.5'>
           <RefreshButton />
           {right}

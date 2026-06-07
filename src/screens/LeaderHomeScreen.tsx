@@ -135,22 +135,24 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
   const [before, after] = line1.split('{name}')
 
   return (
-    <div className='relative px-5 pb-6 pt-5'>
+    <div className='relative px-5 pb-6 pt-5 md:px-6'>
       <PullToRefreshIndicator />
+      {/* NavDrawer — renders the persistent desktop sidebar; hamburger is md:hidden inside */}
       <div className='absolute right-5 top-5'>
         <NavDrawer user={user} />
       </div>
 
-      <p className='m-0 mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
-        {dateLabel}
-      </p>
-      <h1 className='m-0 max-w-[82%] text-[1.65rem] font-bold leading-tight tracking-tight text-foreground'>
-        {before}<span className='text-primary'>{firstName}</span>{after}
-        <br />
-        {line2}
-      </h1>
+      <div className='md:mx-auto md:max-w-5xl'>
+        <p className='m-0 mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
+          {dateLabel}
+        </p>
+        <h1 className='m-0 max-w-[82%] md:max-w-none text-[1.65rem] font-bold leading-tight tracking-tight text-foreground'>
+          {before}<span className='text-primary'>{firstName}</span>{after}
+          <br />
+          {line2}
+        </h1>
 
-      <div className='mt-4 flex flex-wrap gap-2'>
+        <div className='mt-4 flex flex-wrap gap-2'>
         {user?.unitName && (
           <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
             {user.unitName}
@@ -171,6 +173,7 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
             Super Admin
           </span>
         )}
+        </div>
       </div>
     </div>
   )

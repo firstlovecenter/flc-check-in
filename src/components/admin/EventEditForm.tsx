@@ -34,13 +34,22 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
   const [name, setName]                       = useState('')
   const [venueName, setVenueName]             = useState('')
   const [startsAt, setStartsAt]               = useState('')
-  const [endsAt, setEndsAt]                   = useState('')
+  const [durationPreset, setDurationPreset]   = useState<'30' | '60' | '120' | 'custom'>('60')
+  const [customMinutes, setCustomMinutes]     = useState<number | string>(90)
   const [gracePeriodMin, setGracePeriodMin]   = useState<number | string>(15)
   const [autoCheckoutMin, setAutoCheckoutMin] = useState<number | string>(0)
   const [methods, setMethods]                 = useState<string[]>([])
   const [roles, setRoles]                     = useState<string[]>([])
   const [geofence, setGeofence]               = useState<GeofenceInput | null>(null)
   const [pin, setPin]                         = useState('')
+
+  const durationMin = durationPreset === 'custom' ? Math.max(1, Number(customMinutes) || 60) : Number(durationPreset)
+  const endsAt = useMemo(() => {
+    if (!startsAt) return ''
+    const start = new Date(startsAt)
+    if (isNaN(start.getTime())) return ''
+    return new Date(start.getTime() + durationMin * 60_000).toISOString().slice(0, 16)
+  }, [startsAt, durationMin])
 
   useEffect(() => {
     let cancelled = false
@@ -52,7 +61,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         setName(evt.name)
         setVenueName(evt.venue_name || '')
         setStartsAt(toLocalInput(evt.starts_at))
-        setEndsAt(toLocalInput(evt.ends_at))
+        applyDurationFromEvent(evt.starts_at, evt.ends_at, setDurationPreset, setCustomMinutes)
         setGracePeriodMin(evt.grace_period_min ?? 15)
         setAutoCheckoutMin(evt.auto_checkout_min ?? 0)
         setMethods(evt.allowed_check_in_methods || [])
@@ -160,7 +169,10 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         </p>
         <CheckInAdminControls event={event} onChange={(updated) => {
           setEvent(updated)
-          if (updated.ends_at) setEndsAt(toLocalInput(updated.ends_at))
+          if (updated.starts_at && updated.ends_at) {
+            setStartsAt(toLocalInput(updated.starts_at))
+            applyDurationFromEvent(updated.starts_at, updated.ends_at, setDurationPreset, setCustomMinutes)
+          }
         }} />
       </Section>
 
@@ -184,16 +196,37 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       </Section>
 
       <Section title='Time window'>
-        <div className='grid grid-cols-2 gap-3'>
-          <Field label='Starts'>
-            <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
-              className='input-field' />
-          </Field>
-          <Field label='Ends'>
-            <input type='datetime-local' required value={endsAt} onChange={(e) => setEndsAt(e.target.value)}
-              className='input-field' />
-          </Field>
-        </div>
+        <Field label='Starts'>
+          <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
+            className='input-field' />
+        </Field>
+        <Field label='Duration'>
+          <div className='flex flex-wrap gap-2'>
+            {(['30', '60', '120', 'custom'] as const).map((preset) => (
+              <Pill key={preset} active={durationPreset === preset} onClick={() => setDurationPreset(preset)}>
+                {preset === '30' ? '30 min' : preset === '60' ? '1 hour' : preset === '120' ? '2 hours' : 'Custom'}
+              </Pill>
+            ))}
+          </div>
+          {durationPreset === 'custom' && (
+            <div className='flex items-center gap-2 mt-1'>
+              <input
+                type='number'
+                min={1}
+                max={1440}
+                value={customMinutes}
+                onChange={(e) => setCustomMinutes(e.target.value)}
+                className='input-field w-24'
+              />
+              <span className='text-xs text-muted-foreground'>minutes</span>
+            </div>
+          )}
+          {endsAt && (
+            <p className='text-xs text-muted-foreground mt-0.5'>
+              Ends at <span className='font-semibold text-foreground'>{formatLocalTime(endsAt)}</span>
+            </p>
+          )}
+        </Field>
         <div className='grid grid-cols-2 gap-3'>
           <Field label='Grace (min)'>
             <input type='number' min={0} max={180} value={gracePeriodMin} onChange={(e) => setGracePeriodMin(e.target.value)}
@@ -327,4 +360,32 @@ function toLocalInput(iso: string | null | undefined): string {
   const d = new Date(iso)
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
   return d.toISOString().slice(0, 16)
+}
+
+// Format a datetime-local string (YYYY-MM-DDTHH:MM) as a human-readable time
+function formatLocalTime(isoLocal: string): string {
+  if (!isoLocal) return ''
+  const [, timePart] = isoLocal.split('T')
+  if (!timePart) return ''
+  const [hStr, mStr] = timePart.split(':')
+  const h = parseInt(hStr, 10)
+  const m = mStr
+  const period = h < 12 ? 'AM' : 'PM'
+  const hour = h % 12 === 0 ? 12 : h % 12
+  return `${hour}:${m} ${period}`
+}
+
+// Derive the duration preset from an event's start and end timestamps
+function applyDurationFromEvent(
+  startsIso: string | null | undefined,
+  endsIso: string | null | undefined,
+  setPreset: (p: '30' | '60' | '120' | 'custom') => void,
+  setCustomMin: (m: number) => void,
+) {
+  if (!startsIso || !endsIso) return
+  const mins = Math.round((new Date(endsIso).getTime() - new Date(startsIso).getTime()) / 60_000)
+  if (mins === 30) setPreset('30')
+  else if (mins === 60) setPreset('60')
+  else if (mins === 120) setPreset('120')
+  else { setPreset('custom'); setCustomMin(mins > 0 ? mins : 60) }
 }

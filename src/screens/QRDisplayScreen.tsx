@@ -114,7 +114,7 @@ export default function QRDisplayScreen() {
 
   if (selected) {
     return (
-      <PageShell>
+      <PageShell noSidebar={!signedIn}>
         {header}
         <main className='mx-auto w-full max-w-lg px-3 py-5 sm:px-4 sm:py-6'>
           {state.status === 'ok' && state.events.length > 1 && (
@@ -133,7 +133,7 @@ export default function QRDisplayScreen() {
   }
 
   return (
-    <PageShell>
+    <PageShell noSidebar={!signedIn}>
       {header}
       <main className='mx-auto w-full max-w-6xl px-3 py-5 sm:px-4 lg:px-6 sm:py-6'>
         {state.status === 'loading' && <Spinner />}
