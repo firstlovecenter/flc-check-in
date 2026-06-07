@@ -12,6 +12,7 @@ import { cn } from '../lib/utils'
 import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
+import RotatingPinDisplay from '../components/checkin/RotatingPinDisplay'
 import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import LocationPreWarmer from '../components/LocationPreWarmer'
 import { getCurrentUser, formatName, logout } from '../utils/auth'
@@ -239,11 +240,14 @@ export default function CheckInFormScreen() {
             )}
 
             {activeTab === 'PIN' && (
-              <PinEntry
-                disabled={submitting}
-                hint='Enter the PIN displayed at the venue.'
-                onSubmit={(pin) => handlePIN(pin, position)}
-              />
+              <div className='flex flex-col gap-4'>
+                <RotatingPinDisplay event={event} />
+                <PinEntry
+                  disabled={submitting}
+                  hint='Enter the PIN shown above.'
+                  onSubmit={(pin) => handlePIN(pin, position)}
+                />
+              </div>
             )}
 
           </PageMainNarrow>

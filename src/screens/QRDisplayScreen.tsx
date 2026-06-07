@@ -11,7 +11,8 @@ import { PageShell } from '../components/layout/PageShell'
 import { Alert } from '../components/ui/alert'
 import { listActiveEvents, listActiveSpecialGroupEventsForUser } from '../utils/supabaseCheckins'
 import Spinner from '../components/Spinner'
-import { generateQrToken, currentBucket, generateRotatingPin } from '../utils/checkinsCrypto'
+import { generateQrToken, currentBucket } from '../utils/checkinsCrypto'
+import { useRotatingPin } from '../hooks/useRotatingPin'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
 import { getCurrentUser } from '../utils/auth'
@@ -199,12 +200,10 @@ export default function QRDisplayScreen() {
 
 function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
   const [token, setToken] = useState<string | null>(null)
-  const [pin, setPin] = useState<string | null>(null)
-  const [secsLeft, setSecsLeft] = useState(() => 15 - (Math.floor(Date.now() / 1000) % 15))
-  const [pinTick, setPinTick] = useState(0)
   const [qrSize, setQrSize] = useState(260)
   const showQr = event.allowed_check_in_methods.includes('QR')
   const showPin = event.allowed_check_in_methods.includes('PIN')
+  const { pin, secsLeft } = useRotatingPin(event, showPin)
 
   useEffect(() => {
     const updateSize = () => {
@@ -225,26 +224,6 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
     })()
     return () => { cancelled = true }
   }, [event.id, event.qr_secret_hex, tick, showQr])
-
-  useEffect(() => {
-    if (!showPin) return
-    let cancelled = false
-    ;(async () => {
-      const p = await generateRotatingPin({ secretHex: event.qr_secret_hex, eventId: event.id })
-      if (!cancelled) setPin(p)
-    })()
-    return () => { cancelled = true }
-  }, [event.id, event.qr_secret_hex, pinTick, showPin])
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      const secs = Math.floor(Date.now() / 1000)
-      const sl = 15 - (secs % 15)
-      setSecsLeft(sl)
-      if (sl === 15) setPinTick((t) => t + 1)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [])
 
   return (
     <div className='surface-card p-4 text-center sm:p-5'>
