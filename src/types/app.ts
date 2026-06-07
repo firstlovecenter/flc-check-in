@@ -49,6 +49,10 @@ export interface AppUser {
    *  Superadmins bypass all FLC member-graph checks and have full
    *  management capabilities on every event. */
   isSuperAdmin?: boolean
+  /** True when the email is in the Supabase `superviewers` table.
+   *  Like superAdmin for reads (all events, all scopes) but all write
+   *  capabilities are disabled (canManage/canCheckIn = false). */
+  isSuperViewer?: boolean
   churchContexts?: ChurchRef[]
   activeChurch?: ChurchRef | null
   graphMemberId?: string

@@ -262,12 +262,23 @@ async function checkSuperAdminTable(email: string): Promise<boolean> {
   return !!data
 }
 
+/** Check the superviewers Supabase table — view-only equivalent of superAdmin. */
+async function checkSuperViewerTable(email: string): Promise<boolean> {
+  if (!email) return false
+  const { supabase } = await import('./supabase')
+  const { data, error } = await supabase
+    .rpc('is_super_viewer', { p_email: email.toLowerCase().trim() })
+  if (error) throw error
+  return !!data
+}
+
 export function enrichUser(payload) {
   const roles = payload.roles || []
   // isSuperAdmin can come from the JWT role OR from the localStorage override
   // (set by loginWithCredentials after a Supabase table check).
   const localOverride = localStorage.getItem('superAdminOverride') === '1'
   const superAdmin = roles.includes('superAdmin') || localOverride
+  const superViewer = !superAdmin && localStorage.getItem('superViewerOverride') === '1'
   const level = getLevelFromRoles(roles);
   const unitName =
     payload.bacenta?.name ||
@@ -285,8 +296,9 @@ export function enrichUser(payload) {
     title,
     level: activeChurch?.level || level,
     unitName: activeChurch?.name || unitName,
-    isAdmin: superAdmin || isAdmin(roles),
+    isAdmin: superAdmin || superViewer || isAdmin(roles),
     isSuperAdmin: superAdmin,
+    isSuperViewer: superViewer,
     churchContexts,
     activeChurch,
   }
@@ -365,10 +377,10 @@ function authApiUrl() {
 }
 
 export async function loginWithCredentials(email, password) {
-  // Start the SA check IMMEDIATELY — in parallel with the Lambda login fetch.
-  // The Supabase RPC (~150-300ms) will usually resolve before the Lambda
-  // returns (~500-1500ms), so awaiting it after the fetch costs ~0ms extra.
+  // Start both privilege checks immediately — in parallel with the Lambda login fetch.
+  // RPCs (~150-300ms) typically resolve before the Lambda (~500-1500ms).
   const saCheckPromise = checkSuperAdminTable(email.toLowerCase().trim()).catch(() => null)
+  const svCheckPromise = checkSuperViewerTable(email.toLowerCase().trim()).catch(() => null)
 
   const res = await fetch(`${authApiUrl()}/login`, {
     method: 'POST',
@@ -387,14 +399,17 @@ export async function loginWithCredentials(email, password) {
   // Persist church refs so getCurrentUser() can fill in IDs not in the JWT.
   persistChurchContext(userFields)
 
-  // Await the SA check — likely already resolved (ran concurrently above).
-  // Store the result in localStorage so getCurrentUser() picks it up instantly
-  // on subsequent page loads without another round-trip.
-  const isSA = await saCheckPromise
+  // Await both checks — likely already resolved (ran concurrently above).
+  const [isSA, isSV] = await Promise.all([saCheckPromise, svCheckPromise])
   if (isSA) {
     localStorage.setItem('superAdminOverride', '1')
+    localStorage.removeItem('superViewerOverride')
+  } else if (isSV) {
+    localStorage.setItem('superViewerOverride', '1')
+    localStorage.removeItem('superAdminOverride')
   } else {
     localStorage.removeItem('superAdminOverride')
+    localStorage.removeItem('superViewerOverride')
   }
 
   const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
@@ -414,6 +429,7 @@ export function logout() {
   localStorage.removeItem('pictureUrl');
   localStorage.removeItem('memberTitle');
   localStorage.removeItem('superAdminOverride');
+  localStorage.removeItem('superViewerOverride');
   localStorage.removeItem('churchContext');
   import('./graphProfileSync').then(({ clearGraphProfileSyncMarker }) => {
     clearGraphProfileSyncMarker(uid)

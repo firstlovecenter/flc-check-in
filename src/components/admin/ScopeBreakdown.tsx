@@ -55,19 +55,18 @@ export default function ScopeBreakdown({ eventId }) {
         const allRows = eventScopeMembers.map(memberToProfileRow)
         await bulkUpsertMemberProfiles(allRows)
         const allowed = new Set(evt.allowed_roles || [])
-        const eligibleRows = user?.isSuperAdmin
+        const eligibleRows = (user?.isSuperAdmin || user?.isSuperViewer)
           ? allRows
           : allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
         const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
+        const scopeFallback = rawCaps.viewerScope ?? {
+          level: evt.scope_level, id: evt.scope_church_id, name: evt.scope_church_name,
+        }
         const caps = user?.isSuperAdmin
-          ? {
-              ...rawCaps,
-              canManage: true, canCheckIn: true, canView: true, canManuallyCheckIn: true,
-              viewerScope: rawCaps.viewerScope ?? {
-                level: evt.scope_level, id: evt.scope_church_id, name: evt.scope_church_name,
-              },
-            }
+          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
+          : user?.isSuperViewer
+          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope: scopeFallback }
           : rawCaps
         if (cancelled) return
         setViewerCaps(caps)

@@ -339,21 +339,15 @@ export function useEventEligibility(
             }
           }
         }
+        const scopeFallback = rawCaps.viewerScope ?? {
+          level: evt.scope_level,
+          id: evt.scope_church_id,
+          name: evt.scope_church_name,
+        }
         const caps = user.isSuperAdmin
-          ? {
-              ...rawCaps,
-              canManage: true,
-              canCheckIn: true,
-              canView: true,
-              canManuallyCheckIn: true,
-              // If the graph resolved a viewerScope use it; otherwise fall back
-              // to the full event scope so dashboards render correctly.
-              viewerScope: rawCaps.viewerScope ?? {
-                level: evt.scope_level,
-                id: evt.scope_church_id,
-                name: evt.scope_church_name,
-              },
-            }
+          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
+          : user.isSuperViewer
+          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope: scopeFallback }
           : rawCaps
         const scopes = getAdminScopes(viewer, user)
 

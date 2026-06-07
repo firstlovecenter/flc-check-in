@@ -328,7 +328,7 @@ export default function LeaderHomeScreen() {
     <PageShell>
       <HomeGreeting user={user} />
       <PageMain>
-        {isAdmin && (
+        {isAdmin && !user?.isSuperViewer && (
           <div className='mb-6'>
             <Button type='button' onClick={() => navigate('/admin/events/new')} className='gap-2'>
               <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
@@ -366,7 +366,7 @@ export default function LeaderHomeScreen() {
                   </svg>
                 }
                 action={
-                  isAdmin ? (
+                  isAdmin && !user?.isSuperViewer ? (
                     <Button type='button' onClick={() => navigate('/admin/events/new')}>
                       Create event
                     </Button>

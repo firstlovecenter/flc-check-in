@@ -83,7 +83,7 @@ const _NO_SCOPE = '__no_scope__'
 // The per-level resolution rules live in utils/userScope.ts; this function
 // only assembles the resulting clauses.
 function buildScopeOrFilter(user: AppUser): string | null {
-  if (user.isSuperAdmin) return null
+  if (user.isSuperAdmin || user.isSuperViewer) return null
   const refs = getUserChurchRefs(user)
   if (refs.length === 0) return _NO_SCOPE
   return refs
@@ -282,7 +282,7 @@ export async function listActiveEvents(user?: AppUser) {
   // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
   // and each scoped user (their orFilter string). Without this, a public-page
   // fetch (which strips special_group events) would poison the superadmin cache.
-  const cacheKey = user?.isSuperAdmin ? 'superadmin' : (scopeFilter ?? 'public')
+  const cacheKey = user?.isSuperAdmin ? 'superadmin' : user?.isSuperViewer ? 'superviewer' : (scopeFilter ?? 'public')
   const cached = _activeEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -298,7 +298,7 @@ export async function listActiveEvents(user?: AppUser) {
   // Never expose special_group events on the public QR page or to non-superadmins
   // via this function. Member-scoped special group events are fetched separately
   // via listActiveSpecialGroupEventsForUser and merged by the caller.
-  if (!user || !user.isSuperAdmin) query = query.neq('scope_level', 'special_group')
+  if (!user || (!user.isSuperAdmin && !user.isSuperViewer)) query = query.neq('scope_level', 'special_group')
   // Public QR page (no user): only show events the creator flagged as public.
   if (!user) query = query.eq('is_public', true)
   if (scopeFilter) query = query.or(scopeFilter)

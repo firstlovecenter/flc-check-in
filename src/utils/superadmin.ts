@@ -13,7 +13,12 @@ export function isAppSuperAdmin(user?: AppUser | null): boolean {
   return !!user?.isSuperAdmin
 }
 
-/** True when callers should skip JWT / churchScopes / allowed_roles gating. */
+export function isAppSuperViewer(user?: AppUser | null): boolean {
+  return !!user?.isSuperViewer
+}
+
+/** True when callers should skip JWT / churchScopes / allowed_roles gating.
+ *  Both superAdmin and superViewer bypass scope/role filters for reads. */
 export function bypassesScopeAndRoleLimits(user?: AppUser | null): boolean {
-  return isAppSuperAdmin(user)
+  return isAppSuperAdmin(user) || isAppSuperViewer(user)
 }
