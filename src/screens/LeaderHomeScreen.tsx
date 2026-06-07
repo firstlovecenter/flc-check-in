@@ -123,11 +123,62 @@ function getDailyGreeting(isAdmin: boolean): Greeting {
   return pool[idx]
 }
 
+interface ChurchBadge {
+  id: string
+  label: string
+}
+
+function toTitleCase(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// Home header should reflect explicit leadership/admin assignments from JWT,
+// not inherited ancestor context.
+function getAssignedChurchBadges(user: AppUser | null): ChurchBadge[] {
+  const cs = user?.churchScopes
+  if (!cs) return []
+
+  const levels = [
+    'denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta',
+  ] as const
+
+  const out: ChurchBadge[] = []
+  const seen = new Set<string>()
+  for (const level of levels) {
+    const cap = toTitleCase(level)
+    const adminRef = (cs as any)[`isAdminFor${cap}Of`]
+    if (adminRef?.id) {
+      const key = `${level}:${adminRef.id}:admin`
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push({
+          id: key,
+          label: `${adminRef.name || toTitleCase(level)} · ${toTitleCase(level)} · Admin`,
+        })
+      }
+    }
+    const leaderRef = (cs as any)[`leads${cap}Of`]
+    if (leaderRef?.id) {
+      const key = `${level}:${leaderRef.id}:leader`
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push({
+          id: key,
+          label: `${leaderRef.name || toTitleCase(level)} · ${toTitleCase(level)} · Leader`,
+        })
+      }
+    }
+  }
+
+  return out
+}
+
 function HomeGreeting({ user }: { user: AppUser | null }) {
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
   const { line1, line2 } = getDailyGreeting(isAdmin)
   const firstName = user?.firstName || user?.email?.split('@')[0] || ''
   const dateLabel = format(new Date(), 'EEEE, d MMMM').toUpperCase()
+  const assignedChurches = getAssignedChurchBadges(user)
 
   const [before, after] = line1.split('{name}')
 
@@ -150,19 +201,18 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
         </h1>
 
         <div className='mt-4 flex flex-wrap gap-2'>
-          {user?.unitName && (
+          {assignedChurches.length > 0 ? (
+            assignedChurches.map((badge) => (
+              <span
+                key={badge.id}
+                className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'
+              >
+                {badge.label}
+              </span>
+            ))
+          ) : (
             <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
-              {user.unitName}
-            </span>
-          )}
-          {user?.level && (
-            <span className='rounded-full border border-border px-3 py-1 text-xs font-medium capitalize text-muted-foreground'>
-              {user.level}
-            </span>
-          )}
-          {user?.isAdmin && (
-            <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
-              Admin
+              {user?.unitName || 'No assigned church scope'}
             </span>
           )}
           {user?.isSuperAdmin && (
