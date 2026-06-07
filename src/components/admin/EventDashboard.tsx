@@ -6,7 +6,7 @@ import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
 import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
-import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
+import { countChildScopes, childScopeLabel, allowedRolesForScope } from '../../utils/membersApi'
 import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
@@ -157,7 +157,7 @@ export default function EventDashboard({ eventId }) {
   //   • stillIn   = checked in AND not yet checked out (currently present)
   //   • left      = checked out (the "outgoing" tally for the event)
   //   • absent    = expected but no record (never showed)
-  //   • total     = "Total Expected" — fixed at event creation, never drifts
+  //   • total     = "Total Expected" — see denominator note below
   // Invariants:
   //   stillIn + left   === attended
   //   attended + absent === total
@@ -169,14 +169,23 @@ export default function EventDashboard({ eventId }) {
     const stillIn = sliceRecords.length - leftCount
     const attended = attendedIds.size
 
-    // "Total Expected" is anchored to the fixed event-scope snapshot size so it
-    // never changes on refresh/revisit. The slice-derived count drifts because
-    // it depends on which members have a member_profiles row yet (created lazily
-    // as people log in). Fall back to the slice size when viewing a child-scope
-    // subset (the whole-event snapshot can't be filtered by scope) or when no
-    // snapshot is available.
+    // "Total Expected" is anchored to the event-scope snapshot size, which is
+    // written once at creation, so it stays stable on refresh/revisit. The
+    // slice-derived count drifts upward because it only counts members who have
+    // a member_profiles row yet (created lazily as people log in).
+    //
+    // The snapshot holds every in-scope leader/admin, NOT role-filtered. So it
+    // is only a valid denominator when the event hasn't narrowed allowed_roles
+    // — otherwise the snapshot is a superset of the role-eligible population and
+    // would inflate "absent". When roles are restricted (or we're viewing a
+    // child-scope subset, which the whole-event snapshot can't be filtered to,
+    // or no snapshot exists) fall back to the role-filtered slice size.
+    const rolesUnrestricted = !!event &&
+      allowedRolesForScope(event.scope_level).every((r) => (event.allowed_roles || []).includes(r))
+    // canManage is only ever true for an exact-event-scope admin / superAdmin,
+    // so it always implies displaySlice === the full event slice.
     const fullEventView = !scopedMembers && (viewerCaps?.canManage || !!user?.isSuperViewer)
-    const total = fullEventView && scopeMemberCount != null && scopeMemberCount > 0
+    const total = fullEventView && rolesUnrestricted && scopeMemberCount != null && scopeMemberCount > 0
       ? scopeMemberCount
       : sliceIds.size
 
@@ -192,7 +201,7 @@ export default function EventDashboard({ eventId }) {
       absent,
       pct,
     }
-  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, user?.isSuperViewer, event?.starts_at])
+  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, user?.isSuperViewer, event?.starts_at, event?.scope_level, event?.allowed_roles])
 
   // A member who has checked in — even if they later checked out — is still
   // considered "checked in" for button / banner purposes.

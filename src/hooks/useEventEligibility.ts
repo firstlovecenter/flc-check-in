@@ -383,10 +383,14 @@ export function useEventEligibility(
         }
 
         // "Total Expected" denominator: prefer the authoritative snapshot count
-        // (fixed at creation). When no snapshot exists yet (legacy events / the
-        // graph-fallback path that snapshots below), use the resolved scope size
-        // so the number is still stable on the next load.
-        const resolvedScopeCount = scopeCountFetched > 0 ? scopeCountFetched : allMemberIdSet.size
+        // (the full in-scope leader/admin population, fixed at creation). When
+        // no snapshot exists yet (legacy events / the graph-fallback path that
+        // snapshots below), fall back to the role-eligible count so the number
+        // stays consistent with the role-filtered attendance it's measured
+        // against. The consumer (EventDashboard) only uses this as the
+        // denominator when allowed_roles is unrestricted, where the snapshot and
+        // eligible populations coincide.
+        const resolvedScopeCount = scopeCountFetched > 0 ? scopeCountFetched : eligibleIdSet.size
 
         if (!cancelled) {
           setEligible(eligibleRows)

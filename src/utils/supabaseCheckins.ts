@@ -586,8 +586,9 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
 /** Count of members in an event's scope snapshot — the stable "Total Expected"
  *  denominator. Unlike listEventScopeMembersWithProfiles (which inner-joins
  *  member_profiles and so only counts members who have logged in), this counts
- *  every snapshotted member. The snapshot is written once at event creation, so
- *  this number is fixed and does not drift on refresh as members log in. */
+ *  every snapshotted member. The snapshot is written at event creation (and only
+ *  grows via an explicit superadmin add), so this number stays stable on refresh
+ *  rather than drifting as members lazily gain profiles by logging in. */
 export async function countEventScopeMembers(eventId: string): Promise<number> {
   if (!eventId) return 0
   const { count, error } = await supabase
