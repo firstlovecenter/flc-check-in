@@ -20,7 +20,6 @@ const AuditLogScreen         = lazy(() => import('./screens/admin/AuditLogScreen
 const CreateEventScreen      = lazy(() => import('./screens/admin/CreateEventScreen'))
 const ReportsScreen          = lazy(() => import('./screens/admin/ReportsScreen'))
 const EventHistoryScreen     = lazy(() => import('./screens/admin/EventHistoryScreen'))
-const MemberBiometricsScreen = lazy(() => import('./screens/admin/MemberBiometricsScreen'))
 const MemberDetailScreen     = lazy(() => import('./screens/admin/MemberDetailScreen'))
 const SyncMembersScreen      = lazy(() => import('./screens/admin/SyncMembersScreen'))
 const MemberSearchScreen     = lazy(() => import('./screens/admin/MemberSearchScreen'))
@@ -83,7 +82,6 @@ export default function App() {
         <Route path='/admin/events/new' element={<RequireAuth><CreateEventScreen /></RequireAuth>} />
         <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
         <Route path='/admin/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
-        <Route path='/admin/biometrics' element={<RequireAuth><MemberBiometricsScreen /></RequireAuth>} />
         <Route path='/admin/members' element={<RequireAuth><MemberSearchScreen /></RequireAuth>} />
         <Route path='/admin/members/:memberId' element={<RequireAuth><MemberDetailScreen /></RequireAuth>} />
         <Route path='/admin/sync-members' element={<RequireAuth><SyncMembersScreen /></RequireAuth>} />

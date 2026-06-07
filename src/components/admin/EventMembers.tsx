@@ -13,10 +13,12 @@ import { Label } from '../ui/label'
 import { Modal } from '../ui/modal'
 import { cn } from '../../lib/utils'
 import {
-  listCheckedIn, listAbsenceNotesForEvent, getRiskyCheckIns,
+  listCheckedIn,
+  listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
 } from '../../utils/supabaseCheckins'
 import { childScopeLevel } from '../../utils/membersApi'
-import { getCurrentUser } from '../../utils/auth'
+import { getCurrentUser, formatName } from '../../utils/auth'
+import { Textarea } from '../ui/textarea'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
@@ -49,7 +51,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
   const {
-    event, eligible: allEligible, viewerSlice, viewerCaps, adminScopes, records,
+    event, eligible: allEligible, viewerSlice, viewerCaps, records,
     error: eligibilityError, initialLoading, setRecords,
   } = useEventEligibility(eventId, user, { refreshKey })
 
@@ -59,7 +61,10 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   const [search, setSearch]       = useState('')
   const [error, setError]         = useState<string | null>(null)
   const [modalMember, setModalMember] = useState<any>(null)
-  const [absenceNotes, setAbsenceNotes] = useState<Map<string, string>>(new Map())
+  const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
+  const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
+  const [absenceInput, setAbsenceInput]   = useState('')
+  const [absenceSaving, setAbsenceSaving] = useState(false)
   const [riskyIds, setRiskyIds] = useState<Set<string>>(new Set())
   const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
   const [filterChurchId,   setFilterChurchId]   = useState<string | null>(urlChurchId)
@@ -130,6 +135,28 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     try { setRecords(await listCheckedIn(eventId)) }
     catch (err: any) { setError(err.message) }
   }
+
+  async function saveAbsenceNote() {
+    if (!absenceTarget || !absenceInput.trim()) return
+    setAbsenceSaving(true)
+    try {
+      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user!.userId)
+      setAbsenceNotes((m) => new Map(m).set(absenceTarget.id, absenceInput.trim()))
+      addAuditLog({
+        action: 'absence.note_set', actorId: user!.userId, actorName: formatName(user), eventId,
+        targetId: absenceTarget.id,
+        targetName: [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id,
+        details: { reason: absenceInput.trim() },
+      }).catch(() => {})
+      setAbsenceTarget(null)
+      setAbsenceInput('')
+    } catch (err: any) {
+      setError(err.message || 'Could not save note')
+    } finally {
+      setAbsenceSaving(false)
+    }
+  }
+
 
   function exportCsv() {
     if (!event) return
@@ -221,6 +248,11 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               isRisky={riskyIds.has(b.member.id)}
               absenceNote={status !== 'present' ? absenceNotes.get(b.member.id) : undefined}
               onManual={() => setModalMember(b.member)}
+              onAddNote={
+                status !== 'present' && viewerCaps.canManage
+                  ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -235,6 +267,20 @@ export default function EventMembers({ eventId }: { eventId: string }) {
         />
       )}
 
+      <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
+        <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
+        <p className='m-0 mt-1 text-sm text-muted-foreground'>
+          {absenceTarget &&
+            ([absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id)}
+        </p>
+        <Textarea value={absenceInput} onChange={(e) => setAbsenceInput(e.target.value)} placeholder='Enter absence reason…' rows={3} className='mt-3 min-h-0' />
+        <div className='mt-4 flex gap-3'>
+          <Button type='button' variant='outline' className='flex-1' onClick={() => setAbsenceTarget(null)}>Cancel</Button>
+          <Button type='button' className='flex-1' disabled={absenceSaving || !absenceInput.trim()} onClick={saveAbsenceNote}>
+            {absenceSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
+      </Modal>
     </PageShell>
   )
 }
@@ -244,12 +290,13 @@ export default function EventMembers({ eventId }: { eventId: string }) {
 
 function MemberCard({
   entry, status, canManuallyCheckIn,
-  onManual, absenceNote, isRisky = false,
+  onManual, absenceNote, onAddNote, isRisky = false,
 }: {
   entry: { member: any; record: any }
   status: Status
   canManuallyCheckIn: boolean
   onManual: () => void
+  onAddNote?: () => void
   absenceNote?: string
   isRisky?: boolean
 }) {
@@ -260,7 +307,7 @@ function MemberCard({
   const phone: string | null = m.phone || null
 
   const isAbsent = !r
-  const hasActions = phone || (isAbsent && canManuallyCheckIn)
+  const hasActions = phone || isAbsent
 
   return (
     <div className={cn('overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
@@ -317,6 +364,11 @@ function MemberCard({
           {isAbsent && canManuallyCheckIn && (
             <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={onManual}>
               Check In
+            </Button>
+          )}
+          {isAbsent && onAddNote && (
+            <Button type='button' variant='outline' size='sm' className='flex-1' onClick={onAddNote}>
+              {absenceNote ? 'Edit Note' : 'Add Note'}
             </Button>
           )}
         </div>
