@@ -282,8 +282,11 @@ export function useEventEligibility(
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
-        // Special-group: membership IS eligibility. Superadmin: full scope snapshot.
-        const eligibleRows = (isSpecialGroup || bypassesScopeAndRoleLimits(user)
+        // Special-group: membership IS eligibility (roles are irrelevant).
+        // All other events: filter by allowed_roles regardless of who is viewing —
+        // allowed_roles defines "expected attendance" and must drive the count
+        // even for superAdmin/superViewer (they bypass scope, not the event's own policy).
+        const eligibleRows = (isSpecialGroup
           ? allRows
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         ).filter((r) => r != null && r.id != null && r.id !== '')

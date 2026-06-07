@@ -55,9 +55,7 @@ export default function ScopeBreakdown({ eventId }) {
         const allRows = eventScopeMembers.map(memberToProfileRow)
         await bulkUpsertMemberProfiles(allRows)
         const allowed = new Set(evt.allowed_roles || [])
-        const eligibleRows = (user?.isSuperAdmin || user?.isSuperViewer)
-          ? allRows
-          : allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
+        const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
         const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
         const scopeFallback = rawCaps.viewerScope ?? {
