@@ -97,13 +97,11 @@ function buildScopeOrFilter(user: AppUser): string | null {
 //   2. allowed_roles contains no admin roles (it's a pure leader event visible
 //      to everyone who is structurally in scope).
 // Exported for unit testing only — internal callers use it via .filter().
-export function isEventRelevantToUser(evt: any, user: AppUser): boolean {
-  if (user.isSuperAdmin) return true
-  const userRoles = new Set<string>(user.roles || [])
-  const allowed: string[] = evt.allowed_roles || []
-  if (allowed.some((r) => userRoles.has(r))) return true
-  if (!allowed.some((r) => r.startsWith('admin'))) return true
-  return false
+// Visibility is determined entirely by the DB scope filter (buildScopeOrFilter).
+// If the query returned an event, the user is structurally scoped for it — that
+// is sufficient. allowed_roles governs check-in eligibility, not visibility.
+export function isEventRelevantToUser(_evt: any, _user: AppUser): boolean {
+  return true
 }
 
 // ─── member_profiles ────────────────────────────────────────────────────────

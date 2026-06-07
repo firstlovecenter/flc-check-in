@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import Spinner from '../Spinner'
 import { formatDistanceToNowStrict } from 'date-fns'
-import ScreenHeader from '../ScreenHeader'
+import NavDrawer from '../NavDrawer'
+import RefreshButton from '../RefreshButton'
+import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
 import { SCOPE_LEVELS } from '../../types/app'
@@ -223,12 +225,27 @@ export default function EventDashboard({ eventId }) {
 
   return (
     <PageShell>
-      <ScreenHeader
-        title={scopeChurchName || event.name}
-        onBack={scopeChurchName ? () => navigate(-1) : undefined}
-        right={(
-          <>
-            <StatusPill status={event.status} />
+      <PageMain className='flex flex-col gap-4'>
+        <PullToRefreshIndicator />
+
+        {/* Inline nav row — not sticky, scrolls with content */}
+        <div className='flex items-center justify-between'>
+          {scopeChurchName ? (
+            <button
+              type='button'
+              onClick={() => navigate(-1)}
+              className='flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-xs font-medium text-primary hover:underline'
+            >
+              <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
+                <path d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z' />
+              </svg>
+              Back
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className='flex items-center gap-1.5'>
+            {event.status !== 'ENDED' && <StatusPill status={event.status} />}
             {viewerCaps.canManage && !scopeChurchName && (
               <Link to={`/events/${event.id}/edit`} aria-label='Edit event' className='icon-btn'>
                 <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
@@ -236,11 +253,18 @@ export default function EventDashboard({ eventId }) {
                 </svg>
               </Link>
             )}
-          </>
+            <RefreshButton />
+            <NavDrawer user={user} />
+          </div>
+        </div>
+        {event.status === 'ENDED' && (
+          <div className='flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3.5 text-sm font-semibold text-destructive'>
+            <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' className='shrink-0'>
+              <path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' />
+            </svg>
+            <span>This event has ended. Check-in is closed.</span>
+          </div>
         )}
-      />
-
-      <PageMain className='flex flex-col gap-4'>
         <Card>
           <CardContent className='px-4 py-4 text-center pt-4'>
           {scopeChurchName ? (
