@@ -28,10 +28,10 @@ function NavItem({ to, icon, label, onClick }: { to: string; icon: string; label
       to={to}
       onClick={onClick}
       className={cn(
-        'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium no-underline transition-colors',
+        'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium no-underline transition-colors active:brightness-90',
         active
-          ? 'bg-accent text-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+          ? 'bg-primary/15 text-primary'
+          : 'text-foreground hover:bg-primary/10 active:bg-primary/15',
       )}
     >
       <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' className='shrink-0'>
@@ -53,7 +53,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   function close() {
     setClosing(true)
     clearTimeout(closeTimer.current)
-    closeTimer.current = setTimeout(() => { setOpen(false); setClosing(false) }, 300)
+    closeTimer.current = setTimeout(() => { setOpen(false); setClosing(false); setUserMenuOpen(false) }, 300)
   }
   useEffect(() => () => clearTimeout(closeTimer.current), [])
 
@@ -67,7 +67,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e) => { if (e.key === 'Escape') close() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
@@ -77,6 +77,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'
   const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
   const initials = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
+  const isDark = resolved === 'dark'
 
   function handleSignOut() {
     setOpen(false)
@@ -86,14 +87,16 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
 
   return (
     <>
+      {/* Trigger — subtle ghost button matching the reference */}
       <button
         type='button'
         aria-label='Open menu'
         onClick={() => setOpen(true)}
-        className='cursor-pointer rounded-xl border-0 bg-primary p-2 leading-none text-primary-foreground shadow-sm hover:bg-primary/85'
+        className='cursor-pointer rounded-xl border border-border/60 bg-secondary/70 p-2 leading-none text-foreground/70 shadow-sm hover:bg-secondary hover:text-foreground'
       >
-        <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor'>
-          <path d='M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z' />
+        {/* Sidebar panel icon */}
+        <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
+          <path d='M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm1 2v14h5V5H4zm7 0v14h10V5H11z' />
         </svg>
       </button>
 
@@ -110,51 +113,88 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             role='dialog'
             aria-label='Navigation'
           >
-            {/* App header */}
-            <div className='flex items-center gap-3 px-4 py-5'>
-              <img src='/app-icon.svg' alt='FLC Check-In' className='h-9 w-9 shrink-0 rounded-full' />
-              <div className='min-w-0'>
-                <p className='m-0 text-sm font-semibold text-foreground leading-tight'>Hineni</p>
-                <p className='m-0 text-xs text-muted-foreground leading-tight'>Check-In Portal</p>
+            {/* App identity */}
+            <div className='flex items-center gap-2.5 px-4 pt-5 pb-4'>
+              <img src='/app-icon.svg' alt='Hineni' width={36} height={36} className='rounded-xl' />
+              <div>
+                <p className='m-0 text-[15px] font-bold tracking-tight text-foreground leading-none'>Hineni</p>
+                <p className='m-0 mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary'>FLC Check-In Portal</p>
+              </div>
+            </div>
+
+            {/* Search bar */}
+            <div className='px-3 pb-3'>
+              <div className='flex items-center gap-2 rounded-xl bg-secondary px-3 py-2.5'>
+                <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-muted-foreground'>
+                  <path d='M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z' />
+                </svg>
+                <input
+                  type='search'
+                  placeholder='Search…'
+                  className='flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0'
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const q = (e.target as HTMLInputElement).value.trim()
+                      close()
+                      navigate(q ? `/admin/members?q=${encodeURIComponent(q)}` : '/admin/members')
+                    }
+                  }}
+                />
               </div>
             </div>
 
             {/* Nav items */}
             <nav className='flex-1 overflow-y-auto px-2 flex flex-col gap-0.5'>
-              <NavItem to='/home'         icon={ICONS.home}    label='Home'           onClick={close} />
-              <NavItem to='/events'       icon={ICONS.qr}      label='Events'         onClick={close} />
+              <NavItem to='/home'         icon={ICONS.home}    label='Home'     onClick={close} />
+              <NavItem to='/events'       icon={ICONS.qr}      label='Events'   onClick={close} />
               {isAdmin && (
                 <>
-                  <NavItem to='/admin/reports'  icon={ICONS.report}  label='Reports'        onClick={close} />
-                  <NavItem to='/admin/members'  icon={ICONS.profile} label='Members'         onClick={close} />
+                  <NavItem to='/admin/members' icon={ICONS.profile} label='Members'  onClick={close} />
+                  <NavItem to='/admin/reports' icon={ICONS.report}  label='Reports'  onClick={close} />
                 </>
               )}
               {isSuperAdmin && (
-                <NavItem to='/admin/groups' icon={ICONS.groups} label='Groups'         onClick={close} />
+                <NavItem to='/admin/groups' icon={ICONS.groups} label='Groups'   onClick={close} />
               )}
-              <NavItem to='/admin/history' icon={ICONS.history} label='History'        onClick={close} />
+              <NavItem to='/admin/history' icon={ICONS.history} label='History'  onClick={close} />
             </nav>
 
-            {/* User footer */}
-            <div className='border-t border-border p-3'>
+            {/* Footer — expandable user section */}
+            <div className='border-t border-border'>
               {userMenuOpen && (
-                <div className='mb-2 rounded-xl border border-border bg-card p-3 flex flex-col gap-1 shadow-sm'>
+                <div className='px-3 pt-3 pb-1 flex flex-col gap-1'>
                   <button
                     type='button'
                     onClick={() => { toggleTheme(); setUserMenuOpen(false) }}
-                    className='flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-accent w-full text-left cursor-pointer border-0 bg-transparent'
+                    className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground hover:bg-secondary active:bg-secondary active:brightness-90'
                   >
-                    <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
-                      <path d={resolved === 'dark' ? ICONS.sun : ICONS.moon} />
-                    </svg>
-                    {resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    {isDark ? (
+                      <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                        <path d='M12 7a5 5 0 1 0 0 10A5 5 0 0 0 12 7zm0-5a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0v-1a1 1 0 0 1 1-1zm9-9a1 1 0 0 1 0 2h-1a1 1 0 0 1 0-2h1zM4 12a1 1 0 0 1-1 1H2a1 1 0 0 1 0-2h1a1 1 0 0 1 1 1z' />
+                      </svg>
+                    ) : (
+                      <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                        <path d='M12 3a9 9 0 1 1-6.36 15.36A9 9 0 0 0 12 3z' />
+                      </svg>
+                    )}
+                    Switch to {isDark ? 'light' : 'dark'} mode
                   </button>
+                  <Link
+                    to='/profile'
+                    onClick={close}
+                    className='flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground no-underline hover:bg-secondary active:bg-secondary active:brightness-90'
+                  >
+                    <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor' className='text-muted-foreground'>
+                      <path d={ICONS.profile} />
+                    </svg>
+                    My profile
+                  </Link>
                   <button
                     type='button'
                     onClick={handleSignOut}
-                    className='flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 w-full text-left cursor-pointer border-0 bg-transparent'
+                    className='flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive hover:bg-destructive/12 active:bg-destructive/18'
                   >
-                    <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
+                    <svg viewBox='0 0 24 24' width='17' height='17' fill='currentColor'>
                       <path d={ICONS.signout} />
                     </svg>
                     Log out
@@ -165,24 +205,24 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               <button
                 type='button'
                 onClick={() => setUserMenuOpen((v) => !v)}
-                className='flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-accent cursor-pointer border-0 bg-transparent transition-colors'
+                className='flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 hover:bg-secondary active:bg-secondary active:brightness-90'
               >
                 {pictureUrl ? (
-                  <img src={pictureUrl} alt={fullName} className='h-8 w-8 shrink-0 rounded-full object-cover' />
+                  <img src={pictureUrl} alt={fullName} width={34} height={34} decoding='async' className='size-[34px] shrink-0 rounded-full object-cover' />
                 ) : (
-                  <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground'>
+                  <div className='flex size-[34px] shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground'>
                     {initials}
                   </div>
                 )}
-                <div className='min-w-0 flex-1'>
-                  <p className='m-0 text-[10px] uppercase tracking-wider text-muted-foreground leading-tight'>Signed in as</p>
-                  <p className='m-0 text-sm font-medium text-foreground truncate leading-tight'>{fullName}</p>
+                <div className='min-w-0 flex-1 text-left'>
+                  <p className='m-0 text-[11px] text-muted-foreground leading-none'>Signed in as</p>
+                  <p className='m-0 mt-0.5 truncate text-[13px] font-semibold text-foreground leading-tight'>{fullName}</p>
                 </div>
                 <svg
-                  viewBox='0 0 24 24' width='18' height='18' fill='currentColor'
-                  className={cn('shrink-0 text-muted-foreground transition-transform', userMenuOpen && 'rotate-180')}
+                  viewBox='0 0 24 24' width='16' height='16' fill='currentColor'
+                  className={`shrink-0 text-muted-foreground transition-transform ${userMenuOpen ? 'rotate-180' : ''}`}
                 >
-                  <path d={ICONS.chevron} />
+                  <path d='M7 10l5 5 5-5z' />
                 </svg>
               </button>
             </div>

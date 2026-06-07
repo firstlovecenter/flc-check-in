@@ -303,8 +303,10 @@ function Pill({ active, onClick, children, disabled }: { active: boolean; onClic
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50',
-        active && 'bg-primary text-primary-foreground border-primary',
+        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
+        active
+          ? 'bg-primary text-primary-foreground active:brightness-90'
+          : 'hover:bg-primary/12 active:bg-primary/18',
       )}
     >
       {children}

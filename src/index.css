@@ -216,16 +216,16 @@ html { scroll-behavior: smooth; }
               background 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
 }
 .btn-pill:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-pill:active:not(:disabled) { transform: scale(0.98); }
+.btn-pill:active:not(:disabled) { transform: scale(0.98); filter: brightness(0.9); }
 
 .btn-primary {
   background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
   box-shadow: 0 1px 2px hsl(349 100% 50% / 0.22);
 }
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn-primary:active:not(:disabled) { filter: brightness(0.9); }
+
 .btn-secondary {
   background: hsl(var(--card));
   color: var(--text);
@@ -233,8 +233,21 @@ html { scroll-behavior: smooth; }
   box-shadow: var(--shadow-1);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: hsl(var(--accent-surface));
+  background: hsl(var(--secondary));
   box-shadow: var(--shadow-2);
+}
+.btn-secondary:active:not(:disabled) {
+  background: hsl(var(--secondary));
+  filter: brightness(0.94);
+}
+
+/* ── Global tap-press feedback (touch devices) ───────────────────────────── */
+/* Covers any button/link that doesn't have its own active style */
+@media (hover: none) and (pointer: coarse) {
+  button:not(:disabled):active,
+  a:active {
+    filter: brightness(0.88);
+  }
 }
 
 /* ─── Inputs ───────────────────────────────────────────────────────────────── */
@@ -300,12 +313,14 @@ html { scroll-behavior: smooth; }
   cursor: pointer;
   transition: border-color 0.16s var(--ease-out), background 0.16s var(--ease-out);
 }
-.choice-option:hover { border-color: hsl(var(--primary) / 0.35); }
+.choice-option:hover { border-color: hsl(var(--primary) / 0.5); background: hsl(var(--primary) / 0.06); }
+.choice-option:active:not(:disabled) { background: hsl(var(--primary) / 0.12); border-color: hsl(var(--primary) / 0.6); }
 .choice-option--selected {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
 }
+.choice-option--selected:active { filter: brightness(0.9); }
 
 .check-row {
   display: flex;
@@ -321,11 +336,14 @@ html { scroll-behavior: smooth; }
   color: var(--text);
   transition: border-color 0.16s var(--ease-out), background 0.16s var(--ease-out);
 }
+.check-row:hover:not(:disabled) { border-color: hsl(var(--primary) / 0.4); }
+.check-row:active:not(:disabled) { background: hsl(var(--primary) / 0.08); border-color: hsl(var(--primary) / 0.5); }
 .check-row--selected {
   background: hsl(var(--primary));
   border-color: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
 }
+.check-row--selected:active { filter: brightness(0.9); }
 .check-row__box {
   display: flex;
   width: 1rem;
@@ -441,18 +459,22 @@ html { scroll-behavior: smooth; }
   color: hsl(var(--primary));
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.125rem 0.625rem;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  border-radius: var(--radius-pill);
-  border: none;
-  background: hsl(var(--secondary));
-  color: var(--muted);
+/* .chip is in @layer components so Tailwind utilities (bg-primary, text-primary-foreground)
+   can override the base background/color when an active/selected state is applied. */
+@layer components {
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-radius: var(--radius-pill);
+    border: none;
+    background: hsl(var(--secondary));
+    color: var(--muted);
+  }
 }
 
 .list-row {

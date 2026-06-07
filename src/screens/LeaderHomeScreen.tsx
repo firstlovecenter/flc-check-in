@@ -16,155 +16,162 @@ import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
-const ADMIN_GREETINGS = [
-  'the harvest is plentiful — let\'s make sure every leader is accounted for.',
-  'Hineni means "here I am" — let\'s see which leaders answer today.',
-  'every leader on the list matters. Let\'s check them in.',
-  'the doors are open. Which leaders are showing up?',
-  'faithful and present — that\'s the standard for every leader. Let\'s track it.',
-  'today\'s leader attendance starts with you being here.',
-  'the roll has been called — let\'s see which leaders answer.',
-  'every check-in tells a story. Let\'s write today\'s.',
-  'a good overseer knows their leaders. Let\'s count them in.',
-  'presence is the first proof of a leader\'s commitment.',
-  'which leaders said yes today? Let\'s find out.',
-  'the work begins when the leaders arrive.',
-  'leader accountability starts here — one check-in at a time.',
-  'you can\'t develop leaders who don\'t show up.',
-  'faithfulness is trackable. Let\'s track it.',
-  'every leader present is a win. Let\'s count them.',
-  'the record doesn\'t lie — let\'s make sure every leader is in.',
-  'which leaders answered the call today?',
-  'showing up is non-negotiable for leaders. Let\'s hold the standard.',
-  'the fields need leaders who show up. Let\'s see who\'s in.',
+// Each entry: line1 contains {name} which renders in primary colour; line2 is the sub-phrase.
+interface Greeting { line1: string; line2: string }
+
+const MORNING_GREETINGS: Greeting[] = [
+  { line1: 'Good morning, {name}.', line2: 'The registers are open.' },
+  { line1: 'Rise and lead, {name}.', line2: 'Leaders are gathering.' },
+  { line1: 'Daybreak, {name}.', line2: 'Steady hands. Holy work.' },
+  { line1: 'Early start, {name}.', line2: 'The faithful show up first.' },
+  { line1: 'Morning, {name}.', line2: 'Another day of faithful service.' },
+  { line1: 'Up and counting, {name}.', line2: 'Leaders are assembling.' },
 ]
 
-const LEADER_GREETINGS = [
-  'every meeting starts with showing up... and on time.',
-  'your presence as a leader matters — let\'s mark it.',
-  'Hineni — here I am. Ready to be counted.',
-  'faithfulness is showing up, every single time.',
-  'the harvest needs leaders who show up.',
-  'present and accounted for — that\'s the goal.',
-  'Hineni — the answer that changes everything.',
-  'your seat is waiting. Don\'t leave it empty.',
-  'consistency builds character. Show up again today.',
-  'your presence is your vote of confidence in the vision.',
-  'be where you\'re supposed to be, when you\'re supposed to be there.',
-  'early is on time. On time is late. You know the standard.',
-  'leaders show up — every part of the body matters.',
-  'another day, another chance to be counted faithful.',
-  'the register is open. Let your name be found.',
-  'here and ready — that\'s all it takes to start.',
-  'someone is always watching how leaders show up.',
-  'your commitment shows up before you do.',
-  'check in — let them know their leader is here.',
-  'small faithfulness, big impact. Start by showing up.',
+const MIDDAY_GREETINGS: Greeting[] = [
+  { line1: 'Good afternoon, {name}.', line2: 'Keep the count going.' },
+  { line1: 'Midday, {name}.', line2: 'The session is live.' },
+  { line1: 'Still going, {name}.', line2: 'Leaders are still showing up.' },
+  { line1: 'Pressing on, {name}.', line2: 'Every leader counted matters.' },
+  { line1: 'Halfway there, {name}.', line2: 'Faithful in the afternoon too.' },
+  { line1: 'Afternoon, {name}.', line2: 'The registers are open.' },
 ]
 
-const MORNING_GREETINGS = [
-  'the morning belongs to those who show up early.',
-  'rise and be counted — the day is just starting.',
-  'a new morning, a fresh chance to be faithful.',
-  'the early bird gets checked in.',
-  'good things happen when you start the day present.',
-  'the morning watch is set. Are you in position?',
+const EVENING_GREETINGS: Greeting[] = [
+  { line1: 'Good evening, {name}.', line2: 'Leaders are gathering.' },
+  { line1: 'Evening service, {name}.', line2: 'Mark them present.' },
+  { line1: 'The evening watch, {name}.', line2: 'Faithful to the end.' },
+  { line1: 'Twilight roll call, {name}.', line2: 'Every leader accounted for.' },
+  { line1: 'Evening, {name}.', line2: 'The day\'s work continues.' },
+  { line1: 'Last count, {name}.', line2: 'Make it a good one.' },
 ]
 
-const MIDDAY_GREETINGS = [
-  'the midday watch — still showing up. That\'s the standard.',
-  'halfway through the day and still faithful. Keep going.',
-  'the afternoon session needs you here.',
-  'midday and still showing up — that\'s dedication.',
-  'the day isn\'t over and neither is your faithfulness.',
-  'noon check-in — still counts, always matters.',
+const NIGHT_GREETINGS: Greeting[] = [
+  { line1: 'Quiet hours, {name}.', line2: 'Steady hands. Holy work.' },
+  { line1: 'Late session, {name}.', line2: 'The dedicated ones are here.' },
+  { line1: 'Night watch, {name}.', line2: 'Still counting. Still faithful.' },
+  { line1: 'Burning bright, {name}.', line2: 'Late night faithfulness.' },
+  { line1: 'Stars are out, {name}.', line2: 'So are your leaders.' },
+  { line1: 'The last hour, {name}.', line2: 'Mark them present.' },
 ]
 
-const EVENING_GREETINGS = [
-  'the evening watch is open. Be where you need to be.',
-  'evening meetings matter too — and so does your presence.',
-  'the day winds down, but faithfulness doesn\'t.',
-  'end the day where you\'re supposed to be.',
-  'showing up in the evening takes extra commitment. Noted.',
-  'the third watch — faithful to the end of the day.',
+const ADMIN_GREETINGS: Greeting[] = [
+  { line1: 'Good to see you, {name}.', line2: 'The registers are yours.' },
+  { line1: 'Steady oversight, {name}.', line2: 'Every leader has a name.' },
+  { line1: 'Track well, {name}.', line2: 'Lead well.' },
+  { line1: 'The numbers matter, {name}.', line2: 'Keep them true.' },
+  { line1: 'Your leaders need you, {name}.', line2: 'Every check-in counts.' },
+  { line1: 'Faithful records, {name}.', line2: 'Good decisions tomorrow.' },
+  { line1: 'Precision, {name}.', line2: 'In attendance. In ministry.' },
+  { line1: 'Behind every check-in, {name}.', line2: 'A leader you\'re investing in.' },
+  { line1: 'Strong team, {name}.', line2: 'You track who shows up.' },
+  { line1: 'Accountability, {name}.', line2: 'Starts with who shows up.' },
+  { line1: 'The register, {name}.', line2: 'Is your first report card.' },
+  { line1: 'Excellence, {name}.', line2: 'In check-in and leadership.' },
+  { line1: 'Your oversight, {name}.', line2: 'Makes all the difference.' },
+  { line1: 'A well-run event, {name}.', line2: 'Starts with you.' },
+  { line1: 'Every absent leader, {name}.', line2: 'Has a name. Know it.' },
+  { line1: 'Good records, {name}.', line2: 'Better decisions tomorrow.' },
+  { line1: 'Faithfulness, {name}.', line2: 'Is measurable. You\'re measuring it.' },
+  { line1: 'The health of the team, {name}.', line2: 'Shows in attendance.' },
+  { line1: 'Holding the line, {name}.', line2: 'One check-in at a time.' },
+  { line1: 'All eyes on the register, {name}.', line2: 'Make it count.' },
 ]
 
-const NIGHT_GREETINGS = [
-  'the fourth watch — and still you show up. Remarkable.',
-  'night meetings demand a different kind of commitment. You have it.',
-  'the night watch is for the truly dedicated. Welcome.',
-  'darkness doesn\'t stop the faithful from showing up.',
-  'even at this hour, presence matters.',
-  'the night belongs to those who refuse to be absent.',
+const LEADER_GREETINGS: Greeting[] = [
+  { line1: 'Present and counted, {name}.', line2: 'Your faithfulness is noted.' },
+  { line1: 'You showed up, {name}.', line2: 'That\'s already leadership.' },
+  { line1: 'On time, {name}.', line2: 'Is a form of leadership.' },
+  { line1: 'Here you are, {name}.', line2: 'Counted. Present. Valued.' },
+  { line1: 'Good to see you, {name}.', line2: 'Your presence speaks first.' },
+  { line1: 'Consistent, {name}.', line2: 'Its own kind of excellence.' },
+  { line1: 'Show up, {name}.', line2: 'Lead up.' },
+  { line1: 'Faithful, {name}.', line2: 'In the small things — like showing up.' },
+  { line1: 'In the room, {name}.', line2: 'Where it matters most.' },
+  { line1: 'Here, {name}.', line2: 'Present and ready to serve.' },
+  { line1: 'Leadership, {name}.', line2: 'Begins the moment you arrive.' },
+  { line1: 'A present leader, {name}.', line2: 'Is an engaged leader.' },
+  { line1: 'Every check-in, {name}.', line2: 'Is a small act of commitment.' },
+  { line1: 'Your attendance, {name}.', line2: 'Speaks before you do.' },
+  { line1: 'Being here, {name}.', line2: 'Matters more than you know.' },
+  { line1: 'The best leaders, {name}.', line2: 'Are always in the room.' },
+  { line1: 'Counted, {name}.', line2: 'Present. Valued.' },
+  { line1: 'You\'re here, {name}.', line2: 'That\'s already something.' },
+  { line1: 'Present, {name}.', line2: 'And accounted for.' },
+  { line1: 'Still showing up, {name}.', line2: 'That\'s the whole game.' },
 ]
 
+// 0 = morning (5–12), 1 = midday (12–17), 2 = evening (17–21), 3 = night (21–5)
 function getWatch(): number {
-  const hour = new Date().getHours()
-  if (hour >= 5 && hour < 12) return 0   // morning watch
-  if (hour >= 12 && hour < 17) return 1  // midday watch
-  if (hour >= 17 && hour < 21) return 2  // evening watch
-  return 3                                // night watch
+  const h = new Date().getHours()
+  if (h >= 5 && h < 12) return 0
+  if (h >= 12 && h < 17) return 1
+  if (h >= 17 && h < 21) return 2
+  return 3
 }
 
-function getTimePool(): string[] {
-  const watch = getWatch()
-  if (watch === 0) return MORNING_GREETINGS
-  if (watch === 1) return MIDDAY_GREETINGS
-  if (watch === 2) return EVENING_GREETINGS
-  return NIGHT_GREETINGS
+const TIME_POOLS = [MORNING_GREETINGS, MIDDAY_GREETINGS, EVENING_GREETINGS, NIGHT_GREETINGS]
+
+function buildPool(isAdmin: boolean): Greeting[] {
+  const timePool = TIME_POOLS[getWatch()]
+  const rolePool = isAdmin ? ADMIN_GREETINGS : LEADER_GREETINGS
+  return [...timePool, ...rolePool]
 }
 
-function buildPool(isAdmin: boolean, isLeader: boolean): string[] {
-  const pool: string[] = [...getTimePool()]
-  if (isLeader) pool.push(...LEADER_GREETINGS)
-  if (isAdmin) pool.push(...ADMIN_GREETINGS)
-  return pool
-}
-
-function getDailyGreeting(isAdmin: boolean, isLeader: boolean): string {
-  const pool = buildPool(isAdmin, isLeader)
-  const now = new Date()
-  const dateSeed = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate()
-  const seed = dateSeed * 4 + getWatch()
-  return pool[seed % pool.length]
+function getDailyGreeting(isAdmin: boolean): Greeting {
+  const pool = buildPool(isAdmin)
+  const today = new Date()
+  const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
+  const idx = (dateSeed * 4 + getWatch()) % pool.length
+  return pool[idx]
 }
 
 function HomeGreeting({ user }: { user: AppUser | null }) {
-  const firstName = user?.firstName || 'Friend'
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
-  const isLeader = !!(user?.roles?.length)
-  const now = new Date()
-  const dateLabel = format(now, 'EEEE d MMMM').toUpperCase()
+  const { line1, line2 } = getDailyGreeting(isAdmin)
+  const firstName = user?.firstName || user?.email?.split('@')[0] || ''
+  const dateLabel = format(new Date(), 'EEEE, d MMMM').toUpperCase()
 
-  const chips: string[] = []
-  if (user?.unitName) chips.push(user.unitName)
-  if (user?.level) chips.push(user.level.charAt(0).toUpperCase() + user.level.slice(1))
-  if (user?.isAdmin) chips.push('Admin')
-  if (user?.isSuperAdmin) chips.push('Super Admin')
+  const [before, after] = line1.split('{name}')
 
   return (
-    <div className='relative mb-6 px-1'>
+    <div className='relative px-5 pb-6 pt-5'>
       <PullToRefreshIndicator />
-      <div className='absolute right-0 top-0'>
+      <div className='absolute right-5 top-5'>
         <NavDrawer user={user} />
       </div>
-      <p className='m-0 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
+
+      <p className='m-0 mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
         {dateLabel}
       </p>
-      <h1 className='m-0 text-2xl font-bold leading-tight text-foreground'>
-        <span className='text-primary'>{firstName}</span>
-        {', '}
-        {getDailyGreeting(isAdmin, isLeader)}
+      <h1 className='m-0 max-w-[82%] text-[1.65rem] font-bold leading-tight tracking-tight text-foreground'>
+        {before}<span className='text-primary'>{firstName}</span>{after}
+        <br />
+        {line2}
       </h1>
-      {chips.length > 0 && (
-        <div className='mt-3 flex flex-wrap gap-1.5'>
-          {chips.map((chip) => (
-            <span key={chip} className='rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground'>
-              {chip}
-            </span>
-          ))}
-        </div>
-      )}
+
+      <div className='mt-4 flex flex-wrap gap-2'>
+        {user?.unitName && (
+          <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
+            {user.unitName}
+          </span>
+        )}
+        {user?.level && (
+          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium capitalize text-muted-foreground'>
+            {user.level}
+          </span>
+        )}
+        {user?.isAdmin && (
+          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
+            Admin
+          </span>
+        )}
+        {user?.isSuperAdmin && (
+          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
+            Super Admin
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -213,8 +220,6 @@ export default function LeaderHomeScreen() {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
-  // Pull-to-refresh AND the TopBar refresh button both publish to the global
-  // refresh signal — see PullToRefreshIndicator / RefreshButton.
   useRefreshSignal(triggerRefresh)
 
   // Re-fetch whenever the tab becomes visible again (user returns from event edit)
@@ -321,8 +326,8 @@ export default function LeaderHomeScreen() {
 
   return (
     <PageShell>
+      <HomeGreeting user={user} />
       <PageMain>
-        <HomeGreeting user={user} />
         {isAdmin && (
           <div className='mb-6'>
             <Button type='button' onClick={() => navigate('/admin/events/new')} className='gap-2'>

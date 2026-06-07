@@ -654,7 +654,12 @@ function Pill({ active, onClick, children }) {
     <button
       type='button'
       onClick={onClick}
-      className={cn('chip cursor-pointer px-3 py-1.5 text-xs font-semibold', active && 'border-primary bg-primary text-primary-foreground')}
+      className={cn(
+        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-all active:scale-95',
+        active
+          ? 'bg-primary text-primary-foreground active:brightness-90'
+          : 'hover:bg-primary/12 active:bg-primary/18',
+      )}
     >
       {children}
     </button>
