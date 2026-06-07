@@ -629,6 +629,7 @@ export async function listMemberProfilesByScope(
 function invalidateEventListCache() {
   _activeEventsCaches.clear()
   _pastEventsCaches.clear()
+  _allEventsCaches.clear()
 }
 
 export async function pauseEvent(eventId)  { invalidateEventListCache(); return updateEventStatus(eventId, 'PAUSED') }
