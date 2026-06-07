@@ -49,7 +49,15 @@ export default function CreateEventForm() {
   // Selected admin scope (always one of `scopes`). Stored as "level:id".
   const [scopeId, setScopeId] = useState('')
   const [startsAt, setStartsAt] = useState(defaultStartsAt())
-  const [endsAt, setEndsAt] = useState(defaultEndsAt())
+  const [durationPreset, setDurationPreset] = useState<'30' | '60' | '120' | 'custom'>('60')
+  const [customMinutes, setCustomMinutes] = useState<number | string>(90)
+  const durationMin = durationPreset === 'custom' ? Math.max(1, Number(customMinutes) || 60) : Number(durationPreset)
+  const endsAt = useMemo(() => {
+    if (!startsAt) return ''
+    const start = new Date(startsAt)
+    if (isNaN(start.getTime())) return ''
+    return new Date(start.getTime() + durationMin * 60_000).toISOString().slice(0, 16)
+  }, [startsAt, durationMin])
   const [gracePeriodMin, setGracePeriodMin] = useState<number | string>(15)
   const [autoCheckoutMin, setAutoCheckoutMin] = useState<number | string>(0)
   const [methods, setMethods] = useState<string[]>(['QR', 'PIN'])
@@ -456,16 +464,39 @@ export default function CreateEventForm() {
       </Section>
 
       <Section title='Time window'>
-        <div className='grid grid-cols-2 gap-3'>
-          <Field label='Starts'>
-            <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
-              className='input-field' />
-          </Field>
-          <Field label='Ends'>
-            <input type='datetime-local' required value={endsAt} onChange={(e) => setEndsAt(e.target.value)}
-              className='input-field' />
-          </Field>
-        </div>
+        <Field label='Starts'>
+          <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
+            className='input-field' />
+        </Field>
+        <Field label='Duration'>
+          <div className='flex flex-wrap gap-2'>
+            {([
+              { label: '30 min', value: '30' },
+              { label: '1 hour', value: '60' },
+              { label: '2 hours', value: '120' },
+              { label: 'Custom', value: 'custom' },
+            ] as const).map((opt) => (
+              <Pill key={opt.value} active={durationPreset === opt.value} onClick={() => setDurationPreset(opt.value)}>
+                {opt.label}
+              </Pill>
+            ))}
+          </div>
+          {durationPreset === 'custom' && (
+            <div className='mt-2 flex items-center gap-2'>
+              <input
+                type='number' min={1} max={1440} value={customMinutes}
+                onChange={(e) => setCustomMinutes(e.target.value)}
+                className='input-field w-24'
+              />
+              <span className='text-sm text-muted-foreground'>minutes</span>
+            </div>
+          )}
+          {endsAt && (
+            <p className='mt-1 text-xs text-muted-foreground'>
+              Ends at {formatLocalTime(endsAt)}
+            </p>
+          )}
+        </Field>
         <div className='grid grid-cols-2 gap-3'>
           <Field label='Grace period (min)'>
             <input type='number' min={0} max={180} value={gracePeriodMin} onChange={(e) => setGracePeriodMin(e.target.value)}
@@ -666,17 +697,21 @@ function Pill({ active, onClick, children }) {
   )
 }
 
-// Default times: now (rounded to current minute) and now + 1h, formatted for
-// <input type="datetime-local"> which expects a tz-naive local string.
+// Default start time: now, formatted for <input type="datetime-local">.
 function defaultStartsAt() {
   const d = new Date()
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
   return d.toISOString().slice(0, 16)
 }
-function defaultEndsAt() {
-  const d = new Date(Date.now() + 60 * 60 * 1000)
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-  return d.toISOString().slice(0, 16)
+
+// Format an ISO datetime-local string as a human-readable time (e.g. "3:30 PM").
+function formatLocalTime(isoLocal: string): string {
+  const timePart = isoLocal.slice(11, 16)
+  const [hStr, mStr] = timePart.split(':')
+  const h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const h12 = h % 12 || 12
+  return `${h12}:${mStr} ${ampm}`
 }
 
 type RecurrencePattern = 'none' | 'weekly' | 'biweekly' | 'monthly'
