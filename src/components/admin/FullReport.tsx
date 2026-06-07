@@ -259,7 +259,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
       <CenterCard>
-        <p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p>
+        <p className='text-muted-foreground'>This event isn&apos;t part of your church.</p>
       </CenterCard>
     )
   }
@@ -282,14 +282,14 @@ export default function FullReport({ eventId }: { eventId: string }) {
         <p className='section-heading m-0 flex flex-wrap items-center gap-1'>
           <StatusBadge status={event.status} />
           <span>
-            {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · Admin:{' '}
+            {event.scope_church_name} · {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · Admin:{' '}
             {event.created_by_name || '—'}
           </span>
         </p>
 
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
-            <Label className='section-heading'>Filter by scope</Label>
+            <Label className='section-heading'>Filter by church</Label>
             <select
               value={filterChurchId || '__all__'}
               onChange={(e) => {

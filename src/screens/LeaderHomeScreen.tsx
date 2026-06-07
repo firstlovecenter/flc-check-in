@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import Spinner from '../components/Spinner'
@@ -8,16 +8,183 @@ import { PageShell, PageMain } from '../components/layout/PageShell'
 import { EmptyState } from '../components/layout/EmptyState'
 import { Alert } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
+import { SCOPE_LEVELS } from '../types/app'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
-import { getUserChurchRefs } from '../utils/userScope'
+import { getUserChurchRefs, type UserScopeRef } from '../utils/userScope'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
-// Each entry: line1 contains {name} which renders in primary colour; line2 is the sub-phrase.
-interface Greeting { line1: string; line2: string }
+// ─── Church in Focus ─────────────────────────────────────────────────────────
+
+const CHURCH_FOCUS_KEY = 'flc:churchInFocus'
+const CHURCH_FOCUS_EVENT = 'flc:churchInFocusChange'
+
+function roleLabel(source: UserScopeRef['source']): string {
+  if (source === 'admin') return 'Admin'
+  if (source === 'leader') return 'Leader'
+  return 'Member'
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
+function readFocusId(): string | null {
+  try { return localStorage.getItem(CHURCH_FOCUS_KEY) } catch { return null }
+}
+function writeFocusId(id: string | null) {
+  try {
+    if (id === null) localStorage.removeItem(CHURCH_FOCUS_KEY)
+    else localStorage.setItem(CHURCH_FOCUS_KEY, id)
+    window.dispatchEvent(new Event(CHURCH_FOCUS_EVENT))
+  } catch { /* ignore */ }
+}
+
+function ChurchInFocusSelector({ user }: { user: AppUser | null }) {
+  const refs = getUserChurchRefs(user).filter(
+    (r) => r.name && r.level !== 'special_group',
+  )
+  // Dedupe by (level, id) keeping the most-privileged source
+  // (admin > leader > flat > active).
+  const SOURCE_RANK: Record<UserScopeRef['source'], number> = { admin: 0, leader: 1, flat: 2, active: 3 }
+  const dedupedMap = new Map<string, UserScopeRef>()
+  for (const r of refs) {
+    const key = `${r.level}:${r.id}`
+    const existing = dedupedMap.get(key)
+    if (!existing || SOURCE_RANK[r.source] < SOURCE_RANK[existing.source]) {
+      dedupedMap.set(key, r)
+    }
+  }
+  const options = Array.from(dedupedMap.values())
+
+  const [open, setOpen] = useState(false)
+  const [focusId, setFocusId] = useState<string | null>(() => readFocusId())
+  const ref = useRef<HTMLDivElement>(null)
+
+  const active = focusId === null ? null : (options.find((o) => o.id === focusId) ?? null)
+
+  // Sync focusId when another component (or tab) changes it
+  useEffect(() => {
+    function onFocusChange() { setFocusId(readFocusId()) }
+    window.addEventListener(CHURCH_FOCUS_EVENT, onFocusChange)
+    return () => window.removeEventListener(CHURCH_FOCUS_EVENT, onFocusChange)
+  }, [])
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(e: PointerEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  if (options.length === 0) {
+    // Fallback: show static badges when no refs resolved yet
+    return (
+      <div className='mt-4 flex flex-wrap gap-2'>
+        {user?.unitName && (
+          <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
+            {user.unitName}
+          </span>
+        )}
+        {user?.level && (
+          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium capitalize text-muted-foreground'>
+            {cap(user.level)}
+          </span>
+        )}
+        {(user?.isAdmin || user?.isSuperAdmin) && (
+          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
+            {user.isSuperAdmin ? 'Super Admin' : 'Admin'}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  function select(id: string | null) {
+    writeFocusId(id)
+    setFocusId(id)
+    setOpen(false)
+  }
+
+  const activeLabel = active
+    ? `${active.name} · ${cap(active.level)} · ${roleLabel(active.source)}`
+    : 'All Churches'
+
+  return (
+    <div className='mt-4' ref={ref}>
+      <p className='m-0 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground'>
+        Church in focus
+      </p>
+      <div className='relative inline-block max-w-full'>
+        <button
+          type='button'
+          onClick={() => setOpen((v) => !v)}
+          className='flex max-w-full items-center gap-2 rounded-lg border border-border bg-card px-3.5 py-2 text-left text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary active:scale-[0.99]'
+        >
+          <span className='min-w-0 truncate'>{activeLabel}</span>
+          <svg
+            viewBox='0 0 24 24'
+            width='14'
+            height='14'
+            fill='currentColor'
+            className={`shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+          >
+            <path d='M7 10l5 5 5-5z' />
+          </svg>
+        </button>
+
+        {open && (
+          <div className='absolute left-0 top-full z-50 mt-1.5 min-w-full overflow-hidden rounded-xl border border-border bg-card shadow-xl'>
+            {/* All Churches option */}
+            <button
+              type='button'
+              onClick={() => select(null)}
+              className='flex w-full items-center justify-between gap-4 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary'
+            >
+              <span className={focusId === null ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                All Churches
+              </span>
+              {focusId === null && (
+                <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-primary'>
+                  <path d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z' />
+                </svg>
+              )}
+            </button>
+            {/* Divider */}
+            <div className='mx-3 border-t border-border' />
+            {options.map((o) => {
+              const isActive = o.id === focusId
+              const label = `${o.name} · ${cap(o.level)} · ${roleLabel(o.source)}`
+              return (
+                <button
+                  key={`${o.level}:${o.id}`}
+                  type='button'
+                  onClick={() => select(o.id)}
+                  className='flex w-full items-center justify-between gap-4 px-4 py-3 text-left text-sm transition-colors hover:bg-secondary'
+                >
+                  <span className={isActive ? 'font-semibold text-foreground' : 'text-foreground'}>
+                    {label}
+                  </span>
+                  {isActive && (
+                    <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-primary'>
+                      <path d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z' />
+                    </svg>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 
 const MORNING_GREETINGS: Greeting[] = [
   { line1: 'Good morning, {name}.', line2: 'The registers are open.' },
@@ -152,28 +319,7 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
           {line2}
         </h1>
 
-        <div className='mt-4 flex flex-wrap gap-2'>
-        {user?.unitName && (
-          <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
-            {user.unitName}
-          </span>
-        )}
-        {user?.level && (
-          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium capitalize text-muted-foreground'>
-            {user.level}
-          </span>
-        )}
-        {user?.isAdmin && (
-          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
-            Admin
-          </span>
-        )}
-        {user?.isSuperAdmin && (
-          <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
-            Super Admin
-          </span>
-        )}
-        </div>
+        <ChurchInFocusSelector user={user} />
       </div>
     </div>
   )
@@ -212,6 +358,62 @@ function writePersistedEvents(userId: string | undefined, events: CheckinEventRo
   } catch { /* quota / disabled storage */ }
 }
 
+// ─── Hierarchy-aware focus filter ────────────────────────────────────────────
+// Given a selected church (focusId), returns a predicate that keeps only events
+// whose scope_church_id is the selected church OR a confirmed descendant of it.
+//
+// "Confirmed descendant" is derived from the user's own profile chain
+// (user.bacenta / .governorship / .council / etc.) plus their JWT churchScopes
+// admin/leader edges at levels strictly below the selected church. This covers
+// the common single-chain user perfectly. For multi-campus admins whose admin
+// edges span different higher-level churches, only the edges we can confirm are
+// below the selected church are included — everything else is shown when the
+// user picks "All Churches".
+function buildFocusFilter(user: AppUser | null, focusId: string | null): (evt: CheckinEventRow) => boolean {
+  if (!focusId || !user) return () => true
+
+  const allRefs = getUserChurchRefs(user)
+  const focusRef = allRefs.find(r => r.id === focusId)
+  if (!focusRef) return (evt) => evt.scope_church_id === focusId
+
+  const focusLevelIdx = SCOPE_LEVELS.indexOf(focusRef.level as any)
+  if (focusLevelIdx < 0) return (evt) => evt.scope_church_id === focusId
+
+  const included = new Set<string>([focusId])
+
+  // Flat profile chain: user.bacenta, user.governorship, etc.
+  // These are confirmed descendants when focusId IS on the user's own chain
+  // (i.e. user[focusRef.level].id === focusId).
+  const isOnFlatChain = (user as any)[focusRef.level]?.id === focusId
+  if (isOnFlatChain) {
+    for (let i = 0; i < focusLevelIdx; i++) {
+      const lvl = SCOPE_LEVELS[i] as string
+      const flatVal = (user as any)[lvl]
+      if (flatVal?.id) included.add(flatVal.id)
+    }
+  }
+
+  // JWT churchScopes edges at levels below the selected level.
+  // These are the user's explicit admin/leader assignments and are very likely
+  // within the selected church's subtree (best-effort — we include them since
+  // omitting them would hide valid events).
+  const cs = user.churchScopes
+  if (cs) {
+    for (let i = 0; i < focusLevelIdx; i++) {
+      const lvl = SCOPE_LEVELS[i] as string
+      const cLvl = lvl.charAt(0).toUpperCase() + lvl.slice(1)
+      const adminRef = (cs as any)[`isAdminFor${cLvl}Of`]
+      if (adminRef?.id) included.add(adminRef.id)
+      const leadsRef = (cs as any)[`leads${cLvl}Of`]
+      if (leadsRef?.id) included.add(leadsRef.id)
+    }
+  }
+
+  return (evt: CheckinEventRow) => included.has(evt.scope_church_id)
+}
+
+
+
 export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const navigate = useNavigate()
@@ -221,6 +423,14 @@ export default function LeaderHomeScreen() {
     return cached ? { status: 'ok', events: cached } : { status: 'loading' }
   })
   const [refreshKey, setRefreshKey] = useState(0)
+  const [focusId, setFocusId] = useState<string | null>(() => readFocusId())
+
+  // Re-render when the church focus changes (dropdown fires CHURCH_FOCUS_EVENT)
+  useEffect(() => {
+    function onFocusChange() { setFocusId(readFocusId()) }
+    window.addEventListener(CHURCH_FOCUS_EVENT, onFocusChange)
+    return () => window.removeEventListener(CHURCH_FOCUS_EVENT, onFocusChange)
+  }, [])
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
   useRefreshSignal(triggerRefresh)
@@ -348,9 +558,12 @@ export default function LeaderHomeScreen() {
 
         {state.status === 'ok' && (() => {
           const now = new Date()
-          const live     = state.events.filter(e => e.status === 'ACTIVE' && new Date(e.starts_at) <= now && new Date(e.ends_at) >= now)
-          const upcoming = state.events.filter(e => new Date(e.starts_at) > now && e.status !== 'ENDED')
-          const past     = state.events.filter(e => new Date(e.ends_at) < now || e.status === 'ENDED')
+          // Apply hierarchy-aware church-in-focus filter
+          const focusPredicate = buildFocusFilter(user, focusId)
+          const visibleEvents = focusId ? state.events.filter(focusPredicate) : state.events
+          const live     = visibleEvents.filter(e => e.status === 'ACTIVE' && new Date(e.starts_at) <= now && new Date(e.ends_at) >= now)
+          const upcoming = visibleEvents.filter(e => new Date(e.starts_at) > now && e.status !== 'ENDED')
+          const past     = visibleEvents.filter(e => new Date(e.ends_at) < now || e.status === 'ENDED')
             .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
           const pastSlice = past.slice(0, 5)
 

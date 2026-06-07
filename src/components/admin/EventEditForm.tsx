@@ -186,11 +186,11 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
             placeholder='e.g. First Love Center, The Qodesh'
             className='input-field' />
         </Field>
-        <Field label='Scope (read-only)'>
+        <Field label='Church (read-only)'>
           <p className='surface-card m-0 rounded-lg px-4 py-2.5 text-sm text-foreground'>
-            <span className='uppercase tracking-wider text-primary'>{event.scope_level}</span>
-            <span className='text-border'> · </span>
             {event.scope_church_name}
+            <span className='text-border'> · </span>
+            <span className='uppercase tracking-wider text-primary'>{event.scope_level}</span>
           </p>
         </Field>
       </Section>

@@ -149,11 +149,11 @@ export default function EventHistoryList() {
                   <div className='min-w-0 flex-1'>
                     <p className='m-0 truncate text-sm font-bold tracking-tight text-foreground'>{evt.name}</p>
                     <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>
+                      {evt.scope_church_name}
+                      {' · '}
                       <span className='text-[10px] font-bold uppercase tracking-wide text-primary'>
                         {evt.scope_level}
                       </span>
-                      {' · '}
-                      {evt.scope_church_name}
                       {evt.venue_name ? ` · ${evt.venue_name}` : ''}
                     </p>
                   </div>

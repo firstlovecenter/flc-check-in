@@ -249,7 +249,7 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
   return (
     <div className='surface-card p-4 text-center sm:p-5'>
       <p className='section-heading m-0 mb-2 text-center'>
-        {event.scope_level} · {event.scope_church_name}
+        {event.scope_church_name} · {event.scope_level}
       </p>
       <h3 className='m-0 mb-4 text-base font-semibold tracking-tight text-foreground'>{event.name}</h3>
       {showQr ? (

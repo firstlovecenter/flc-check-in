@@ -18,8 +18,8 @@ import {
 import { upsertMemberProfile } from './supabaseCheckins'
 
 const SYNC_TS_PREFIX = 'flc:lastGraphProfileSync:'
-/** Re-probe graph for moved leaders/admins without requiring a new password login. */
-const SESSION_RESYNC_MS = 30 * 60 * 1000
+/** Re-probe graph on every authed route visit (profile may not be in Supabase yet). */
+const SESSION_RESYNC_MS = 10 * 1000
 
 function syncKey(userId: string) {
   return `${SYNC_TS_PREFIX}${userId}`
