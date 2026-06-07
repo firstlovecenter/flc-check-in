@@ -4,16 +4,20 @@
 // accept. Shared by the public /events display and the in-app check-in page.
 
 import { useEffect, useState } from 'react'
-import { generateRotatingPin } from '../utils/checkinsCrypto'
+import { generateRotatingPin, currentBucket } from '../utils/checkinsCrypto'
+
+const PIN_WINDOW_SEC = 15
 
 export function useRotatingPin(
   event: { id: string; qr_secret_hex?: string | null } | null | undefined,
   enabled = true,
 ): { pin: string | null; secsLeft: number } {
   const [pin, setPin] = useState<string | null>(null)
-  const [secsLeft, setSecsLeft] = useState(() => 15 - (Math.floor(Date.now() / 1000) % 15))
-  // Bumped at each 15-second boundary to force regeneration of the PIN.
-  const [tick, setTick] = useState(0)
+  const [secsLeft, setSecsLeft] = useState(() => PIN_WINDOW_SEC - (Math.floor(Date.now() / 1000) % PIN_WINDOW_SEC))
+  // The active 15-second bucket. Regenerating off this (rather than off an
+  // exact boundary-second equality) means a dropped interval tick can't leave
+  // the PIN stale — we resync to whatever bucket the wall clock is now in.
+  const [bucket, setBucket] = useState(() => currentBucket(Date.now(), PIN_WINDOW_SEC))
 
   const secretHex = event?.qr_secret_hex
   const eventId = event?.id
@@ -25,18 +29,18 @@ export function useRotatingPin(
     if (!enabled || !secretHex || !eventId) { setPin(null); return }
     let cancelled = false
     ;(async () => {
-      const p = await generateRotatingPin({ secretHex, eventId })
+      const p = await generateRotatingPin({ secretHex, eventId, bucket })
       if (!cancelled) setPin(p)
     })()
     return () => { cancelled = true }
-  }, [secretHex, eventId, enabled, tick])
+  }, [secretHex, eventId, enabled, bucket])
 
   useEffect(() => {
     const id = setInterval(() => {
-      const sl = 15 - (Math.floor(Date.now() / 1000) % 15)
-      setSecsLeft(sl)
-      // At the boundary the bucket has advanced — regenerate.
-      if (sl === 15) setTick((t) => t + 1)
+      const now = Date.now()
+      setSecsLeft(PIN_WINDOW_SEC - (Math.floor(now / 1000) % PIN_WINDOW_SEC))
+      const next = currentBucket(now, PIN_WINDOW_SEC)
+      setBucket((b) => (next !== b ? next : b))
     }, 1000)
     return () => clearInterval(id)
   }, [])
