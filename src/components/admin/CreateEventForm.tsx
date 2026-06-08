@@ -241,43 +241,46 @@ export default function CreateEventForm() {
         })
         if (i === 0) {
           firstEventId = eventId
-          // Snapshot scope members only for the first occurrence.
-          ;(async () => {
-            try {
-              let memberIds: string[] = []
-              let profileRows: any[] = []
+          // Snapshot scope members + write profiles before navigating so the
+          // event dashboard sees a complete member list on the very first load.
+          setSubmitProgress('Preparing member list…')
+          try {
+            let memberIds: string[] = []
+            let profileRows: any[] = []
 
-              if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0) {
-                // Group mode: union members across all selected groups, deduplicated.
-                const results = await Promise.all(selectedGroupIds.map(listSpecialGroupMembers))
-                const seen = new Set<string>()
-                memberIds = results.flat().filter((m) => {
-                  if (seen.has(m.member_id)) return false
-                  seen.add(m.member_id); return true
-                }).map((m) => m.member_id)
-              } else {
-                // Church scopes: union members from all selected scopes.
-                const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
-                const results = await Promise.all(
-                  scopesToFetch.map((s) => getMembersInScope({ level: s.level, churchId: s.id }))
-                )
-                const allMembers = results.flat()
-                // Deduplicate by member id.
-                const seen = new Set<string>()
-                const unique = allMembers.filter((m) => {
-                  if (!m?.id || seen.has(m.id)) return false
-                  seen.add(m.id); return true
-                })
-                profileRows = unique.map(memberToProfileRow)
-                memberIds = profileRows.map((r: any) => r.id).filter(Boolean)
-              }
+            if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0) {
+              // Group mode: union members across all selected groups, deduplicated.
+              const results = await Promise.all(selectedGroupIds.map(listSpecialGroupMembers))
+              const seen = new Set<string>()
+              memberIds = results.flat().filter((m) => {
+                if (seen.has(m.member_id)) return false
+                seen.add(m.member_id); return true
+              }).map((m) => m.member_id)
+            } else {
+              // Church scopes: union members from all selected scopes.
+              const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
+              const results = await Promise.all(
+                scopesToFetch.map((s) => getMembersInScope({ level: s.level, churchId: s.id }))
+              )
+              const allMembers = results.flat()
+              // Deduplicate by member id.
+              const seen = new Set<string>()
+              const unique = allMembers.filter((m) => {
+                if (!m?.id || seen.has(m.id)) return false
+                seen.add(m.id); return true
+              })
+              profileRows = unique.map(memberToProfileRow)
+              memberIds = profileRows.map((r: any) => r.id).filter(Boolean)
+            }
 
-              await Promise.all([
-                snapshotEventScopeMembers(eventId, memberIds),
-                profileRows.length ? bulkUpsertMemberProfiles(profileRows) : Promise.resolve(),
-              ])
-            } catch { /* non-critical */ }
-          })()
+            await Promise.all([
+              snapshotEventScopeMembers(eventId, memberIds),
+              profileRows.length ? bulkUpsertMemberProfiles(profileRows) : Promise.resolve(),
+            ])
+          } catch {
+            // Non-critical: if the write fails the event dashboard fallback will
+            // re-derive and backfill profiles on first load.
+          }
         }
       }
       navigate(`/admin/events/${firstEventId}`, { replace: true })

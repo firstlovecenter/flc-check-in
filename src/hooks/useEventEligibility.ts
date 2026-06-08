@@ -240,12 +240,13 @@ export function useEventEligibility(
               picture_url: (m as any).picture_url ?? null,
             }))
           }
-        } else if (snapshotProfiles.length > 0) {
-          // Snapshot exists — use it directly. No graph round-trip needed.
+        } else if (snapshotProfiles.length > 0 && (scopeCountFetched === 0 || snapshotProfiles.length >= scopeCountFetched)) {
+          // Snapshot exists and profile coverage is complete — use directly.
           allRows = snapshotProfiles
         } else {
-          // No snapshot yet — try the live graph first, fall back to
-          // member_profiles if the graph is unavailable (503 / timeout).
+          // Either no snapshot yet (creation race / new event), or snapshot exists
+          // but profiles are incomplete (creation-time write partially failed).
+          // Fall back to the graph to get the full member list and backfill profiles.
           let graphMembers: any[] | null = null
           let graphError: Error | null = null
           try {
