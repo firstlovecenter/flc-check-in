@@ -10,15 +10,13 @@ import { CenterCard } from '../layout/CenterCard'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Label } from '../ui/label'
-import { Modal } from '../ui/modal'
 import { cn } from '../../lib/utils'
 import {
   listCheckedIn,
-  listAbsenceNotesForEvent, upsertAbsenceNote, addAuditLog, getRiskyCheckIns,
+  getRiskyCheckIns,
 } from '../../utils/supabaseCheckins'
 import { childScopeLevel } from '../../utils/membersApi'
-import { getCurrentUser, formatName } from '../../utils/auth'
-import { Textarea } from '../ui/textarea'
+import { getCurrentUser } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
@@ -61,10 +59,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   const [search, setSearch]       = useState('')
   const [error, setError]         = useState<string | null>(null)
   const [modalMember, setModalMember] = useState<any>(null)
-  const [absenceNotes, setAbsenceNotes]   = useState<Map<string, string>>(new Map())
-  const [absenceTarget, setAbsenceTarget] = useState<any | null>(null)
-  const [absenceInput, setAbsenceInput]   = useState('')
-  const [absenceSaving, setAbsenceSaving] = useState(false)
   const [riskyIds, setRiskyIds] = useState<Set<string>>(new Set())
   const [filterLevel,      setFilterLevel]      = useState<string | null>(urlLevel)
   const [filterChurchId,   setFilterChurchId]   = useState<string | null>(urlChurchId)
@@ -75,11 +69,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     setFilterChurchId(urlChurchId)
     setFilterChurchName(urlChurchName)
   }, [urlLevel, urlChurchId, urlChurchName])
-
-  useEffect(() => {
-    if (!eventId) return
-    listAbsenceNotesForEvent(eventId).then(setAbsenceNotes).catch(() => {})
-  }, [eventId, refreshKey])
 
   useEffect(() => {
     if (!eventId || records.length === 0) return
@@ -139,28 +128,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     try { setRecords(await listCheckedIn(eventId)) }
     catch (err: any) { setError(err.message) }
   }
-
-  async function saveAbsenceNote() {
-    if (!absenceTarget || !absenceInput.trim()) return
-    setAbsenceSaving(true)
-    try {
-      await upsertAbsenceNote(eventId, absenceTarget.id, absenceInput.trim(), user!.userId)
-      setAbsenceNotes((m) => new Map(m).set(absenceTarget.id, absenceInput.trim()))
-      addAuditLog({
-        action: 'absence.note_set', actorId: user!.userId, actorName: formatName(user), eventId,
-        targetId: absenceTarget.id,
-        targetName: [absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id,
-        details: { reason: absenceInput.trim() },
-      }).catch(() => {})
-      setAbsenceTarget(null)
-      setAbsenceInput('')
-    } catch (err: any) {
-      setError(err.message || 'Could not save note')
-    } finally {
-      setAbsenceSaving(false)
-    }
-  }
-
 
   function exportCsv() {
     if (!event) return
@@ -250,13 +217,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               status={status}
               canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
               isRisky={riskyIds.has(b.member.id)}
-              absenceNote={status !== 'present' ? absenceNotes.get(b.member.id) : undefined}
               onManual={() => setModalMember(b.member)}
-              onAddNote={
-                status !== 'present' && viewerCaps.canManage
-                  ? () => { setAbsenceTarget(b.member); setAbsenceInput(absenceNotes.get(b.member.id) || '') }
-                  : undefined
-              }
             />
           ))}
         </div>
@@ -271,20 +232,6 @@ export default function EventMembers({ eventId }: { eventId: string }) {
         />
       )}
 
-      <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
-        <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
-        <p className='m-0 mt-1 text-sm text-muted-foreground'>
-          {absenceTarget &&
-            ([absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id)}
-        </p>
-        <Textarea value={absenceInput} onChange={(e) => setAbsenceInput(e.target.value)} placeholder='Enter absence reason…' rows={3} className='mt-3 min-h-0' />
-        <div className='mt-4 flex gap-3'>
-          <Button type='button' variant='outline' className='flex-1' onClick={() => setAbsenceTarget(null)}>Cancel</Button>
-          <Button type='button' className='flex-1' disabled={absenceSaving || !absenceInput.trim()} onClick={saveAbsenceNote}>
-            {absenceSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </Modal>
     </PageShell>
   )
 }
@@ -294,14 +241,12 @@ export default function EventMembers({ eventId }: { eventId: string }) {
 
 function MemberCard({
   entry, status, canManuallyCheckIn,
-  onManual, absenceNote, onAddNote, isRisky = false,
+  onManual, isRisky = false,
 }: {
   entry: { member: any; record: any }
   status: Status
   canManuallyCheckIn: boolean
   onManual: () => void
-  onAddNote?: () => void
-  absenceNote?: string
   isRisky?: boolean
 }) {
   const { member: m, record: r } = entry
@@ -311,10 +256,9 @@ function MemberCard({
   const phone: string | null = m.phone || null
   const isAbsent = !r
 
-  const showPhone    = !!phone
-  const showCheckIn  = isAbsent && canManuallyCheckIn
-  const showNote     = isAbsent && !!onAddNote
-  const hasActions   = showPhone || showCheckIn || showNote
+  const showPhone   = !!phone
+  const showCheckIn = isAbsent && canManuallyCheckIn
+  const hasActions  = showPhone || showCheckIn
 
   return (
     <div className={cn('flex items-center gap-2 overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
@@ -347,9 +291,6 @@ function MemberCard({
             <Badge variant='outline' className='mt-0.5 text-[10px] uppercase tracking-wide'>{r.method}</Badge>
           )}
           {!isAbsent && r?.is_late && <Badge variant='warning' className='mt-0.5 text-[10px]'>Late</Badge>}
-          {isAbsent && absenceNote && (
-            <span className='block max-w-[80px] truncate text-[10px] text-muted-foreground' title={absenceNote}>{absenceNote}</span>
-          )}
         </div>
       </div>
 
@@ -377,17 +318,6 @@ function MemberCard({
               <CheckInIcon />
             </button>
           )}
-          {showNote && (
-            <button
-              type='button'
-              onClick={onAddNote}
-              className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-              title={absenceNote ? 'Edit note' : 'Add note'}
-              aria-label={absenceNote ? `Edit absence note for ${name}` : `Add absence note for ${name}`}
-            >
-              <NoteIcon />
-            </button>
-          )}
         </div>
       )}
     </div>
@@ -412,12 +342,4 @@ function CheckInIcon() {
   )
 }
 
-function NoteIcon() {
-  return (
-    <svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
-      <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
-      <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
-    </svg>
-  )
-}
 
