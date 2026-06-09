@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { AppUser, ChurchRef, ScopeLevel } from '../types/app'
 import { getCurrentUser } from '../utils/auth'
@@ -64,7 +64,7 @@ export function ChurchFocusProvider({ children }: { children: ReactNode }) {
     if (!still) setFocusedScopeState(null)
   }, [availableScopes, focusedScope?.id, focusedScope?.level])
 
-  const setFocusedScope = (s: ChurchRef | null) => {
+  const setFocusedScope = useCallback((s: ChurchRef | null) => {
     setFocusedScopeState(s)
     try {
       if (s && user?.userId) {
@@ -73,15 +73,20 @@ export function ChurchFocusProvider({ children }: { children: ReactNode }) {
         sessionStorage.removeItem(storageKey)
       }
     } catch { /* quota / disabled storage */ }
-  }
+  }, [storageKey, user?.userId])
+
+  // Memoised so consumers only re-render when the focus/scope data actually
+  // changes — the provider itself re-renders on every navigation (it re-syncs
+  // the user from storage on pathname change).
+  const value = useMemo<ChurchFocusValue>(() => ({
+    focusedScope,
+    availableScopes,
+    isMultiScope: availableScopes.length > 1,
+    setFocusedScope,
+  }), [focusedScope, availableScopes, setFocusedScope])
 
   return (
-    <ChurchFocusCtx.Provider value={{
-      focusedScope,
-      availableScopes,
-      isMultiScope: availableScopes.length > 1,
-      setFocusedScope,
-    }}>
+    <ChurchFocusCtx.Provider value={value}>
       {children}
     </ChurchFocusCtx.Provider>
   )

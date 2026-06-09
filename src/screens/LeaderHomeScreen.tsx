@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import Spinner from '../components/Spinner'
@@ -12,6 +12,7 @@ import ChurchScopeSwitcher from '../components/ChurchScopeSwitcher'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
+  getEvent, listCheckedIn,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
@@ -217,10 +218,55 @@ export default function LeaderHomeScreen() {
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
   useRefreshSignal(triggerRefresh)
 
+  // Memoised live/upcoming/past split — re-filtering and re-sorting on every
+  // unrelated re-render is wasted work once the list is stable.
+  const eventGroups = useMemo(() => {
+    if (state.status !== 'ok') return null
+    const now = new Date()
+    const live     = state.events.filter(e => e.status === 'ACTIVE')
+    const upcoming = state.events.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
+    const past     = state.events.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
+      .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
+    return { live, upcoming, past, pastSlice: past.slice(0, 5) }
+  }, [state])
+
   // Cleanup legacy storage from removed "Church in Focus" feature.
   useEffect(() => {
     try { localStorage.removeItem('flc:churchInFocus') } catch { /* ignore */ }
   }, [])
+
+  // Warm the chunks for the screens a leader is most likely to open next
+  // (check-in form, event dashboard) once the browser is idle, so tapping an
+  // event card never waits on a chunk download. Imports resolve to the same
+  // modules React.lazy uses in App.tsx, so there's no double-fetch.
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500))
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout
+    const handle = idle(() => {
+      import('./CheckInFormScreen').catch(() => {})
+      import('./admin/EventDashboardScreen').catch(() => {})
+    })
+    return () => cancelIdle(handle)
+  }, [])
+
+  // Warm the data for live events once the list has rendered: getEvent +
+  // listCheckedIn are plain Supabase GETs, so prefetching them primes the
+  // service worker's stale-while-revalidate cache — opening a live event
+  // then paints instantly from cache while revalidating in the background.
+  useEffect(() => {
+    if (state.status !== 'ok') return
+    const liveIds = state.events.filter((e) => e.status === 'ACTIVE').slice(0, 2).map((e) => e.id)
+    if (liveIds.length === 0) return
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 2000))
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout
+    const handle = idle(() => {
+      for (const id of liveIds) {
+        getEvent(id).catch(() => {})
+        listCheckedIn(id).catch(() => {})
+      }
+    })
+    return () => cancelIdle(handle)
+  }, [state])
 
   // Re-fetch whenever the tab becomes visible again (user returns from event edit)
   useEffect(() => {
@@ -343,14 +389,8 @@ export default function LeaderHomeScreen() {
 
         {state.status === 'error' && <Alert variant='destructive'>{state.error}</Alert>}
 
-        {state.status === 'ok' && (() => {
-          const now = new Date()
-          // If a scope is focused, only show events scoped to that church.
-          const live     = state.events.filter(e => e.status === 'ACTIVE')
-          const upcoming = state.events.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
-          const past     = state.events.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
-            .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
-          const pastSlice = past.slice(0, 5)
+        {state.status === 'ok' && eventGroups && (() => {
+          const { live, upcoming, past, pastSlice } = eventGroups
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
@@ -444,6 +484,7 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
   return (
     <Link
       to={`/events/${evt.id}`}
+      viewTransition
       className={`event-row ${variant === 'past' ? 'opacity-70 shadow-none' : ''}`}
     >
       {/* Leading status dot — replaces the colored side stripe */}

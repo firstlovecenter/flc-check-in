@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'prompt',
-        includeAssets: ['icon-192x192.png', 'icon-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
+        includeAssets: ['android-chrome-192x192.png', 'android-chrome-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
         manifest: {
           name: 'FLC Hineni',
           short_name: 'Hineni',
@@ -36,13 +36,13 @@ export default defineConfig(({ mode }) => {
           scope: '/',
           icons: [
             {
-              src: '/icon-192x192.png',
+              src: '/android-chrome-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any maskable',
             },
             {
-              src: '/icon-512x512.png',
+              src: '/android-chrome-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable',
@@ -53,13 +53,7 @@ export default defineConfig(({ mode }) => {
           // New SW immediately takes control of all open tabs after activation.
           clientsClaim: true,
           // Cache the app shell and static assets.
-          // Include json (model manifests) and jpeg (logo).
           globPatterns: ['**/*.{js,css,html,svg,png,webp,jpeg,jpg,woff2,json}'],
-          // face-api.js model shards (~7MB total) are no longer precached.
-          // Most users only check in via QR/PIN and never touch face-id, so
-          // shipping 7MB to every PWA install is wasteful. We cache them at
-          // RUNTIME the first time someone opens biometrics or face enrol —
-          // see the /models/* runtimeCaching rule below.
           runtimeCaching: [
             // Supabase — stale-while-revalidate so reloads paint from cache
             // INSTANTLY, then refresh in the background. Realtime channels in
@@ -70,17 +64,6 @@ export default defineConfig(({ mode }) => {
               urlPattern: /^https:\/\/.*\.supabase\.co\//,
               handler: 'StaleWhileRevalidate',
               options: { cacheName: 'supabase-api' },
-            },
-            // face-api.js model shards — pinned content; CacheFirst is safe
-            // and means the first user to open a face-related screen pays
-            // the ~7MB download once, everyone else reuses the cache.
-            {
-              urlPattern: /\/models\//,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'face-api-models',
-                expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
             },
             // CARTO map tiles — cache-first; tiles are content-addressed by
             // z/x/y so a cached tile is always correct.
@@ -108,7 +91,9 @@ export default defineConfig(({ mode }) => {
           // Split heavy vendor deps into their own chunks so they only load
           // when a route that uses them is reached. Combined with React.lazy
           // route boundaries in App.tsx, this means a leader who only does
-          // QR check-in never downloads leaflet/face-api/papaparse.
+          // QR check-in never downloads leaflet/papaparse. zxing is split on
+          // its own because it is only dynamically imported as a fallback on
+          // browsers without the native BarcodeDetector API (see QRScanner).
           // Function form (object form is not supported by Vite 8 / rolldown).
           manualChunks(id) {
             if (!id.includes('node_modules')) return
@@ -116,8 +101,10 @@ export default defineConfig(({ mode }) => {
               return 'vendor-react'
             if (/[\\/]node_modules[\\/](leaflet|react-leaflet|leaflet-draw|@react-leaflet)[\\/]/.test(id))
               return 'vendor-maps'
-            if (/[\\/]node_modules[\\/](face-api\.js|@zxing|qrcode)[\\/]/.test(id))
-              return 'vendor-vision'
+            if (/[\\/]node_modules[\\/]@zxing[\\/]/.test(id))
+              return 'vendor-zxing'
+            if (/[\\/]node_modules[\\/]qrcode[\\/]/.test(id))
+              return 'vendor-qrcode'
             if (/[\\/]node_modules[\\/](@supabase|graphql-request|papaparse|date-fns)[\\/]/.test(id))
               return 'vendor-data'
           },

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import Spinner from '../Spinner'
+import { Skeleton } from '../ui/skeleton'
 import { formatDistanceToNowStrict } from 'date-fns'
 import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
@@ -211,7 +211,10 @@ export default function EventDashboard({ eventId }) {
   }, [records, viewerCaps?.canCheckIn, user.userId])
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
+  // Progressive shell instead of a blocking full-page spinner: the layout
+  // (nav row, event card, stat rows) appears immediately, so the eventual
+  // data paint causes no layout shift.
+  if (initialLoading || !event || !viewerCaps) return <DashboardSkeleton />
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
@@ -320,7 +323,7 @@ export default function EventDashboard({ eventId }) {
         </Card>
 
         {viewerCaps.canCheckIn && !isCheckedIn && event.status === 'ACTIVE' && (
-          <Button size='lg' className='w-full' onClick={() => navigate(`/checkin/${event.id}`)}>
+          <Button size='lg' className='w-full' onClick={() => navigate(`/checkin/${event.id}`, { viewTransition: true })}>
             Check in now
           </Button>
         )}
@@ -419,6 +422,32 @@ export default function EventDashboard({ eventId }) {
   )
 }
 
+// Mirrors the loaded dashboard's layout so the data paint causes no shift.
+function DashboardSkeleton() {
+  return (
+    <PageShell>
+      <PageMain className='flex flex-col gap-4'>
+        <div className='flex items-center justify-between'>
+          <Skeleton className='h-5 w-16' />
+          <Skeleton className='h-9 w-24 rounded-full' />
+        </div>
+        <div className='rounded-2xl border border-border bg-card px-4 py-6 text-center'>
+          <Skeleton className='mx-auto h-6 w-2/3' />
+          <Skeleton className='mx-auto mt-3 h-4 w-1/2' />
+          <Skeleton className='mx-auto mt-2 h-3 w-1/3' />
+        </div>
+        <div>
+          <Skeleton className='mb-3 h-3 w-28' />
+          <div className='flex flex-col gap-3'>
+            <Skeleton className='h-[60px] rounded-2xl' />
+            <Skeleton className='h-[182px] rounded-2xl' />
+          </div>
+        </div>
+      </PageMain>
+    </PageShell>
+  )
+}
+
 type LiveTone = 'present' | 'absent' | 'primary' | 'pct'
 
 const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
@@ -486,7 +515,7 @@ function LiveRow({ icon, label, count, to, valueClass }: {
       )}
     </div>
   )
-  if (to) return <Link to={to} className='block no-underline'>{body}</Link>
+  if (to) return <Link to={to} viewTransition className='block no-underline'>{body}</Link>
   return body
 }
 

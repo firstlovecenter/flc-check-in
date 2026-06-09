@@ -200,6 +200,20 @@ export function useEventEligibility(
 
     ;(async () => {
       try {
+        // Speculative Tier-3 warm-up: a non-admin leader's viewer slice is
+        // (almost) always their own JWT scope, which we know before any
+        // network call. getMembersInScope dedupes in-flight requests and
+        // caches results, so the real Tier-3 call below joins this promise
+        // instead of starting a fresh 400-600ms graph query after Tier 2.
+        // Harmless when the guess is wrong (admin / special-group events) —
+        // it just warms a cache entry.
+        if (!user.isAdmin && !user.isSuperAdmin && !user.isSuperViewer && user.level) {
+          const ownRef = getUserChurchRef(user, user.level as ScopeLevel)
+          if (ownRef?.id) {
+            getMembersInScope({ level: ownRef.level, churchId: ownRef.id }).catch(() => {})
+          }
+        }
+
         // Tier 1: get event + current check-in records in parallel (fast DB reads).
         const [evt, recs] = await Promise.all([
           getEvent(eventId),

@@ -11,6 +11,26 @@
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
+/* Outfit — self-hosted variable font (weights 100-900 in one file per
+   subset). Served from /fonts so the filename is stable for the preload in
+   index.html and the service-worker precache. */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-var.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-ext-var.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 @theme inline {
   --font-sans: 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Menlo', monospace;
@@ -168,6 +188,11 @@ html { scroll-behavior: smooth; }
   min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
+  /* Keep content clear of notches / rounded corners / home indicator on
+     phones (viewport-fit=cover in index.html opts us into the full screen). */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .surface-card {
@@ -611,4 +636,45 @@ html { scroll-behavior: smooth; }
 }
 [data-theme="dark"] .app-logo {
   filter: brightness(1.05) drop-shadow(0 2px 8px hsl(0 0% 0% / 0.45));
+}
+
+/* ─── Toasts ─────────────────────────────────────────────────────────────── */
+.toast-item {
+  max-width: 420px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: var(--shadow-2);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.22s var(--ease-out), transform 0.26s var(--ease-out);
+}
+@starting-style { .toast-item { opacity: 0; transform: translateY(10px); } }
+.toast-item--success { border-color: hsl(var(--success) / 0.4); color: hsl(var(--success)); }
+.toast-item--error   { border-color: hsl(var(--destructive) / 0.4); color: hsl(var(--destructive)); }
+
+/* Sticky screen headers sit at the visual top of the viewport — pad them for
+   the notch/status bar (py-3 = 0.75rem base padding). */
+.page-shell header.sticky {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+}
+
+/* ─── Offline banner ─────────────────────────────────────────────────────── */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  padding: 8px 16px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+  background: hsl(var(--warning) / 0.95);
+  color: hsl(220 25% 10%);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
 }

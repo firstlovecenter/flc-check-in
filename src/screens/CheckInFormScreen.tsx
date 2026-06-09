@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ScreenHeader from '../components/ScreenHeader'
 import Spinner from '../components/Spinner'
+import { Skeleton } from '../components/ui/skeleton'
 import { PageShell, PageMainNarrow } from '../components/layout/PageShell'
 import { CenterCard as LayoutCenterCard } from '../components/layout/CenterCard'
 import { Card, CardContent } from '../components/ui/card'
@@ -21,6 +22,11 @@ import {
 } from '../utils/supabaseCheckins'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
+import { vibrateSuccess } from '../utils/haptics'
+
+// Submission failures that are about the DEVICE or ACCOUNT, not the attempt —
+// these get the hard error screen (with Logout) instead of an inline retry.
+const HARD_FAILURE_REASONS = new Set(['device_already_used'])
 
 export default function CheckInFormScreen() {
   const { eventId } = useParams()
@@ -32,8 +38,15 @@ export default function CheckInFormScreen() {
 
   const [event, setEvent] = useState(null)
   const [existingRecord, setExistingRecord] = useState<any>(undefined) // undefined = not yet loaded
-  const [error, setError] = useState(null)
+  // Hard errors (event failed to load, device blocked) get a dead-end screen;
+  // submit errors stay inline so the user can retry immediately.
+  const [hardError, setHardError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // 'Confirming…' state: the instant a QR/PIN is captured we transition to a
+  // success-shaped screen that resolves to ✓ (or back to the form on error) —
+  // the user never stares at a frozen form while the server round-trip runs.
+  const [confirming, setConfirming] = useState(false)
   const [success, setSuccess] = useState(null)
   const [activeTab, setActiveTab] = useState(null)
   const [initialPosition, setInitialPosition] = useState<any>(null)
@@ -62,7 +75,7 @@ export default function CheckInFormScreen() {
         const tabs = evt.allowed_check_in_methods.filter((m) => m !== 'MANUAL')
         setActiveTab(tabs[0] || null)
       } catch (err: any) {
-        if (!cancelled) setError(err.message)
+        if (!cancelled) setHardError(err.message)
       }
     })()
     return () => { cancelled = true }
@@ -74,52 +87,64 @@ export default function CheckInFormScreen() {
   }, [eventId, user.userId])
 
 
-  const handleQR = useCallback(async (token, position) => {
+  const submit = useCallback(async (method: 'QR' | 'PIN', payload: { qrToken?: string; pin?: string }, position) => {
     if (submitting) return
+    if (!navigator.onLine) {
+      setSubmitError("You're offline. Reconnect and try again.")
+      return
+    }
     setSubmitting(true)
-    setError(null)
+    setSubmitError(null)
+    setConfirming(true)  // instant transition to the success-shaped screen
     try {
       const fingerprint = await getDeviceFingerprint()
       const result = await submitCheckIn({
         eventId, member: { id: user.userId, name: formatName(user), role: user.level, unitName: user.unitName },
-        method: 'QR', lat: position.lat, lng: position.lng, fingerprint, qrToken: token, event,
+        method, lat: position.lat, lng: position.lng, fingerprint, event, ...payload,
       })
-      if (result.ok) setSuccess(result.record)
-      else setError(reasonText(result))
+      if (result.ok) {
+        vibrateSuccess()
+        setSuccess(result.record)
+      } else if (HARD_FAILURE_REASONS.has(result.reason)) {
+        setConfirming(false)
+        setHardError(reasonText(result))
+      } else {
+        setConfirming(false)
+        setSubmitError(reasonText(result))
+      }
+    } catch (err: any) {
+      setConfirming(false)
+      setSubmitError(err?.message || 'Check-in failed. Check your connection and try again.')
     } finally {
       setSubmitting(false)
     }
   }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
 
-  const handlePIN = useCallback(async (pin, position) => {
-    if (submitting) return
-    setSubmitting(true)
-    setError(null)
-    try {
-      const fingerprint = await getDeviceFingerprint()
-      const result = await submitCheckIn({
-        eventId, member: { id: user.userId, name: formatName(user), role: user.level, unitName: user.unitName },
-        method: 'PIN', lat: position.lat, lng: position.lng, fingerprint, pin, event,
-      })
-      if (result.ok) setSuccess(result.record)
-      else setError(reasonText(result))
-    } finally {
-      setSubmitting(false)
-    }
-  }, [event, eventId, submitting, user.firstName, user.lastName, user.level, user.title, user.unitName, user.userId])
+  const handleQR  = useCallback((token, position) => submit('QR',  { qrToken: token }, position), [submit])
+  const handlePIN = useCallback((pin, position)   => submit('PIN', { pin },            position), [submit])
 
 
-  if (error) {
+  if (hardError) {
     return (
       <CenterCard showLogout>
         <h2 className='text-lg font-semibold mb-1 text-destructive'>Cannot check-in with device</h2>
-        <p className='text-sm m-0 text-muted-foreground'>{error}</p>
+        <p className='text-sm m-0 text-muted-foreground'>{hardError}</p>
       </CenterCard>
     )
   }
-  // Still loading event or existing-record lookup
+  // Still loading event or existing-record lookup — show the form's shape
+  // (header, tabs, scanner square) so the real form paints with no shift.
   if (!event || existingRecord === undefined) {
-    return <Spinner fullPage />
+    return (
+      <PageShell>
+        <ScreenHeader title='Check in' back={{ to: '/home', label: 'Home' }} />
+        <PageMainNarrow className='py-6'>
+          <Skeleton className='mb-4 h-4 w-1/2' />
+          <Skeleton className='mb-5 h-11 rounded-xl' />
+          <Skeleton className='mx-auto aspect-square w-full rounded-2xl' />
+        </PageMainNarrow>
+      </PageShell>
+    )
   }
 
   // Time window check — client only blocks UI for events more than 1 hour
@@ -140,6 +165,27 @@ export default function CheckInFormScreen() {
     const opensAt = new Date(startsMs - EARLY_MS)
     const timeStr = opensAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>Not open yet</h2><p className='text-muted-foreground'>Check-in for <strong>{event.name}</strong> opens at <strong>{timeStr}</strong> (1 hour before start).</p></CenterCard>
+  }
+
+  // ── Confirming: QR/PIN captured, server round-trip in flight ─────────────
+  // Success-shaped screen so the eventual ✓ is a state change, not a layout
+  // change. Failures fall back to the form with an inline error.
+  if (confirming && !success) {
+    return (
+      <PageShell>
+        <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
+        <PageMainNarrow className='flex flex-col gap-4 py-8'>
+          <Card>
+            <CardContent className='p-6 text-center'>
+              <div className='mb-3 flex justify-center'><Spinner fullPage={false} /></div>
+              <h2 className='mb-1 text-xl font-bold tracking-tight text-foreground'>Confirming…</h2>
+              <p className='text-sm text-muted-foreground'>{event.name}</p>
+              <p className='mt-1 text-xs text-muted-foreground'>Recording your check-in</p>
+            </CardContent>
+          </Card>
+        </PageMainNarrow>
+      </PageShell>
+    )
   }
 
   // ── Already checked in or checked out ────────────────────────────────────
@@ -186,7 +232,7 @@ export default function CheckInFormScreen() {
             </CardContent>
           </Card>
 
-          {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
+          {submitError && <Alert variant='destructive' className='text-center'>{submitError}</Alert>}
 
           <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
             Back to Home
@@ -212,7 +258,7 @@ export default function CheckInFormScreen() {
           <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
           <PageMainNarrow className='py-6'>
             <p className='section-heading mb-4'>{event.scope_level} · {event.scope_church_name}</p>
-            {error && <Alert variant='destructive' className='mb-4 text-center'>{error}</Alert>}
+            {submitError && <Alert variant='destructive' className='mb-4 text-center'>{submitError}</Alert>}
 
             {event.allowed_check_in_methods.filter((m) => m !== 'MANUAL').length > 1 && (
               <div className='tab-bar mb-5'>
@@ -220,7 +266,7 @@ export default function CheckInFormScreen() {
                   <button
                     key={m}
                     type='button'
-                    onClick={() => { setActiveTab(m); setError(null) }}
+                    onClick={() => { setActiveTab(m); setSubmitError(null) }}
                     className={cn('tab-item', activeTab === m && 'tab-item--active')}
                   >
                     {m}

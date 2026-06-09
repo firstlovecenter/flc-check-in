@@ -5,7 +5,7 @@
     <link rel="icon" type="image/webp" href="/flc-logo.webp" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#EEF1F5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0F1114" media="(prefers-color-scheme: dark)" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -14,10 +14,12 @@
     <meta name="apple-mobile-web-app-title" content="FLC Hineni" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Hineni</title>
-    <!-- Outfit — FL Admin Portal UI typeface (DESIGN-new.md) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Outfit — FL Admin Portal UI typeface (DESIGN-new.md). Self-hosted
+         variable font (one ~32KB file covers weights 100-900): no third-party
+         round-trips, precached by the service worker, preloaded so text
+         renders in the right face on first paint. @font-face lives in
+         src/index.css. -->
+    <link rel="preload" href="/fonts/outfit-latin-var.woff2" as="font" type="font/woff2" crossorigin />
     <!-- Restore persisted theme before React mounts (light | dark | system). -->
     <script>
       (function () {

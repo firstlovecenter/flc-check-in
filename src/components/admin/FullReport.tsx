@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState, useDeferredValue, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import Spinner from '../Spinner'
+import VirtualList from '../VirtualList'
+import { Skeleton, SkeletonRows } from '../ui/skeleton'
+import { toast } from '../Toast'
 import { format } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
@@ -11,6 +13,7 @@ import { Card, CardContent } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Label } from '../ui/label'
+import { Select } from '../ui/select'
 import { Textarea } from '../ui/textarea'
 import { Modal } from '../ui/modal'
 import { cn } from '../../lib/utils'
@@ -208,10 +211,14 @@ export default function FullReport({ eventId }: { eventId: string }) {
       : (buckets[
           activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
         ] ?? [])
-  const filteredRows = filterRows(tabRows, search)
+
+  // Deferred so keystrokes commit instantly; the list re-filters at lower
+  // priority (React 19 concurrent rendering — no debounce timer needed).
+  const deferredSearch = useDeferredValue(search)
+  const filteredRows = useMemo(() => filterRows(tabRows, deferredSearch), [tabRows, deferredSearch])
 
   const filteredTimeline = useMemo(() => {
-    const s = search.trim().toLowerCase()
+    const s = deferredSearch.trim().toLowerCase()
     if (!s) return timelineRows
     return timelineRows.filter((b) => {
       const m = b.member
@@ -219,7 +226,12 @@ export default function FullReport({ eventId }: { eventId: string }) {
         (v) => (v || '').toLowerCase().includes(s),
       )
     })
-  }, [timelineRows, search])
+  }, [timelineRows, deferredSearch])
+
+  const handleAddNote = useCallback((m: any) => {
+    setAbsenceTarget(m)
+    setAbsenceInput(absenceNotes.get(m.id) || '')
+  }, [absenceNotes])
 
   function setTab(id: TabId) {
     setParams((prev) => {
@@ -246,6 +258,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
     a.download = `${safe}${scopeSuffix}-${activeTab}-${format(new Date(event.starts_at), 'yyyy-MM-dd')}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast('Report exported', 'success')
   }
 
   if (displayError) {
@@ -255,7 +268,22 @@ export default function FullReport({ eventId }: { eventId: string }) {
       </CenterCard>
     )
   }
-  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
+  // Progressive shell — metric cards + tab bar + row placeholders instead of
+  // a blocking full-page spinner.
+  if (initialLoading || !event || !viewerCaps) {
+    return (
+      <PageShell>
+        <ScreenHeader title='Report' back={{ to: `/events/${eventId}`, label: 'Back to Dashboard' }} />
+        <PageMain className='flex flex-col gap-5'>
+          <Skeleton className='h-4 w-3/4' />
+          <Skeleton className='h-[88px] rounded-2xl' />
+          <Skeleton className='h-[72px] rounded-2xl' />
+          <Skeleton className='h-11 rounded-xl' />
+          <SkeletonRows count={5} />
+        </PageMain>
+      </PageShell>
+    )
+  }
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
       <CenterCard>
@@ -290,22 +318,22 @@ export default function FullReport({ eventId }: { eventId: string }) {
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
             <Label className='section-heading'>Filter by church</Label>
-            <select
+            <Select
               value={filterChurchId || '__all__'}
+              aria-label='Filter by church'
               onChange={(e) => {
                 const opt = scopeOptions.find((o) => o.id === e.target.value)
                 setFilterChurchId(opt?.id === '__all__' ? null : opt?.id || null)
                 setFilterLevel(opt?.id === '__all__' ? null : opt?.level || null)
                 setFilterChurchName(opt?.id === '__all__' ? null : opt?.name || null)
               }}
-              className='input-field'
             >
               {scopeOptions.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -375,9 +403,15 @@ export default function FullReport({ eventId }: { eventId: string }) {
               {filteredTimeline.length === 0 ? (
                 <p className='py-8 text-center text-sm text-muted-foreground'>No check-ins yet.</p>
               ) : (
-                filteredTimeline.map((b, i) => (
-                  <TimelineEntry key={b.record.id} entry={b} isLast={i === filteredTimeline.length - 1} />
-                ))
+                <VirtualList
+                  items={filteredTimeline}
+                  getKey={(b) => b.record.id}
+                  estimateSize={64}
+                  gap={0}
+                  renderRow={(b, i) => (
+                    <TimelineEntry entry={b} isLast={i === filteredTimeline.length - 1} />
+                  )}
+                />
               )}
             </CardContent>
           </Card>
@@ -396,15 +430,8 @@ export default function FullReport({ eventId }: { eventId: string }) {
                 canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
                 isRisky={riskyIds.has(b.member.id)}
                 absenceNote={activeTab === 'defaulted' ? absenceNotes.get(b.member.id) : undefined}
-                onManual={() => setModalMember(b.member)}
-                onAddNote={
-                  activeTab === 'defaulted' && viewerCaps.canManage
-                    ? () => {
-                        setAbsenceTarget(b.member)
-                        setAbsenceInput(absenceNotes.get(b.member.id) || '')
-                      }
-                    : undefined
-                }
+                onManual={setModalMember}
+                onAddNote={activeTab === 'defaulted' && viewerCaps.canManage ? handleAddNote : undefined}
               />
             ))}
           </div>
@@ -493,7 +520,10 @@ function toWaPhone(phone: string | null | undefined): string | null {
   return d || null
 }
 
-function ListRow({
+// Memoised — the grid parent re-renders on every records refresh / search
+// keystroke, but an individual card's props rarely change. Callbacks receive
+// the row's member so parents can pass stable handlers.
+const ListRow = memo(function ListRow({
   entry,
   tab,
   canManuallyCheckIn,
@@ -505,9 +535,9 @@ function ListRow({
   entry: { member: any; record: any }
   tab: TabId
   canManuallyCheckIn: boolean
-  onManual: () => void
+  onManual: (member: any) => void
   absenceNote?: string
-  onAddNote?: () => void
+  onAddNote?: (member: any) => void
   isRisky?: boolean
 }) {
   const { member, record } = entry
@@ -596,12 +626,12 @@ function ListRow({
             </>
           )}
           {tab === 'defaulted' && canManuallyCheckIn && (
-            <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={onManual}>
+            <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={() => onManual(member)}>
               Check In
             </Button>
           )}
           {tab === 'defaulted' && onAddNote && (
-            <Button type='button' variant='outline' size='sm' className='flex-1' onClick={onAddNote}>
+            <Button type='button' variant='outline' size='sm' className='flex-1' onClick={() => onAddNote(member)}>
               {absenceNote ? 'Edit Note' : 'Add Note'}
             </Button>
           )}
@@ -609,7 +639,7 @@ function ListRow({
       )}
     </div>
   )
-}
+})
 
 function MethodTag({ children }: { children: ReactNode }) {
   return <Badge variant='outline' className='text-[10px] uppercase tracking-wide'>{children}</Badge>

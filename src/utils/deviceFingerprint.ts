@@ -3,8 +3,10 @@
 // device IDs) and hashes the result with SHA-256.
 // Persisted in localStorage (stable across sessions) and sessionStorage (fast
 // intra-session access).  API is unchanged — callers get a 64-char hex string.
-
-import FingerprintJS from '@fingerprintjs/fingerprintjs'
+//
+// FingerprintJS (~50KB) is imported dynamically so it is only downloaded the
+// first time a fingerprint actually has to be computed — cached/persisted
+// fingerprints never pay for it.
 
 const SESSION_KEY = 'flc.checkin.fp.session'
 const LOCAL_KEY   = 'flc.checkin.fp.local'
@@ -128,6 +130,7 @@ export async function getDeviceFingerprint(): Promise<string> {
   }
 
   pending = (async () => {
+    const { default: FingerprintJS } = await import('@fingerprintjs/fingerprintjs')
     const agent = await FingerprintJS.load()
     const { visitorId } = await agent.get()
     const fp = await computeStrictFingerprint(visitorId)

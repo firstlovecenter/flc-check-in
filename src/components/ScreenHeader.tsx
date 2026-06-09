@@ -30,6 +30,7 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           back ? (
             <Link
               to={back.to}
+              viewTransition
               className='flex items-center gap-1 text-xs font-medium text-primary no-underline hover:underline'
             >
               <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>

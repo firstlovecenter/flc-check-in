@@ -80,6 +80,7 @@ function PanelBody({ user, onClose, userMenuOpen, setUserMenuOpen, isDark, onTog
           <input
             type='search'
             placeholder='Search…'
+            aria-label='Search members'
             className='flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none border-0'
             onKeyDown={(e) => {
               if (e.key === 'Enter') {

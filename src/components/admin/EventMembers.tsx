@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import Spinner from '../Spinner'
+import VirtualList from '../VirtualList'
+import { Skeleton, SkeletonRows } from '../ui/skeleton'
+import { toast } from '../Toast'
 import { format } from 'date-fns'
 import Papa from 'papaparse'
 import ScreenHeader from '../ScreenHeader'
@@ -10,6 +12,7 @@ import { CenterCard } from '../layout/CenterCard'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Label } from '../ui/label'
+import { Select } from '../ui/select'
 import { cn } from '../../lib/utils'
 import {
   listCheckedIn,
@@ -114,15 +117,18 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     return eligible.map((m) => ({ member: m, record: byMember.get(m.id) || null }))
   }, [eligible, records, status, event?.starts_at])
 
+  // Deferred so keystrokes commit instantly; the list re-filters at lower
+  // priority (React 19 concurrent rendering — no debounce timer needed).
+  const deferredSearch = useDeferredValue(search)
   const filteredRows = useMemo(() => {
-    const s = search.trim().toLowerCase()
+    const s = deferredSearch.trim().toLowerCase()
     const valid = rows.filter((b) => b?.member?.id)
     if (!s) return valid
     return valid.filter(({ member: m }) =>
       [m.first_name, m.last_name, m.bacenta_name, m.governorship_name, m.council_name, m.stream_name]
         .some((v) => (v || '').toLowerCase().includes(s)),
     )
-  }, [rows, search])
+  }, [rows, deferredSearch])
 
   async function refresh() {
     try { setRecords(await listCheckedIn(eventId)) }
@@ -149,12 +155,26 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     a.download = `${safe}${scope}-${status}-${format(new Date(event.starts_at), 'yyyy-MM-dd')}.csv`
     a.click()
     URL.revokeObjectURL(url)
+    toast('Report exported', 'success')
   }
 
   const displayError = error || eligibilityError
 
   if (displayError)  return <CenterCard><p className='text-destructive'>{displayError}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
+  // Progressive shell — header + search + row placeholders instead of a
+  // blocking full-page spinner.
+  if (initialLoading || !event || !viewerCaps) {
+    return (
+      <PageShell>
+        <ScreenHeader title={STATUS_TITLES[status] || 'Members'} back={{ to: `/events/${eventId}`, label: 'Dashboard' }} />
+        <PageMain className='flex flex-col gap-4'>
+          <Skeleton className='h-4 w-2/3' />
+          <Skeleton className='h-11 rounded-xl' />
+          <SkeletonRows count={7} />
+        </PageMain>
+      </PageShell>
+    )
+  }
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
   }
@@ -182,18 +202,18 @@ export default function EventMembers({ eventId }: { eventId: string }) {
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
             <Label className='section-heading'>Filter by scope</Label>
-            <select
+            <Select
               value={filterChurchId || '__all__'}
+              aria-label='Filter by scope'
               onChange={(e) => {
                 const opt = scopeOptions.find((o) => o.id === e.target.value)
                 setFilterChurchId(opt?.id === '__all__' ? null : opt?.id || null)
                 setFilterLevel(opt?.id === '__all__' ? null : opt?.level || null)
                 setFilterChurchName(opt?.id === '__all__' ? null : opt?.name || null)
               }}
-              className='input-field'
             >
               {scopeOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -205,22 +225,26 @@ export default function EventMembers({ eventId }: { eventId: string }) {
           className='input-field'
         />
 
-        <div className='flex flex-col gap-2'>
+        <div>
           {filteredRows.length === 0 && (
             <p className='mt-4 text-center text-sm text-muted-foreground'>
               {rows.length === 0 ? 'Nobody here yet.' : 'No matches.'}
             </p>
           )}
-          {filteredRows.map((b) => (
-            <MemberCard
-              key={b.member.id}
-              entry={b}
-              status={status}
-              canManuallyCheckIn={viewerCaps.canManuallyCheckIn && !eventEnded}
-              isRisky={riskyIds.has(b.member.id)}
-              onManual={() => setModalMember(b.member)}
-            />
-          ))}
+          <VirtualList
+            items={filteredRows}
+            getKey={(b) => b.member.id}
+            estimateSize={70}
+            renderRow={(b) => (
+              <MemberCard
+                entry={b}
+                status={status}
+                canManuallyCheckIn={viewerCaps.canManuallyCheckIn && !eventEnded}
+                isRisky={riskyIds.has(b.member.id)}
+                onManual={setModalMember}
+              />
+            )}
+          />
         </div>
       </PageMain>
 
@@ -240,14 +264,17 @@ export default function EventMembers({ eventId }: { eventId: string }) {
 // ─── MemberCard ───────────────────────────────────────────────────────────────
 
 
-function MemberCard({
+// Memoised — the list parent re-renders on every records refresh / search
+// keystroke, but an individual card's props rarely change.
+const MemberCard = memo(function MemberCard({
   entry, status, canManuallyCheckIn,
   onManual, isRisky = false,
 }: {
   entry: { member: any; record: any }
   status: Status
   canManuallyCheckIn: boolean
-  onManual: () => void
+  /** Called with the row's member — stable across renders (setState). */
+  onManual: (member: any) => void
   isRisky?: boolean
 }) {
   const { member: m, record: r } = entry
@@ -311,7 +338,7 @@ function MemberCard({
           {showCheckIn && (
             <button
               type='button'
-              onClick={onManual}
+              onClick={() => onManual(m)}
               className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-success/40 text-success hover:bg-success/10'
               title='Manual check-in'
               aria-label={`Check in ${name}`}
@@ -323,7 +350,7 @@ function MemberCard({
       )}
     </div>
   )
-}
+})
 
 function PhoneIcon() {
   return (

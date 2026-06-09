@@ -7,8 +7,10 @@ import SplashScreen from './components/SplashScreen'
 import UpdatePrompt from './components/UpdatePrompt'
 import Spinner from './components/Spinner'
 import { ChurchFocusProvider } from './contexts/ChurchFocusContext'
+import OfflineBanner from './components/OfflineBanner'
+import { ToastHost } from './components/Toast'
 
-// Lazy-load route screens so vendor chunks (leaflet, face-api, zxing, qrcode,
+// Lazy-load route screens so vendor chunks (leaflet, zxing, qrcode,
 // papaparse) only download when the user actually navigates to a screen that
 // needs them. Login + Home stay eager because they're on the cold-load path.
 const QRDisplayScreen        = lazy(() => import('./screens/QRDisplayScreen'))
@@ -100,6 +102,8 @@ export default function App() {
       </Suspense>
       </ChurchFocusProvider>
       <UpdatePrompt />
+      <OfflineBanner />
+      <ToastHost />
     </BrowserRouter>
   )
 }

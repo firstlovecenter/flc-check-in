@@ -9,8 +9,9 @@
 // QR tokens use HMAC-SHA256 with a 60-second rotating bucket. Both client
 // (when displaying the QR) and server (when verifying) compute the same
 // bucket from wall-clock time and the event's qr_secret.
-
-import bcrypt from 'bcryptjs'
+//
+// bcryptjs (~50KB) is imported dynamically inside the two PIN helpers — it is
+// a rarely-used fallback path, so it should never sit in an eager chunk.
 
 // ─── PIN ──────────────────────────────────────────────────────────────────
 export function generatePin() {
@@ -21,10 +22,12 @@ export function generatePin() {
 }
 
 export async function hashPin(plain) {
+  const { default: bcrypt } = await import('bcryptjs')
   return bcrypt.hash(plain, 10)
 }
 
 export async function verifyPin(plain, hash) {
+  const { default: bcrypt } = await import('bcryptjs')
   return bcrypt.compare(plain, hash)
 }
 

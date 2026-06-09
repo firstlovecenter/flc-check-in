@@ -31,6 +31,11 @@ const CHECKIN_EVENT_LIST_COLUMNS =
 // Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
 const CHECKIN_EVENT_FULL_COLUMNS = '*'
 
+// Location-filtered listings — list columns plus the polygon needed for the
+// client-side pointInGeofence check. Avoids pulling every detail column
+// ('*') for rows that are mostly filtered out anyway.
+const CHECKIN_EVENT_GEO_COLUMNS = CHECKIN_EVENT_LIST_COLUMNS + ', geofence_polygon'
+
 const CHECKIN_RECORD_COLUMNS =
   'id, event_id, member_id, member_name, member_role, member_unit_name, ' +
   'checked_in_at, checked_out_at, auto_checked_out, outside_since, is_late, ' +
@@ -300,7 +305,10 @@ export async function listActiveEvents(user?: AppUser) {
   // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
   // and each scoped user (their orFilter string). Without this, a public-page
   // fetch (which strips special_group events) would poison the superadmin cache.
-  const cacheKey = user?.isSuperAdmin ? 'superadmin' : user?.isSuperViewer ? 'superviewer' : (scopeFilter ?? 'public')
+  // Include userId so two scoped users on the same device never share a
+  // bucket — isEventRelevantToUser filters per-user below.
+  const cacheKey = user?.isSuperAdmin ? 'superadmin' : user?.isSuperViewer ? 'superviewer'
+    : user?.userId ? `u:${user.userId}:${scopeFilter ?? 'none'}` : (scopeFilter ?? 'public')
   const cached = _activeEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -364,7 +372,7 @@ export async function listActiveSpecialGroupEventsForUser(memberId: string) {
 export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
-  const cacheKey    = `past:${scopeFilter ?? 'all'}`
+  const cacheKey    = `past:${user?.userId ?? 'anon'}:${scopeFilter ?? 'all'}`
   const cached = _pastEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -476,7 +484,7 @@ export async function listActiveEventsAtLocation(lat, lng) {
   // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select(CHECKIN_EVENT_FULL_COLUMNS)
+    .select(CHECKIN_EVENT_GEO_COLUMNS)
     .eq('status', 'ACTIVE')
     .lte('starts_at', oneHourLaterIso)
     .gte('ends_at', nowIso)
@@ -493,7 +501,7 @@ export async function listRecentPastEventsAtLocation(lat, lng, { daysBack = 30 }
   // Needs geofence_polygon for pointInGeofence on polygon-shaped events.
   const { data, error } = await supabase
     .from('checkin_events')
-    .select(CHECKIN_EVENT_FULL_COLUMNS)
+    .select(CHECKIN_EVENT_GEO_COLUMNS)
     .eq('status', 'ENDED')
     .gte('ends_at', cutoff)
     .order('ends_at', { ascending: false })
