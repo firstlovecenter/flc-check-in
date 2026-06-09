@@ -507,12 +507,14 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
   // SuperAdmin bypass is applied by the caller (useEventEligibility).
   let canCheckIn = false
 
-  // canView — three cases:
+  // canView — four cases:
   //   1. Leaders of the EXACT event scope church: read-only view of the whole event.
   //   2. Sub-scope ADMINS (council/governorship/etc.) confirmed in allMemberIds: see
   //      the event scoped to their own admin unit.
   //   3. Sub-scope LEADERS confirmed in allMemberIds: see only their own church slice.
-  // Admins/leaders at ancestor/parent scopes are still blocked.
+  //   4. Ancestor-scope ADMINS/LEADERS whose church contains the event scope church:
+  //      see the full event (it sits entirely within their scope). Validated via the
+  //      pre-fetched ancestor chain — no extra round-trip needed.
   let canView = false
   let subScopeViewerScope = null
   if (!canManage) {
@@ -556,8 +558,43 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
         break
       }
     }
-    // Sub-scope leaders in scope may self-check-in (but not check in others manually).
+    // Sub-scope leaders (Cases 2 & 3) may self-check-in. Ancestor viewers (Case 4)
+    // are above the event scope so they're not in the eligible set.
     if (canView && subScopeViewerScope) canCheckIn = true
+
+    // Case 4: ancestor-scope admin or leader.
+    // Their church is ABOVE the event scope but structurally contains the event
+    // scope church. Validated via the pre-fetched ancestor chain. Picks the most
+    // specific (lowest, closest to the event) matching ancestor so they see the
+    // tightest possible slice. No canCheckIn — their role isn't in allowed_roles.
+    if (!canView && ancestors?.length) {
+      const ancestorMap = new Map<string, { level: string; id: string; name: string }>(
+        ancestors.map((a: any) => [a.level as string, a as { level: string; id: string; name: string }]),
+      )
+      // Admin edges first — admin scope takes precedence over leader at the same level.
+      for (const [lvl, list] of adminEdges) {
+        if (SCOPE_LEVELS.indexOf(lvl) <= eventScopeIdx) continue // only above event scope
+        if (!list?.length) continue
+        const a = ancestorMap.get(lvl)
+        if (a && (list as any[]).some((n: any) => n.id === a.id)) {
+          canView = true
+          subScopeViewerScope = { level: lvl, id: a.id, name: a.name }
+          break
+        }
+      }
+      if (!canView) {
+        for (const [lvl, list] of leadsEdges) {
+          if (SCOPE_LEVELS.indexOf(lvl) <= eventScopeIdx) continue // only above event scope
+          if (!list?.length) continue
+          const a = ancestorMap.get(lvl)
+          if (a && (list as any[]).some((n: any) => n.id === a.id)) {
+            canView = true
+            subScopeViewerScope = { level: lvl, id: a.id, name: a.name }
+            break
+          }
+        }
+      }
+    }
   }
 
   // viewerScope determines the dashboard slice

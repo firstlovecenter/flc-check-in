@@ -207,7 +207,7 @@ export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
-  const { focusedScope } = useChurchFocus()
+  useChurchFocus() // ensures the provider is active; no filtering on the home screen
   const [state, setState] = useState<HomeState>(() => {
     const cached = readPersistedEvents(user?.userId)
     return cached ? { status: 'ok', events: cached } : { status: 'loading' }
@@ -346,25 +346,20 @@ export default function LeaderHomeScreen() {
         {state.status === 'ok' && (() => {
           const now = new Date()
           // If a scope is focused, only show events scoped to that church.
-          const baseEvents = focusedScope
-            ? state.events.filter(e => e.scope_church_id === focusedScope.id)
-            : state.events
-          const live     = baseEvents.filter(e => e.status === 'ACTIVE')
-          const upcoming = baseEvents.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
-          const past     = baseEvents.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
+          const live     = state.events.filter(e => e.status === 'ACTIVE')
+          const upcoming = state.events.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
+          const past     = state.events.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
             .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
           const pastSlice = past.slice(0, 5)
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
               <EmptyState
-                title={focusedScope ? `No events for ${focusedScope.name || focusedScope.level}` : 'No events yet'}
+                title='No events yet'
                 description={
-                  focusedScope
-                    ? 'Switch to "All scopes" to see events from your other roles.'
-                    : isAdmin
-                      ? 'Create an event to start taking check-ins.'
-                      : 'Check-ins will appear here once a leader opens an event.'
+                  isAdmin
+                    ? 'Create an event to start taking check-ins.'
+                    : 'Check-ins will appear here once a leader opens an event.'
                 }
                 icon={
                   <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>
