@@ -549,8 +549,10 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
     }
     // Case 3: sub-scope leader structurally within the event scope.
     // allMemberIds is the full (un-role-filtered) membership set for the event scope.
+    // Iterate highest-to-lowest so a leader with multiple roles (e.g. leadsGovernorship
+    // AND leadsBacenta) gets the broadest useful view, not the narrowest.
     if (!canView && allMemberIds?.has(viewer.id)) {
-      for (const [lvl, list] of leadsEdges) {
+      for (const [lvl, list] of [...leadsEdges].reverse()) {
         if (SCOPE_LEVELS.indexOf(lvl) >= eventScopeIdx) continue // strictly below event scope
         if (!list?.length) continue
         canView = true
