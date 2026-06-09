@@ -560,9 +560,10 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
         break
       }
     }
-    // Sub-scope leaders (Cases 2 & 3) may self-check-in. Ancestor viewers (Case 4)
-    // are above the event scope so they're not in the eligible set.
-    if (canView && subScopeViewerScope) canCheckIn = true
+    // Sub-scope leaders (Cases 2 & 3) may self-check-in only when their role is
+    // actually in allowed_roles (confirmed by eligibleIds). Ancestor viewers
+    // (Case 4) are above the event scope so they're never in the eligible set.
+    if (canView && subScopeViewerScope && eligibleIds?.has(viewer.id)) canCheckIn = true
 
     // Case 4: ancestor-scope admin or leader.
     // Their church is ABOVE the event scope but structurally contains the event

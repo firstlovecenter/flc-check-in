@@ -348,7 +348,7 @@ export function useEventEligibility(
               const ownRef = user.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
               if (ownRef) {
                 const viewerScope = { level: ownRef.level, id: ownRef.id, name: ownRef.name ?? '' }
-                rawCaps = { canManage: false, canCheckIn: true, canView: true, canManuallyCheckIn: false, viewerScope }
+                rawCaps = { canManage: false, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canManuallyCheckIn: false, viewerScope }
               }
             }
           }
@@ -359,7 +359,7 @@ export function useEventEligibility(
           name: evt.scope_church_name,
         }
         const caps = user.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
+          ? { ...rawCaps, canManage: true, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
           : user.isSuperViewer
           ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope: scopeFallback }
           : rawCaps
