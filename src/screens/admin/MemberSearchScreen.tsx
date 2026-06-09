@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import ScreenHeader from '../../components/ScreenHeader'
 import Spinner from '../../components/Spinner'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
@@ -26,6 +26,7 @@ export default function MemberSearchScreen() {
 function MemberSearch() {
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
+  const navigate = useNavigate()
 
   const [query, setQuery]             = useState('')
   const [page, setPage]               = useState(0)
@@ -118,6 +119,15 @@ function MemberSearch() {
     <PageShell>
       <ScreenHeader title='Members' />
       <PageMain className='flex flex-col gap-4'>
+        {isSuperAdmin && (
+          <button
+            type='button'
+            onClick={() => navigate('/admin/sync-members')}
+            className='btn-pill btn-secondary self-end px-4 py-2 text-sm cursor-pointer'
+          >
+            Sync Members
+          </button>
+        )}
         <input
           type='search'
           value={query}

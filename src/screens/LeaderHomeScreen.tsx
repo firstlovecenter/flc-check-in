@@ -401,9 +401,9 @@ export default function LeaderHomeScreen() {
         {state.status === 'ok' && (() => {
           const now = new Date()
           const visibleEvents = state.events
-          const live     = visibleEvents.filter(e => e.status === 'ACTIVE' && new Date(e.starts_at) <= now && new Date(e.ends_at) >= now)
-          const upcoming = visibleEvents.filter(e => new Date(e.starts_at) > now && e.status !== 'ENDED')
-          const past     = visibleEvents.filter(e => new Date(e.ends_at) < now || e.status === 'ENDED')
+          const live     = visibleEvents.filter(e => e.status === 'ACTIVE')
+          const upcoming = visibleEvents.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
+          const past     = visibleEvents.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
             .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
           const pastSlice = past.slice(0, 5)
 

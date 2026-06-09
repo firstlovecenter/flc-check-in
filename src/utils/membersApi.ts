@@ -507,12 +507,12 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
   // SuperAdmin bypass is applied by the caller (useEventEligibility).
   let canCheckIn = false
 
-  // canView — two cases:
+  // canView — three cases:
   //   1. Leaders of the EXACT event scope church: read-only view of the whole event.
-  //   2. Sub-scope leaders whose church is WITHIN the event scope (confirmed by
-  //      allMemberIds — the un-role-filtered set from getMembersInScope). They
-  //      see the event but only per their own church scope.
-  // Leaders at ancestor/parent scopes are still blocked.
+  //   2. Sub-scope ADMINS (council/governorship/etc.) confirmed in allMemberIds: see
+  //      the event scoped to their own admin unit.
+  //   3. Sub-scope LEADERS confirmed in allMemberIds: see only their own church slice.
+  // Admins/leaders at ancestor/parent scopes are still blocked.
   let canView = false
   let subScopeViewerScope = null
   if (!canManage) {
@@ -533,7 +533,19 @@ export function getViewerCapabilities(viewer, event, ancestors, eligibleIds, all
       }
       if (canView) break
     }
-    // Case 2: sub-scope leader structurally within the event scope.
+    // Case 2: sub-scope ADMIN (e.g. council/governorship admin) structurally within
+    // the event scope. Admin scope takes precedence over leader edges so they land
+    // on the dashboard rather than being redirected to self-check-in.
+    if (!canView && allMemberIds?.has(viewer.id)) {
+      for (const [lvl, list] of adminEdges) {
+        if (SCOPE_LEVELS.indexOf(lvl) >= eventScopeIdx) continue // strictly below event scope
+        if (!list?.length) continue
+        canView = true
+        subScopeViewerScope = { level: lvl, id: list[0].id, name: list[0].name }
+        break
+      }
+    }
+    // Case 3: sub-scope leader structurally within the event scope.
     // allMemberIds is the full (un-role-filtered) membership set for the event scope.
     if (!canView && allMemberIds?.has(viewer.id)) {
       for (const [lvl, list] of leadsEdges) {

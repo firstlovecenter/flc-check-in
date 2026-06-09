@@ -401,9 +401,10 @@ export async function listAllEvents(user?: AppUser) {
   triggerAutoEnd()
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
-  // Include userId in the cache key so two users with identical church
-  // hierarchies but different group memberships get separate buckets.
-  const cacheKey = user?.userId ? `all:${user.userId}` : `all:${scopeFilter ?? 'all'}`
+  // Key must include both userId (separate buckets for same-hierarchy users with
+  // different group memberships) AND scopeFilter (so post-hydration re-fetches
+  // get a fresh bucket when the scope has widened rather than hitting stale data).
+  const cacheKey = user?.userId ? `all:${user.userId}:${scopeFilter ?? 'nofilter'}` : `all:${scopeFilter ?? 'all'}`
   const cached = _allEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -413,20 +414,29 @@ export async function listAllEvents(user?: AppUser) {
     .order('starts_at', { ascending: false })
     .limit(50)
   if (scopeFilter) query = query.or(scopeFilter)
-  const [{ data, error }, groupEvents] = await Promise.all([
+  // scopeFilter is non-null for normal users, null for superAdmin/superViewer
+  // (who already get all events from the main query).
+  const [{ data, error }, groupEvents, scopedEvents] = await Promise.all([
     query,
     user?.userId && !user.isSuperAdmin
       ? listAllSpecialGroupEventsForUser(user.userId)
+      : Promise.resolve([] as any[]),
+    user?.userId && scopeFilter !== null
+      ? listScopedEventsForMember(user.userId)
       : Promise.resolve([] as any[]),
   ])
   if (error) throw error
   const mapped = (data || []).map(mapEventRow)
 
-  // Merge special-group events, deduplicating by id, then re-sort by starts_at.
+  // Merge extra events (special-group + event_scope_members snapshot),
+  // dedup by id, then re-sort by starts_at descending.
+  // The scope-member lookup catches parent-scope events (e.g. stream events
+  // for a council leader) without requiring ancestor IDs to be hydrated.
   let merged = mapped
-  if (groupEvents.length > 0) {
+  const extra = [...groupEvents, ...scopedEvents]
+  if (extra.length > 0) {
     const seen = new Set(mapped.map((e) => e.id))
-    const fresh = groupEvents.filter((e) => !seen.has(e.id))
+    const fresh = extra.filter((e) => !seen.has(e.id))
     if (fresh.length > 0) {
       merged = [...mapped, ...fresh].sort(
         (a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime(),
