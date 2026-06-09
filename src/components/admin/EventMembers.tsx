@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import Spinner from '../Spinner'
 import { format } from 'date-fns'
@@ -237,7 +237,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
           className='input-field'
         />
 
-        <div className='flex flex-col gap-3'>
+        <div className='flex flex-col gap-2'>
           {filteredRows.length === 0 && (
             <p className='mt-4 text-center text-sm text-muted-foreground'>
               {rows.length === 0 ? 'Nobody here yet.' : 'No matches.'}
@@ -309,19 +309,22 @@ function MemberCard({
   const unit     = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
   const initials = [(m.first_name || '')[0], (m.last_name || '')[0]].filter(Boolean).join('').toUpperCase() || '?'
   const phone: string | null = m.phone || null
-
   const isAbsent = !r
-  const hasActions = phone || isAbsent
+
+  const showPhone    = !!phone
+  const showCheckIn  = isAbsent && canManuallyCheckIn
+  const showNote     = isAbsent && !!onAddNote
+  const hasActions   = showPhone || showCheckIn || showNote
 
   return (
-    <div className={cn('overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
-      {/* Identity row */}
-      <div className='flex items-center gap-3 p-4'>
+    <div className={cn('flex items-center gap-2 overflow-hidden rounded-2xl border bg-card', isRisky ? 'border-destructive/40' : 'border-border')}>
+      {/* Identity + status */}
+      <div className='flex flex-1 items-center gap-3 p-3 min-w-0'>
         <div className='relative shrink-0'>
           {m.picture_url ? (
-            <img src={m.picture_url} alt={name} className='h-12 w-12 rounded-full object-cover' />
+            <img src={m.picture_url} alt={name} className='h-11 w-11 rounded-full object-cover' />
           ) : (
-            <div className='flex h-12 w-12 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>{initials}</div>
+            <div className='flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>{initials}</div>
           )}
           {isRisky && (
             <span className='absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-white' title='Device fingerprint shared with another member'>⚠</span>
@@ -331,7 +334,6 @@ function MemberCard({
           <p className='m-0 truncate text-sm font-semibold text-foreground'>{name}</p>
           <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>{unit}</p>
         </div>
-        {/* Status info (right side) */}
         <div className='shrink-0 text-right'>
           {status === 'all' && (
             <Badge variant={isAbsent ? 'warning' : r?.checked_out_at ? 'muted' : 'success'} className='text-[10px]'>
@@ -346,34 +348,45 @@ function MemberCard({
           )}
           {!isAbsent && r?.is_late && <Badge variant='warning' className='mt-0.5 text-[10px]'>Late</Badge>}
           {isAbsent && absenceNote && (
-            <span className='block max-w-[90px] truncate text-[10px] text-muted-foreground' title={absenceNote}>{absenceNote}</span>
+            <span className='block max-w-[80px] truncate text-[10px] text-muted-foreground' title={absenceNote}>{absenceNote}</span>
           )}
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Icon action buttons */}
       {hasActions && (
-        <div className='flex flex-wrap gap-2 border-t border-border px-4 py-2.5'>
-          {phone && (
-            <>
-              <a
-                href={`tel:${phone}`}
-                className='flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-semibold text-foreground no-underline active:bg-muted'
-              >
-                <PhoneIcon />
-                Call
-              </a>
-            </>
+        <div className='flex shrink-0 items-center gap-2 pr-3'>
+          {showPhone && (
+            <a
+              href={`tel:${phone}`}
+              className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground no-underline hover:bg-accent hover:text-foreground'
+              title='Call'
+              aria-label={`Call ${name}`}
+            >
+              <PhoneIcon />
+            </a>
           )}
-          {isAbsent && canManuallyCheckIn && (
-            <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={onManual}>
-              Check In
-            </Button>
+          {showCheckIn && (
+            <button
+              type='button'
+              onClick={onManual}
+              className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-success/40 text-success hover:bg-success/10'
+              title='Manual check-in'
+              aria-label={`Check in ${name}`}
+            >
+              <CheckInIcon />
+            </button>
           )}
-          {isAbsent && onAddNote && (
-            <Button type='button' variant='outline' size='sm' className='flex-1' onClick={onAddNote}>
-              {absenceNote ? 'Edit Note' : 'Add Note'}
-            </Button>
+          {showNote && (
+            <button
+              type='button'
+              onClick={onAddNote}
+              className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+              title={absenceNote ? 'Edit note' : 'Add note'}
+              aria-label={absenceNote ? `Edit absence note for ${name}` : `Add absence note for ${name}`}
+            >
+              <NoteIcon />
+            </button>
           )}
         </div>
       )}
@@ -383,8 +396,27 @@ function MemberCard({
 
 function PhoneIcon() {
   return (
-    <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+    <svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
       <path d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.37a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z' />
+    </svg>
+  )
+}
+
+function CheckInIcon() {
+  return (
+    <svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2' />
+      <circle cx='9' cy='7' r='4' />
+      <polyline points='16 11 18 13 22 9' />
+    </svg>
+  )
+}
+
+function NoteIcon() {
+  return (
+    <svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' />
+      <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' />
     </svg>
   )
 }
