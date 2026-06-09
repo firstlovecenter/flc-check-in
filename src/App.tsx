@@ -6,6 +6,7 @@ import RequireAuth from './components/RequireAuth'
 import SplashScreen from './components/SplashScreen'
 import UpdatePrompt from './components/UpdatePrompt'
 import Spinner from './components/Spinner'
+import { ChurchFocusProvider } from './contexts/ChurchFocusContext'
 
 // Lazy-load route screens so vendor chunks (leaflet, face-api, zxing, qrcode,
 // papaparse) only download when the user actually navigates to a screen that
@@ -49,6 +50,7 @@ function RedirectAdminEvent({ tail = '' }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <ChurchFocusProvider>
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path='/' element={<SplashScreen><LoginScreen /></SplashScreen>} />
@@ -96,6 +98,7 @@ export default function App() {
         <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
       </Suspense>
+      </ChurchFocusProvider>
       <UpdatePrompt />
     </BrowserRouter>
   )

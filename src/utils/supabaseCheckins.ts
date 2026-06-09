@@ -86,7 +86,25 @@ function buildScopeOrFilter(user: AppUser): string | null {
   if (user.isSuperAdmin || user.isSuperViewer) return null
   const refs = getUserChurchRefs(user)
   if (refs.length === 0) return _NO_SCOPE
-  return refs
+
+  // Flat/active refs encode the full ancestor chain (bacenta → denomination)
+  // from the member_profiles row. Only include them at levels where the user
+  // actually holds an admin or leader role — levels above that are hierarchy
+  // context only, not event-access scope. Admin/leader refs are always included.
+  const roleLevels = new Set<string>()
+  for (const role of user.roles ?? []) {
+    const lower = role.toLowerCase()
+    for (const lvl of ['bacenta','governorship','council','stream','campus','oversight','denomination']) {
+      if (lower.includes(lvl)) { roleLevels.add(lvl); break }
+    }
+  }
+
+  const filtered = refs.filter(r =>
+    r.source === 'admin' || r.source === 'leader' || roleLevels.has(r.level)
+  )
+
+  if (filtered.length === 0) return _NO_SCOPE
+  return filtered
     .map((r) => `and(scope_level.eq.${r.level},scope_church_id.eq.${r.id})`)
     .join(',')
 }

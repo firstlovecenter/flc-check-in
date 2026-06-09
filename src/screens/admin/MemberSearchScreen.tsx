@@ -26,6 +26,7 @@ export default function MemberSearchScreen() {
 function MemberSearch() {
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
+  const canSyncMembers = !!user?.level && user.level !== 'bacenta'
   const navigate = useNavigate()
 
   const [query, setQuery]             = useState('')
@@ -119,7 +120,7 @@ function MemberSearch() {
     <PageShell>
       <ScreenHeader title='Members' />
       <PageMain className='flex flex-col gap-4'>
-        {isSuperAdmin && (
+        {canSyncMembers && (
           <button
             type='button'
             onClick={() => navigate('/admin/sync-members')}

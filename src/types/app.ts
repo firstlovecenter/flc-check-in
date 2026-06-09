@@ -64,9 +64,10 @@ export interface AppUser {
   campus?: { id?: string; name?: string }
   oversight?: { id?: string; name?: string }
   denomination?: { id?: string; name?: string }
-  /** JWT-embedded single-edge references — populated by the auth lambda when
-   *  the member holds exactly one matching leadership/admin edge per level.
-   *  Read via utils/userScope.ts; do not parse inline. */
+  /** JWT churchScopes block — single-edge refs in the token claims (one per
+   *  level). For users with multiple admin edges at the same level (e.g. admin
+   *  for two campuses), the full list lives in the top-level isAdminFor<Level>
+   *  arrays below. Read via utils/userScope.ts; do not parse inline. */
   churchScopes?: {
     isAdminForDenominationOf?: { id: string; name?: string } | null
     isAdminForOversightOf?:    { id: string; name?: string } | null
@@ -82,6 +83,22 @@ export interface AppUser {
     leadsGovernorshipOf?:      { id: string; name?: string } | null
     leadsBacentaOf?:           { id: string; name?: string } | null
   }
+  /** Full arrays from the auth lambda — present when the user holds multiple
+   *  admin/leader edges at the same level (e.g. adminCampus for two campuses).
+   *  These are the authoritative source for multi-scope capability checks. */
+  isAdminForDenomination?: Array<{ id: string; name?: string }>
+  isAdminForOversight?:    Array<{ id: string; name?: string }>
+  isAdminForCampus?:       Array<{ id: string; name?: string }>
+  isAdminForStream?:       Array<{ id: string; name?: string }>
+  isAdminForCouncil?:      Array<{ id: string; name?: string }>
+  isAdminForGovernorship?: Array<{ id: string; name?: string }>
+  leadsDenomination?:      Array<{ id: string; name?: string }>
+  leadsOversight?:         Array<{ id: string; name?: string }>
+  leadsCampus?:            Array<{ id: string; name?: string }>
+  leadsStream?:            Array<{ id: string; name?: string }>
+  leadsCouncil?:           Array<{ id: string; name?: string }>
+  leadsGovernorship?:      Array<{ id: string; name?: string }>
+  leadsBacenta?:           Array<{ id: string; name?: string }>
   [extra: string]: any
 }
 

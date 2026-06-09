@@ -23,7 +23,7 @@ type SyncState =
 
 export default function SyncMembersPanel() {
   const user = getCurrentUser()
-  if (!user?.isSuperAdmin) return <Navigate to='/home' replace />
+  if (!user?.level || user.level === 'bacenta') return <Navigate to='/home' replace />
 
   const [state, setState] = useState<SyncState>({ status: 'idle' })
   const [includeAllMembers, setIncludeAllMembers] = useState(false)

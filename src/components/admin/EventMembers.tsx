@@ -159,6 +159,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
   }
 
+  const eventEnded = !!event.ends_at && new Date() > new Date(event.ends_at)
   const title = STATUS_TITLES[status] || 'Members'
 
   return (
@@ -215,7 +216,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               key={b.member.id}
               entry={b}
               status={status}
-              canManuallyCheckIn={viewerCaps.canManuallyCheckIn}
+              canManuallyCheckIn={viewerCaps.canManuallyCheckIn && !eventEnded}
               isRisky={riskyIds.has(b.member.id)}
               onManual={() => setModalMember(b.member)}
             />

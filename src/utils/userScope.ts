@@ -83,7 +83,7 @@ export function getUserChurchRefsAt(user: AppUser | null | undefined, level: Sco
     push(active.id, typeof active.name === 'string' ? active.name : undefined, 'active')
   }
 
-  // 3. JWT admin edge.
+  // 3. JWT churchScopes block — single-edge refs (one per level in the token).
   const cs = user.churchScopes
   if (cs) {
     const adminRef = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
@@ -92,6 +92,25 @@ export function getUserChurchRefsAt(user: AppUser | null | undefined, level: Sco
     // 4. JWT leader edge — kept alongside the admin edge if it's a different id.
     const leadsRef = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`leads${cap(level)}Of`]
     if (leadsRef) push(leadsRef.id, leadsRef.name, 'leader')
+  }
+
+  // 5. Top-level admin array — the auth lambda populates isAdminFor<Level>
+  //    (no "Of") as a full array when the user holds multiple admin edges at the
+  //    same level (e.g. adminCampus for Ashesi AND Central University).
+  //    `seen` deduplicates against anything already pushed from churchScopes.
+  const adminArr = (user as any)[`isAdminFor${cap(level)}`]
+  if (Array.isArray(adminArr)) {
+    for (const ref of adminArr) {
+      if (ref?.id) push(ref.id, ref.name, 'admin')
+    }
+  }
+
+  // 6. Top-level leader array — same pattern for leads<Level> arrays.
+  const leadsArr = (user as any)[`leads${cap(level)}`]
+  if (Array.isArray(leadsArr)) {
+    for (const ref of leadsArr) {
+      if (ref?.id) push(ref.id, ref.name, 'leader')
+    }
   }
 
   return out
@@ -137,9 +156,13 @@ export function isUserAdminAt(user: AppUser | null | undefined, level: ScopeLeve
   if (!user) return false
   if (user.isSuperAdmin) return true
   const cs = user.churchScopes
-  if (!cs) return false
-  const adminRef = (cs as Record<string, { id: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
-  return !!(adminRef && adminRef.id)
+  if (cs) {
+    const adminRef = (cs as Record<string, { id: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
+    if (adminRef?.id) return true
+  }
+  // Also check the top-level array (multi-scope users have isAdminFor<Level> arrays).
+  const adminArr = (user as any)[`isAdminFor${cap(level)}`]
+  return Array.isArray(adminArr) && adminArr.some((r: any) => r?.id)
 }
 
 /** Admin-only scope levels. Bacenta has no admin edge in the FLC graph —
@@ -148,20 +171,36 @@ const ADMIN_SCOPE_LEVELS: ScopeLevel[] = [
   'governorship', 'council', 'stream', 'campus', 'oversight', 'denomination',
 ]
 
-/** Admin scopes resolved purely from the JWT's `churchScopes.isAdminFor<L>Of`
- *  edges. Used as a fallback when the FLC graph is unreachable and the graph
- *  node's `isAdminFor*` arrays are unavailable. Returned highest-level first
- *  to match the sort order graph-derived admin scopes use. */
+/** Admin scopes resolved from the JWT — checks both the `churchScopes`
+ *  single-edge block and the top-level `isAdminFor<Level>` arrays (for users
+ *  with multiple admin edges at the same level). Used as a fallback when the
+ *  FLC graph is unreachable. Returned highest-level first. */
 export function getUserAdminScopesFromJwt(user: AppUser | null | undefined): UserScopeRef[] {
-  if (!user?.churchScopes) return []
-  const cs = user.churchScopes
+  if (!user) return []
+  const seen = new Set<string>()
   const out: UserScopeRef[] = []
+  const push = (level: ScopeLevel, id: string, name?: string) => {
+    const key = `${level}:${id}`
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({ level, id, name, source: 'admin' })
+  }
+
   for (const level of ADMIN_SCOPE_LEVELS) {
-    const ref = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
-    if (ref && typeof ref.id === 'string') {
-      out.push({ level, id: ref.id, name: ref.name, source: 'admin' })
+    // churchScopes single-edge ref.
+    const cs = user.churchScopes
+    if (cs) {
+      const ref = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
+      if (ref?.id) push(level, ref.id, ref.name)
+    }
+    // Top-level array (multi-scope users).
+    const arr = (user as any)[`isAdminFor${cap(level)}`]
+    if (Array.isArray(arr)) {
+      for (const ref of arr) {
+        if (ref?.id) push(level, ref.id, ref.name)
+      }
     }
   }
-  // Sort highest level first — denomination → governorship.
+
   return out.sort((a, b) => ADMIN_SCOPE_LEVELS.indexOf(b.level) - ADMIN_SCOPE_LEVELS.indexOf(a.level))
 }

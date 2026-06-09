@@ -8,13 +8,17 @@ import { PageShell, PageMain } from '../components/layout/PageShell'
 import { EmptyState } from '../components/layout/EmptyState'
 import { Alert } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
+import ChurchScopeSwitcher from '../components/ChurchScopeSwitcher'
 import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
+import { useChurchFocus } from '../contexts/ChurchFocusContext'
 import type { AppUser, CheckinEventRow } from '../types/app'
+
+type Greeting = { line1: string; line2: string }
 
 const MORNING_GREETINGS: Greeting[] = [
   { line1: 'Good morning, {name}.', line2: 'The registers are open.' },
@@ -123,62 +127,11 @@ function getDailyGreeting(isAdmin: boolean): Greeting {
   return pool[idx]
 }
 
-interface ChurchBadge {
-  id: string
-  label: string
-}
-
-function toTitleCase(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
-}
-
-// Home header should reflect explicit leadership/admin assignments from JWT,
-// not inherited ancestor context.
-function getAssignedChurchBadges(user: AppUser | null): ChurchBadge[] {
-  const cs = user?.churchScopes
-  if (!cs) return []
-
-  const levels = [
-    'denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta',
-  ] as const
-
-  const out: ChurchBadge[] = []
-  const seen = new Set<string>()
-  for (const level of levels) {
-    const cap = toTitleCase(level)
-    const adminRef = (cs as any)[`isAdminFor${cap}Of`]
-    if (adminRef?.id) {
-      const key = `${level}:${adminRef.id}:admin`
-      if (!seen.has(key)) {
-        seen.add(key)
-        out.push({
-          id: key,
-          label: `${adminRef.name || toTitleCase(level)} · ${toTitleCase(level)} · Admin`,
-        })
-      }
-    }
-    const leaderRef = (cs as any)[`leads${cap}Of`]
-    if (leaderRef?.id) {
-      const key = `${level}:${leaderRef.id}:leader`
-      if (!seen.has(key)) {
-        seen.add(key)
-        out.push({
-          id: key,
-          label: `${leaderRef.name || toTitleCase(level)} · ${toTitleCase(level)} · Leader`,
-        })
-      }
-    }
-  }
-
-  return out
-}
-
 function HomeGreeting({ user }: { user: AppUser | null }) {
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
   const { line1, line2 } = getDailyGreeting(isAdmin)
   const firstName = user?.firstName || user?.email?.split('@')[0] || ''
   const dateLabel = format(new Date(), 'EEEE, d MMMM').toUpperCase()
-  const assignedChurches = getAssignedChurchBadges(user)
 
   const [before, after] = line1.split('{name}')
 
@@ -200,21 +153,12 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
           {line2}
         </h1>
 
-        <div className='mt-4 flex flex-wrap gap-2'>
-          {assignedChurches.length > 0 ? (
-            assignedChurches.map((badge) => (
-              <span
-                key={badge.id}
-                className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'
-              >
-                {badge.label}
-              </span>
-            ))
-          ) : (
+        <div className='mt-4 flex flex-wrap items-center gap-2'>
+          <ChurchScopeSwitcher fallback={
             <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
               {user?.unitName || 'No assigned church scope'}
             </span>
-          )}
+          } />
           {user?.isSuperAdmin && (
             <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
               Super Admin
@@ -263,6 +207,7 @@ export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
+  const { focusedScope } = useChurchFocus()
   const [state, setState] = useState<HomeState>(() => {
     const cached = readPersistedEvents(user?.userId)
     return cached ? { status: 'ok', events: cached } : { status: 'loading' }
@@ -400,21 +345,26 @@ export default function LeaderHomeScreen() {
 
         {state.status === 'ok' && (() => {
           const now = new Date()
-          const visibleEvents = state.events
-          const live     = visibleEvents.filter(e => e.status === 'ACTIVE')
-          const upcoming = visibleEvents.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
-          const past     = visibleEvents.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
+          // If a scope is focused, only show events scoped to that church.
+          const baseEvents = focusedScope
+            ? state.events.filter(e => e.scope_church_id === focusedScope.id)
+            : state.events
+          const live     = baseEvents.filter(e => e.status === 'ACTIVE')
+          const upcoming = baseEvents.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
+          const past     = baseEvents.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
             .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
           const pastSlice = past.slice(0, 5)
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
               <EmptyState
-                title='No events yet'
+                title={focusedScope ? `No events for ${focusedScope.name || focusedScope.level}` : 'No events yet'}
                 description={
-                  isAdmin
-                    ? 'Create an event to start taking check-ins.'
-                    : 'Check-ins will appear here once a leader opens an event.'
+                  focusedScope
+                    ? 'Switch to "All scopes" to see events from your other roles.'
+                    : isAdmin
+                      ? 'Create an event to start taking check-ins.'
+                      : 'Check-ins will appear here once a leader opens an event.'
                 }
                 icon={
                   <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>

@@ -14,6 +14,7 @@ import {
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 import { cn } from '../../lib/utils'
+import { useChurchFocus } from '../../contexts/ChurchFocusContext'
 
 interface AdminScope { level: string; id: string; name: string }
 
@@ -23,6 +24,7 @@ export default function CreateEventForm() {
   const navigate = useNavigate()
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
+  const { focusedScope } = useChurchFocus()
 
   const [scopes, setScopes] = useState<AdminScope[]>([])
   const [scopesLoading, setScopesLoading] = useState(true)
@@ -78,6 +80,7 @@ export default function CreateEventForm() {
 
   // Fetch the admin's eligible scopes from FLC member graph.
   // Superadmins skip this — they pick any church via the search picker below.
+  // If a church scope is focused on the home screen, pre-select it here.
   useEffect(() => {
     if (isSuperAdmin) { setScopesLoading(false); return }
     let cancelled = false
@@ -87,7 +90,13 @@ export default function CreateEventForm() {
         if (cancelled) return
         const adminScopes = getAdminScopes(member, user)
         setScopes(adminScopes)
-        if (adminScopes.length > 0) setScopeId(`${adminScopes[0].level}:${adminScopes[0].id}`)
+        if (adminScopes.length > 0) {
+          const match = focusedScope
+            ? adminScopes.find((s) => s.id === focusedScope.id)
+            : null
+          const defaultScope = match ?? adminScopes[0]
+          setScopeId(`${defaultScope.level}:${defaultScope.id}`)
+        }
       } catch (err: any) {
         if (!cancelled) setScopesError(err.message)
       } finally {
@@ -95,7 +104,7 @@ export default function CreateEventForm() {
       }
     })()
     return () => { cancelled = true }
-  }, [user.userId, isSuperAdmin])
+  }, [user.userId, isSuperAdmin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced church search for superadmins (churches mode).
   useEffect(() => {
