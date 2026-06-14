@@ -8,6 +8,7 @@ import { CenterCard } from '../layout/CenterCard'
 import { cn } from '../../lib/utils'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
+  listEventScopeMembersWithProfiles,
 } from '../../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -44,16 +45,26 @@ export default function ScopeBreakdown({ eventId }) {
         if (cancelled) return
         setEvent(evt)
 
-        const [viewer, ancestors, eventScopeMembers, recs] = await Promise.all([
+        const [viewer, ancestors, snapshotProfiles, recs] = await Promise.all([
           resolveCurrentMember(user).catch(() => null),
           getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
-          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id }),
+          listEventScopeMembersWithProfiles(eventId),
           listCheckedIn(eventId),
         ])
         if (cancelled) return
 
-        const allRows = eventScopeMembers.map(memberToProfileRow)
-        await bulkUpsertMemberProfiles(allRows)
+        // Snapshot-first: Supabase has the full scope member list regardless of
+        // the viewer's JWT scope. Fall back to the graph only when no snapshot
+        // exists yet (newly created event / creation race).
+        let allRows: any[]
+        if (snapshotProfiles.length > 0) {
+          allRows = snapshotProfiles
+        } else {
+          const graphMembers = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+          if (cancelled) return
+          allRows = graphMembers.map(memberToProfileRow)
+          bulkUpsertMemberProfiles(allRows).catch(() => {})
+        }
         const allowed = new Set(evt.allowed_roles || [])
         const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
