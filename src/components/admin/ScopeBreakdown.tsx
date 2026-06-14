@@ -113,9 +113,13 @@ export default function ScopeBreakdown({ eventId }) {
 
   const sliceRows = useMemo(() => {
     if (!currentLevel || !currentChurchId) return allEligible
+    // At the event's own scope level every member in allEligible is in scope by
+    // construction (seeded from event_scope_members). The flat campus_id column
+    // is unreliable for multi-path members, so skip the filter here.
+    if (currentLevel === event?.scope_level && currentChurchId === event?.scope_church_id) return allEligible
     const idCol = `${currentLevel}_id`
     return allEligible.filter((m) => m[idCol] === currentChurchId)
-  }, [allEligible, currentLevel, currentChurchId])
+  }, [allEligible, currentLevel, currentChurchId, event?.scope_level, event?.scope_church_id])
 
   const childLevel = currentLevel ? childScopeLevel(currentLevel) : null
 
