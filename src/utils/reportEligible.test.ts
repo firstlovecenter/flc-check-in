@@ -42,4 +42,15 @@ describe('resolveReportEligible', () => {
       }),
     ).toEqual([members[0]])
   })
+
+  it('uses all eligible members for read-only whole-event viewers', () => {
+    const slice = [{ id: 'b' }]
+    expect(
+      resolveReportEligible({
+        allEligible: members,
+        viewerSlice: slice,
+        viewerCaps: { canManage: false, canViewFullEvent: true, viewerScope: { level: 'council', id: 'c1' } },
+      }),
+    ).toEqual(members)
+  })
 })

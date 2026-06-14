@@ -18,13 +18,14 @@ export function resolveReportEligible({
   viewerSlice: any[]
   viewerCaps: {
     canManage?: boolean
+    canViewFullEvent?: boolean
     viewerScope?: { level: string; id: string; name?: string } | null
   } | null
   filterLevel?: string | null
   filterChurchId?: string | null
 }): any[] {
-  const isAdmin = !!viewerCaps?.canManage
-  const base = isAdmin
+  const canViewWholeEvent = !!(viewerCaps?.canManage || viewerCaps?.canViewFullEvent)
+  const base = canViewWholeEvent
     ? allEligible
     : (viewerSlice.length > 0 ? viewerSlice : allEligible)
 
@@ -32,7 +33,7 @@ export function resolveReportEligible({
 
   const vs = viewerCaps?.viewerScope
   // Leader stat-card links use viewerScope in the query string — same slice as dashboard.
-  if (!isAdmin && vs?.level === filterLevel && vs?.id === filterChurchId) return base
+  if (!canViewWholeEvent && vs?.level === filterLevel && vs?.id === filterChurchId) return base
 
   const idCol = `${filterLevel}_id`
   return base.filter((m) => m[idCol] === filterChurchId)

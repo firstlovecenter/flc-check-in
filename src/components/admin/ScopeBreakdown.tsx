@@ -57,14 +57,18 @@ export default function ScopeBreakdown({ eventId }) {
         const allowed = new Set(evt.allowed_roles || [])
         const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
-        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet)
-        const scopeFallback = rawCaps.viewerScope ?? {
+        const allMemberIdSet = new Set(allRows.map((r) => r.id))
+        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
+        const eventScope = {
           level: evt.scope_level, id: evt.scope_church_id, name: evt.scope_church_name,
         }
+        const scopeFallback = rawCaps.canViewFullEvent ? eventScope : (rawCaps.viewerScope ?? eventScope)
         const caps = user?.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
+          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
           : user?.isSuperViewer
-          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope: scopeFallback }
+          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
+          : rawCaps.canViewFullEvent
+          ? { ...rawCaps, viewerScope: scopeFallback }
           : rawCaps
         if (cancelled) return
         setViewerCaps(caps)
@@ -80,7 +84,8 @@ export default function ScopeBreakdown({ eventId }) {
   const viewerScopeIdx  = viewerCaps?.viewerScope ? SCOPE_LEVELS.indexOf(viewerCaps.viewerScope.level) : -1
   const requestedLevel  = drillLevel || event?.scope_level
   const requestedIdx    = requestedLevel ? SCOPE_LEVELS.indexOf(requestedLevel) : -1
-  const shouldClamp     = !viewerCaps?.canManage && viewerScopeIdx >= 0 && requestedIdx > viewerScopeIdx
+  const canDrillFullEvent = viewerCaps?.canManage || viewerCaps?.canViewFullEvent
+  const shouldClamp     = !canDrillFullEvent && viewerScopeIdx >= 0 && requestedIdx > viewerScopeIdx
 
   const currentLevel    = shouldClamp ? viewerCaps!.viewerScope!.level : requestedLevel
   const currentChurchId = shouldClamp ? viewerCaps!.viewerScope!.id    : (drillChurchId || event?.scope_church_id)

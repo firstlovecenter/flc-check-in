@@ -95,14 +95,14 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   }, [event, safeAllEligible])
 
   const eligible = useMemo(() => {
-    const isAdmin = !!viewerCaps?.canManage
-    const base = isAdmin ? safeAllEligible : (safeViewerSlice.length > 0 ? safeViewerSlice : safeAllEligible)
+    const canViewWholeEvent = !!(viewerCaps?.canManage || viewerCaps?.canViewFullEvent)
+    const base = canViewWholeEvent ? safeAllEligible : (safeViewerSlice.length > 0 ? safeViewerSlice : safeAllEligible)
     const vs = viewerCaps?.viewerScope
     if (!filterLevel || !filterChurchId || filterChurchId === '__all__') return base
-    if (!isAdmin && vs?.level === filterLevel && vs?.id === filterChurchId) return base
+    if (!canViewWholeEvent && vs?.level === filterLevel && vs?.id === filterChurchId) return base
     const idCol = `${filterLevel}_id`
     return base.filter((m) => m[idCol] === filterChurchId)
-  }, [safeAllEligible, safeViewerSlice, viewerCaps?.canManage, viewerCaps?.viewerScope, filterLevel, filterChurchId])
+  }, [safeAllEligible, safeViewerSlice, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, viewerCaps?.viewerScope, filterLevel, filterChurchId])
 
   const rows = useMemo(() => {
     const byMember = new Map(records.map((r) => [r.member_id, r]))

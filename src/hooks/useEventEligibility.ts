@@ -329,6 +329,7 @@ export function useEventEligibility(
             canManage: false,
             canCheckIn: true,
             canView: true,
+            canViewFullEvent: false,
             canManuallyCheckIn: false,
             viewerScope: {
               level: evt.scope_level as any,
@@ -353,8 +354,8 @@ export function useEventEligibility(
             // Admins exist from governorship level upwards — bacenta has no admin role.
             const isAdminLevel = user.level !== 'bacenta'
             rawCaps = (user.isAdmin && isAdminLevel)
-              ? { canManage: true,  canCheckIn: false, canView: true, canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')), viewerScope }
-              : { canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope }
+              ? { canManage: true,  canCheckIn: false, canView: true, canViewFullEvent: false, canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')), viewerScope }
+              : { canManage: false, canCheckIn: false, canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
           } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {
             // Sub-scope leader: their JWT church hierarchy must include the event scope church,
             // confirming they are structurally within that scope.
@@ -362,20 +363,23 @@ export function useEventEligibility(
               const ownRef = user.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
               if (ownRef) {
                 const viewerScope = { level: ownRef.level, id: ownRef.id, name: ownRef.name ?? '' }
-                rawCaps = { canManage: false, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canManuallyCheckIn: false, viewerScope }
+                rawCaps = { canManage: false, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
               }
             }
           }
         }
-        const scopeFallback = rawCaps.viewerScope ?? {
+        const eventScope = {
           level: evt.scope_level,
           id: evt.scope_church_id,
           name: evt.scope_church_name,
         }
+        const scopeFallback = rawCaps.canViewFullEvent ? eventScope : (rawCaps.viewerScope ?? eventScope)
         const caps = user.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canManuallyCheckIn: true, viewerScope: scopeFallback }
+          ? { ...rawCaps, canManage: true, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
           : user.isSuperViewer
-          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canManuallyCheckIn: false, viewerScope: scopeFallback }
+          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
+          : rawCaps.canViewFullEvent
+          ? { ...rawCaps, viewerScope: scopeFallback }
           : rawCaps
         const scopes = getAdminScopes(viewer, user)
 
@@ -383,7 +387,7 @@ export function useEventEligibility(
         let slice = eligibleRows
         // Skip the graph slice call for special-group events — the full group
         // member list is already the correct slice.
-        if (!isSpecialGroup && !caps.canManage && caps.viewerScope) {
+        if (!isSpecialGroup && !caps.canManage && !caps.canViewFullEvent && caps.viewerScope) {
           try {
             const sliceMembers = await getMembersInScope({
               level: caps.viewerScope.level,

@@ -189,6 +189,8 @@ export interface ViewerCapabilities {
   canManage: boolean
   canCheckIn: boolean
   canView: boolean
+  /** Read-only full-event breakdown access without edit/manual/audit rights. */
+  canViewFullEvent: boolean
   canManuallyCheckIn: boolean
   viewerScope: ChurchRef | null
 }

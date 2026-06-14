@@ -76,7 +76,7 @@ export default function EventDashboard({ eventId }) {
   // the (empty) dashboard. Applies even to admins whose admin scope happens to
   // be the lowest level in the event's allowed_roles cascade.
   useEffect(() => {
-    if (!event || !user?.level || user?.isSuperAdmin) return
+    if (!event || !user?.level || user?.isSuperAdmin || user?.isSuperViewer || viewerCaps?.canManage || viewerCaps?.canViewFullEvent) return
     const allowed: string[] = event.allowed_roles || []
     if (!allowed.length) return
     // Extract the level suffix from each role (leaderBacenta -> bacenta,
@@ -92,7 +92,7 @@ export default function EventDashboard({ eventId }) {
     if (viewerIdx === lowestIdx) {
       navigate(`/checkin/${eventId}`, { replace: true })
     }
-  }, [event, eventId, user?.level, navigate])
+  }, [event, eventId, user?.level, user?.isSuperAdmin, user?.isSuperViewer, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, navigate])
 
   // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
   const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)
@@ -135,8 +135,8 @@ export default function EventDashboard({ eventId }) {
   // Active event → go straight to check-in. Ended event → go home.
   useEffect(() => {
     if (!viewerCaps || !event) return
-    const isBacentaLeader = viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage
-    const isSpecialGroupMember = event.scope_level === 'special_group' && !user?.isSuperAdmin
+    const isBacentaLeader = viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage && !viewerCaps.canViewFullEvent
+    const isSpecialGroupMember = event.scope_level === 'special_group' && !user?.isSuperAdmin && !user?.isSuperViewer
     if (isBacentaLeader || isSpecialGroupMember) {
       navigate(event.status === 'ACTIVE' ? `/checkin/${eventId}` : '/home', { replace: true })
     }
@@ -150,7 +150,11 @@ export default function EventDashboard({ eventId }) {
   }, [eligible, scopeLevel, scopeChurchId])
 
   // Stat slice: use scoped subset when a filter is active, otherwise the viewer's own slice.
-  const displaySlice = useMemo(() => scopedMembers ?? viewerSlice, [scopedMembers, viewerSlice])
+  const canViewWholeEvent = !!(viewerCaps?.canManage || viewerCaps?.canViewFullEvent)
+  const displaySlice = useMemo(
+    () => scopedMembers ?? (canViewWholeEvent ? eligible : viewerSlice),
+    [scopedMembers, canViewWholeEvent, eligible, viewerSlice],
+  )
 
   // Stats model:
   //   • attended  = anyone who has a record (cumulative — includes those who later left)
@@ -184,7 +188,7 @@ export default function EventDashboard({ eventId }) {
       allowedRolesForScope(event.scope_level).every((r) => (event.allowed_roles || []).includes(r))
     // canManage is only ever true for an exact-event-scope admin / superAdmin,
     // so it always implies displaySlice === the full event slice.
-    const fullEventView = !scopedMembers && (viewerCaps?.canManage || !!user?.isSuperViewer)
+    const fullEventView = !scopedMembers && (viewerCaps?.canManage || viewerCaps?.canViewFullEvent || !!user?.isSuperViewer)
     const total = fullEventView && rolesUnrestricted && scopeMemberCount != null && scopeMemberCount > 0
       ? scopeMemberCount
       : sliceIds.size
@@ -201,7 +205,7 @@ export default function EventDashboard({ eventId }) {
       absent,
       pct,
     }
-  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, user?.isSuperViewer, event?.starts_at, event?.scope_level, event?.allowed_roles])
+  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, user?.isSuperViewer, event?.starts_at, event?.scope_level, event?.allowed_roles])
 
   // A member who has checked in — even if they later checked out — is still
   // considered "checked in" for button / banner purposes.
@@ -230,7 +234,7 @@ export default function EventDashboard({ eventId }) {
 
   // For non-admin leaders with no URL scope params, anchor the child-count card
   // to their own scope instead of the full event scope.
-  const isViewerScopedLeader = !viewerCaps.canManage && !scopeLevel && !!viewerCaps.viewerScope
+  const isViewerScopedLeader = !viewerCaps.canManage && !viewerCaps.canViewFullEvent && !scopeLevel && !!viewerCaps.viewerScope
 
   const activeScopeLevel      = scopeLevel      ?? (isViewerScopedLeader ? viewerCaps.viewerScope!.level : event.scope_level)
   const activeScopeChurchId   = scopeChurchId   ?? (isViewerScopedLeader ? viewerCaps.viewerScope!.id    : event.scope_church_id)
