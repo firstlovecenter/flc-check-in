@@ -219,6 +219,7 @@ export default function ScopeBreakdown({ eventId }) {
                 isExpanded={expandedId === g.id}
                 onToggle={() => setExpandedId(expandedId === g.id ? null : g.id)}
                 sliceRows={sliceRows}
+                allEligible={allEligible}
               />
             ))}
           </div>
@@ -255,18 +256,24 @@ export default function ScopeBreakdown({ eventId }) {
 }
 
 // ─── Leader lookup ────────────────────────────────────────────────────────────
-
-function getLeaderForScope(sliceRows: any[], childLevel: string, scopeId: string) {
+// Searches allEligible (not sliceRows) for the leader role because the actual
+// leader may have a different primary campus_id in their profile — e.g. a
+// stream leader who also leads a different campus will have campus_id pointing
+// to that other campus, so they'd be absent from a campus-filtered sliceRows
+// even though their stream_id is correct. Stats stay on sliceRows.
+function getLeaderForScope(allEligible: any[], sliceRows: any[], childLevel: string, scopeId: string) {
   const idCol = `${childLevel}_id`
   const roleKey = `leader${childLevel.charAt(0).toUpperCase()}${childLevel.slice(1)}`
-  const inScope = sliceRows.filter((m) => m[idCol] === scopeId)
-  return inScope.find((m) => (m.roles || []).includes(roleKey)) || inScope[0] || null
+  const inAll = allEligible.filter((m) => m[idCol] === scopeId)
+  return inAll.find((m) => (m.roles || []).includes(roleKey))
+    || sliceRows.filter((m) => m[idCol] === scopeId)[0]
+    || null
 }
 
 // ─── ScopeCard (accordion item) ──────────────────────────────────────────────
 
 function ScopeCard({
-  group, childLevel, eventId, isExpanded, onToggle, sliceRows,
+  group, childLevel, eventId, isExpanded, onToggle, sliceRows, allEligible,
 }: {
   group: { id: string; name: string; total: number; attended: number; absent: number }
   childLevel: string
@@ -274,8 +281,9 @@ function ScopeCard({
   isExpanded: boolean
   onToggle: () => void
   sliceRows: any[]
+  allEligible: any[]
 }) {
-  const leader = getLeaderForScope(sliceRows, childLevel, group.id)
+  const leader = getLeaderForScope(allEligible, sliceRows, childLevel, group.id)
   const leaderName = leader
     ? [leader.first_name, leader.last_name].filter(Boolean).join(' ')
     : ''
