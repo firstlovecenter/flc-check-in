@@ -411,6 +411,16 @@ export async function loginWithCredentials(email, password) {
     localStorage.removeItem('superAdminOverride')
     localStorage.removeItem('superViewerOverride')
   }
+  // Clear persisted eligibility cache so the new SA/SV status is picked up
+  // immediately rather than waiting for the 30-min localStorage TTL to expire.
+  try {
+    const toRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('flc:elig:v2:')) toRemove.push(k)
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k))
+  } catch { /* ignore */ }
 
   const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
 

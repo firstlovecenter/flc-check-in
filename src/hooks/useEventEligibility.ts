@@ -185,10 +185,26 @@ export function useEventEligibility(
       : readPersistedEligibility(cacheKey)
     if (hit) {
       const withId = (rows: any[]) => rows.filter((r) => r != null && r.id != null && r.id !== '')
+      // If the cached viewerCaps were computed before superAdmin/superViewer status
+      // was granted, override them immediately so the UI shows full scope while
+      // the background fetch revalidates.
+      let cachedCaps = hit.viewerCaps
+      let cachedSlice = withId(hit.viewerSlice)
+      const localIsSA = localStorage.getItem('superAdminOverride') === '1'
+      const localIsSV = !localIsSA && localStorage.getItem('superViewerOverride') === '1'
+      if (hit.event && (localIsSA || localIsSV) && !hit.viewerCaps?.canManage && !hit.viewerCaps?.canViewFullEvent) {
+        const eventScope = { level: hit.event.scope_level, id: hit.event.scope_church_id, name: hit.event.scope_church_name }
+        const allElig = withId(hit.eligible)
+        const eligSet = hit.eligibleIds ?? new Set(allElig.map((r: any) => r.id))
+        cachedCaps = localIsSA
+          ? { ...cachedCaps, canManage: true, canCheckIn: eligSet.has(user.userId), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
+          : { ...cachedCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
+        cachedSlice = allElig
+      }
       setEligible(withId(hit.eligible))
       setEligibleIds(hit.eligibleIds)
-      setViewerCaps(hit.viewerCaps)
-      setViewerSlice(withId(hit.viewerSlice))
+      setViewerCaps(cachedCaps)
+      setViewerSlice(cachedSlice)
       setAdminScopes(hit.adminScopes)
       setChildCount(hit.childCount)
       setScopeMemberCount(hit.scopeMemberCount ?? null)
@@ -238,6 +254,7 @@ export function useEventEligibility(
         if (cancelled) return
 
         let allRows: any[]
+        let needsProfileRefresh = false
         if (isSpecialGroup) {
           // Special-group events: membership lives in special_group_members,
           // not in the church hierarchy. Use the event snapshot if it exists;
@@ -257,6 +274,8 @@ export function useEventEligibility(
         } else if (snapshotProfiles.length > 0 && (scopeCountFetched === 0 || snapshotProfiles.length >= scopeCountFetched)) {
           // Snapshot exists and profile coverage is complete — use directly.
           allRows = snapshotProfiles
+          // Flag for background refresh if profiles lack scope_ids (stale snapshot).
+          needsProfileRefresh = snapshotProfiles.filter((r: any) => r.scope_ids == null).length > snapshotProfiles.length * 0.05
         } else {
           // Either no snapshot yet (creation race / new event), or snapshot exists
           // but profiles are incomplete (creation-time write partially failed).
@@ -316,6 +335,25 @@ export function useEventEligibility(
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         ).filter((r) => r != null && r.id != null && r.id !== '')
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
+
+        // Background: stale snapshot profiles (scope_ids null) break sub-scope
+        // filtering. Re-fetch from graph, upsert fresh profiles, and update state.
+        if (needsProfileRefresh) {
+          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+            .then((graphMembers: any[]) => {
+              if (cancelled) return
+              const freshRows = graphMembers.map(memberToProfileRow)
+              bulkUpsertMemberProfiles(freshRows).catch(() => {})
+              const freshEligible = freshRows
+                .filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
+                .filter((r) => r != null && r.id != null && r.id !== '')
+              if (!cancelled) {
+                setEligible(freshEligible)
+                setEligibleIds(new Set<string>(freshEligible.map((r) => r.id)))
+              }
+            })
+            .catch(() => {})
+        }
 
         // getViewerCapabilities requires a graph viewer node. When the graph is
         // unavailable (viewer === null, ancestors === []), fall back to the

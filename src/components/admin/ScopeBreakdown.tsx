@@ -85,6 +85,26 @@ export default function ScopeBreakdown({ eventId }) {
         setViewerCaps(caps)
         setAllEligible(eligibleRows)
         setRecords(recs)
+
+        // Background: if snapshot profiles are stale (scope_ids not yet populated),
+        // re-fetch from the graph so sub-scope filtering and leader lookup work.
+        // One-shot: once scope_ids is populated, the staleCount drops to 0.
+        const usedSnapshot = snapshotProfiles.length > 0
+        const staleCount = usedSnapshot ? allRows.filter((r) => r.scope_ids == null).length : 0
+        if (usedSnapshot && evt.scope_level !== 'special_group' && staleCount > allRows.length * 0.05) {
+          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+            .then((graphMembers) => {
+              if (cancelled) return
+              const freshRows = graphMembers.map(memberToProfileRow)
+              bulkUpsertMemberProfiles(freshRows).catch(() => {})
+              const freshAllowed = new Set(evt.allowed_roles || [])
+              const freshEligible = freshRows
+                .filter((r: any) => (r.roles || []).some((rr: string) => freshAllowed.has(rr)))
+                .filter((r: any) => r != null && r.id != null)
+              if (!cancelled) setAllEligible(freshEligible)
+            })
+            .catch(() => {})
+        }
       } catch (err: any) {
         if (!cancelled) setError(err.message)
       }
@@ -283,9 +303,14 @@ export default function ScopeBreakdown({ eventId }) {
 function getLeaderForScope(allEligible: any[], sliceRows: any[], childLevel: string, scopeId: string) {
   const idCol = `${childLevel}_id`
   const roleKey = `leader${childLevel.charAt(0).toUpperCase()}${childLevel.slice(1)}`
-  const inAll = allEligible.filter((m) => m[idCol] === scopeId)
+  const matchesScope = (m: any) => {
+    const scopeIds: string[] | undefined = (m.scope_ids as any)?.[childLevel]
+    if (scopeIds?.length) return scopeIds.includes(scopeId)
+    return m[idCol] === scopeId
+  }
+  const inAll = allEligible.filter(matchesScope)
   return inAll.find((m) => (m.roles || []).includes(roleKey))
-    || sliceRows.filter((m) => m[idCol] === scopeId)[0]
+    || sliceRows.filter(matchesScope)[0]
     || null
 }
 
