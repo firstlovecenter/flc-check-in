@@ -129,7 +129,52 @@ export function memberToProfileRow(m) {
     campus_id:       campus?.id       || null,  campus_name:       campus?.name       || null,
     oversight_id:    oversight?.id    || null,  oversight_name:    oversight?.name    || null,
     denomination_id: denomination?.id || null,  denomination_name: denomination?.name || null,
+    scope_ids: extractAllScopeIds(m),
   }
+}
+
+// Walks every leads* and isAdminFor* edge on a graph Member node and collects
+// ALL scope IDs at each hierarchy level. The MEMBER_FIELDS fragment embeds
+// each node's full parent chain, so a single pass per edge type is enough.
+// Result shape: { campus: ["id1","id2"], stream: ["id1"], … }
+// Only levels with at least one ID are included.
+function extractAllScopeIds(m: any): Record<string, string[]> {
+  const acc: Record<string, Set<string>> = {}
+  const add = (level: string, node: any) => {
+    if (!node?.id) return
+    ;(acc[level] ??= new Set()).add(node.id)
+  }
+  // Walk from `node` at `startLevel` up through embedded parent fields.
+  // The MEMBER_FIELDS fragment nests parents using their level name as the
+  // field key (bacenta → bacenta.governorship → …governorship.council → etc.)
+  const walkUp = (node: any, startLevel: string) => {
+    if (!node) return
+    let cur: any = node
+    let idx = (SCOPE_LEVELS as readonly string[]).indexOf(startLevel)
+    while (idx >= 0 && idx < SCOPE_LEVELS.length) {
+      const level = SCOPE_LEVELS[idx]
+      if (level === 'special_group') break
+      add(level, cur)
+      idx++
+      if (idx >= SCOPE_LEVELS.length || SCOPE_LEVELS[idx] === 'special_group') break
+      cur = cur[SCOPE_LEVELS[idx]] ?? null
+      if (!cur) break
+    }
+  }
+  for (const b   of m.leadsBacenta            || []) walkUp(b,   'bacenta')
+  for (const g   of m.leadsGovernorship        || []) walkUp(g,   'governorship')
+  for (const g   of m.isAdminForGovernorship   || []) walkUp(g,   'governorship')
+  for (const c   of m.leadsCouncil             || []) walkUp(c,   'council')
+  for (const c   of m.isAdminForCouncil        || []) walkUp(c,   'council')
+  for (const s   of m.leadsStream              || []) walkUp(s,   'stream')
+  for (const s   of m.isAdminForStream         || []) walkUp(s,   'stream')
+  for (const cam of m.leadsCampus              || []) walkUp(cam, 'campus')
+  for (const cam of m.isAdminForCampus         || []) walkUp(cam, 'campus')
+  for (const o   of m.leadsOversight           || []) walkUp(o,   'oversight')
+  for (const o   of m.isAdminForOversight      || []) walkUp(o,   'oversight')
+  for (const d   of m.leadsDenomination        || []) add('denomination', d)
+  for (const d   of m.isAdminForDenomination   || []) add('denomination', d)
+  return Object.fromEntries(Object.entries(acc).map(([k, v]) => [k, [...v]]))
 }
 
 // Synthesize the role strings used in the rest of the app (matches the

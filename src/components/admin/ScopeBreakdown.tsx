@@ -113,12 +113,16 @@ export default function ScopeBreakdown({ eventId }) {
 
   const sliceRows = useMemo(() => {
     if (!currentLevel || !currentChurchId) return allEligible
-    // At the event's own scope level every member in allEligible is in scope by
-    // construction (seeded from event_scope_members). The flat campus_id column
-    // is unreliable for multi-path members, so skip the filter here.
+    // At the event's own scope level all eligible members are in scope by
+    // construction (seeded from event_scope_members) — skip filtering.
     if (currentLevel === event?.scope_level && currentChurchId === event?.scope_church_id) return allEligible
     const idCol = `${currentLevel}_id`
-    return allEligible.filter((m) => m[idCol] === currentChurchId)
+    return allEligible.filter((m) => {
+      // scope_ids captures all paths; flat column only has the primary one.
+      const scopeIds: string[] | undefined = (m.scope_ids as any)?.[currentLevel]
+      if (scopeIds?.length) return scopeIds.includes(currentChurchId)
+      return m[idCol] === currentChurchId
+    })
   }, [allEligible, currentLevel, currentChurchId, event?.scope_level, event?.scope_church_id])
 
   const childLevel = currentLevel ? childScopeLevel(currentLevel) : null
@@ -142,15 +146,26 @@ export default function ScopeBreakdown({ eventId }) {
 
     const unassigned: { member: any; record: any; status: string }[] = []
     for (const m of sliceRows) {
-      const key = m[idCol]
+      // Resolve which child-level group this member belongs to.
+      // scope_ids holds all IDs at each level for multi-path members; the flat
+      // column only stores the primary path and may point to the wrong church.
+      // Only use IDs that correspond to a known child church (in map) to
+      // prevent spurious group entries from cross-hierarchy paths.
+      let key: string | null = null
+      const scopeChildIds: string[] | undefined = (m.scope_ids as any)?.[childLevel]
+      if (scopeChildIds?.length) {
+        key = scopeChildIds.find((id) => map.has(id)) ?? null
+      }
+      if (!key) {
+        const flatId: string | undefined = m[idCol]
+        key = flatId && map.has(flatId) ? flatId : null
+      }
       if (!key) {
         const rec = recordByMember.get(m.id) || null
         const status = !rec ? 'Defaulted' : rec.checked_out_at ? 'Checked Out' : 'Checked In'
         unassigned.push({ member: m, record: rec, status })
         continue
       }
-      const name = m[nameCol] || key
-      if (!map.has(key)) map.set(key, blank(key, name))
       const g = map.get(key)!
       g.total++
       const rec = recordByMember.get(m.id)

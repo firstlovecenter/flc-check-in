@@ -18,7 +18,7 @@ const MEMBER_PROFILE_LIST_COLUMNS =
   'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
   'council_id, council_name, stream_id, stream_name, ' +
   'campus_id, campus_name, oversight_id, oversight_name, ' +
-  'denomination_id, denomination_name, updated_at'
+  'denomination_id, denomination_name, scope_ids, updated_at'
 
 const CHECKIN_EVENT_LIST_COLUMNS =
   'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
