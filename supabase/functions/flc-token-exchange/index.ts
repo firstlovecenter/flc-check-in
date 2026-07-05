@@ -157,8 +157,20 @@ Deno.serve(async (req) => {
   }
 
   if (gqlBody.errors?.length && !gqlBody.data) {
-    // The API refused the request — token invalid/expired ("Unauthenticated").
-    return json({ error: 'invalid_token' }, 401)
+    // The graph is the trust anchor: it answers the literal message
+    // "Unauthenticated" for a forged/expired/missing token (see
+    // membersApi.queries.ts:4) — that specific signal is the only thing that
+    // proves the credential itself is bad. Any other GraphQL-level error
+    // (schema bug, resolver exception, transient upstream hiccup) is not
+    // evidence the token is invalid, and treating it as one wrongly forces a
+    // real, currently-logged-in user through the anon-key fallback / a
+    // "you're not in scope" dead end instead of just retrying. Surface those
+    // as a retryable failure instead.
+    const isAuthRejection = gqlBody.errors.some(
+      (e) => typeof e?.message === 'string' && /unauthenticated|forbidden/i.test(e.message),
+    )
+    if (isAuthRejection) return json({ error: 'invalid_token' }, 401)
+    return json({ error: 'graph_error' }, 503)
   }
 
   const member = gqlBody.data?.byId?.[0] ?? gqlBody.data?.byEmail?.[0] ?? null
