@@ -41,7 +41,9 @@
       "PowerShell(Get-ChildItem \"c:\\\\Users\\\\samuel cyrus-aduteye\\\\Downloads\" | Where-Object { $_.Name -match \"flc|icon|logo|app-icon|svg\" } | Select-Object Name, FullName)",
       "PowerShell(Get-ChildItem \"c:\\\\Users\\\\samuel cyrus-aduteye\\\\Downloads\" | Where-Object { $_.Extension -match \"\\\\.\\(svg|png\\)$\" } | Select-Object Name, FullName | Format-Table -AutoSize)",
       "PowerShell(python --version)",
-      "PowerShell(node --version)"
+      "PowerShell(node --version)",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__list_repos",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__add_repo"
     ],
     "additionalDirectories": [
       "C:\\Users\\samuel cyrus-aduteye\\Documents\\Codeslaw\\flc-check-in\\.claude"
