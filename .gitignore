@@ -26,3 +26,4 @@ dist-ssr
 .benchmarksafter-2026-05-18
 .scripts
 reports
+supabase/.temp/

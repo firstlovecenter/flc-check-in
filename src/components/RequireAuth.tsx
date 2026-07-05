@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
+import { getCurrentUser, isTokenExpired, refreshSession, logout, verifySuperPrivilegesBackground } from '../utils/auth'
 import { syncGraphProfileForUserBackground } from '../utils/graphProfileSync'
 import LocationPermissionBanner from './LocationPermissionBanner'
 import Spinner from './Spinner'
@@ -34,11 +34,16 @@ export default function RequireAuth({ children }) {
       })
   }, [state])
 
-  // Returning session (valid token): re-probe graph periodically for scope moves.
+  // Returning session (valid token): re-probe graph periodically for scope moves,
+  // and re-verify the superadmin/superviewer flags against the Supabase
+  // allowlists (throttled inside verifySuperPrivileges).
   useEffect(() => {
     if (state !== 'ok') return
     const user = getCurrentUser()
-    if (user) syncGraphProfileForUserBackground(user)
+    if (user) {
+      syncGraphProfileForUserBackground(user)
+      verifySuperPrivilegesBackground(user)
+    }
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />

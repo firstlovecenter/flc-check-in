@@ -11,6 +11,11 @@ import { GraphQLClient } from 'graphql-request'
 import { SCOPE_LEVELS } from './auth.js'
 import { getUserAdminScopesFromJwt } from './userScope'
 import {
+  cacheHierarchyChain,
+  cacheHierarchyChildren,
+  fetchAncestorScopesFromDb,
+} from './hierarchyCache'
+import {
   GET_MEMBER_BY_ID,
   GET_MEMBER_BY_EMAIL,
   SCOPE_QUERIES,
@@ -525,7 +530,19 @@ export async function getChurchAncestors({ level, id }) {
 
   // Pluralized field name (matches the query — bacentas, governorships, etc.)
   const fieldName = level === 'campus' ? 'campuses' : `${level}s`
-  const data = await client().request(query, { id })
+  let data
+  try {
+    data = await client().request(query, { id })
+  } catch (err) {
+    // Graph unreachable — serve whatever chain church_hierarchy has cached
+    // from previous sessions (partial chains are still useful; not cached
+    // in-memory so a recovered graph wins on the next call).
+    const cached = await fetchAncestorScopesFromDb({ level, id }).catch(() => null)
+    if (cached?.length) {
+      return cached.map((n) => ({ level: n.level, id: n.id, name: n.name || '?' }))
+    }
+    throw err
+  }
   const node = data?.[fieldName]?.[0]
   if (!node) {
     const result = [{ level, id, name: '?' }]
@@ -547,6 +564,7 @@ export async function getChurchAncestors({ level, id }) {
   }
   // Highest first (denomination → bacenta).
   chain.reverse()
+  cacheHierarchyChain(chain)  // mirror into church_hierarchy, fire-and-forget
   ancestorCache.set(key, { data: chain, ts: Date.now() })
   return chain
 }
@@ -777,7 +795,11 @@ export async function getChildChurches({ level, id }: { level: string; id: strin
   const data = await client().request<Record<string, { id: string; name: string }[]>>(query, { id })
   // Response has one array field — grab whatever's there.
   const list = Object.values(data || {})[0]
-  return Array.isArray(list) ? list : []
+  const children = Array.isArray(list) ? list : []
+  // Mirror the full child list into church_hierarchy and stamp this parent's
+  // children_synced_at marker so get_descendant_scopes can trust the subtree.
+  cacheHierarchyChildren({ level, id }, childScopeLevel(level), children)
+  return children
 }
 
 // ─── searchChurches(q, limit?) ───────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   getUserChurchId,
   getUserChurchRefs,
   getUserChurchRefsAt,
+  getUserLeadershipRefs,
   isUserAdminAt,
   getUserAdminScopesFromJwt,
 } from './userScope'
@@ -234,6 +235,67 @@ describe('getUserChurchRefs — full set across all levels', () => {
     const refs = getUserChurchRefs(user)
     expect(refs).toHaveLength(1)
     expect(refs[0]).toEqual({ level: 'stream', id: 's-1', name: undefined, source: 'flat' })
+  })
+})
+
+describe('getUserLeadershipRefs — role edges only (event-visibility policy)', () => {
+  it('returns churchScopes admin and leader edges, lowest level first', () => {
+    const user = baseUser({
+      churchScopes: {
+        isAdminForStreamOf: { id: 'stream-A', name: 'Stream A' },
+        leadsBacentaOf:     { id: 'bac-X', name: 'Bacenta X' },
+      },
+    })
+    expect(getUserLeadershipRefs(user)).toEqual([
+      { level: 'bacenta', id: 'bac-X', name: 'Bacenta X', source: 'leader' },
+      { level: 'stream', id: 'stream-A', name: 'Stream A', source: 'admin' },
+    ])
+  })
+
+  it('excludes flat membership refs entirely — visibility comes from leading, not membership', () => {
+    const user = baseUser({
+      bacenta: { id: 'bac-MEMBER', name: 'Member Bacenta' },
+      stream:  { id: 'stream-MEMBER', name: 'Member Stream' },
+      churchScopes: { leadsBacentaOf: { id: 'bac-LED', name: 'Led Bacenta' } },
+    })
+    expect(getUserLeadershipRefs(user)).toEqual([
+      { level: 'bacenta', id: 'bac-LED', name: 'Led Bacenta', source: 'leader' },
+    ])
+  })
+
+  it('keeps the role edge when a flat ref carries the SAME church id', () => {
+    // The common case: a leader is also a member of the bacenta they lead.
+    // getUserChurchRefs tags this church 'flat' (flat is pushed first), so
+    // filtering ITS output by source would wrongly drop the church — this
+    // function must read the edges directly instead.
+    const user = baseUser({
+      bacenta: { id: 'bac-X', name: 'Bacenta X' },
+      churchScopes: { leadsBacentaOf: { id: 'bac-X', name: 'Bacenta X' } },
+    })
+    expect(getUserLeadershipRefs(user)).toEqual([
+      { level: 'bacenta', id: 'bac-X', name: 'Bacenta X', source: 'leader' },
+    ])
+  })
+
+  it('merges top-level multi-edge arrays and dedupes against churchScopes', () => {
+    const user = baseUser({
+      churchScopes: { isAdminForCampusOf: { id: 'campus-1', name: 'Campus 1' } },
+      isAdminForCampus: [
+        { id: 'campus-1', name: 'Campus 1' },   // duplicate of the churchScopes ref
+        { id: 'campus-2', name: 'Campus 2' },
+      ],
+      leadsCouncil: [{ id: 'council-9', name: 'Council 9' }],
+    } as any)
+    expect(getUserLeadershipRefs(user)).toEqual([
+      { level: 'council', id: 'council-9', name: 'Council 9', source: 'leader' },
+      { level: 'campus', id: 'campus-1', name: 'Campus 1', source: 'admin' },
+      { level: 'campus', id: 'campus-2', name: 'Campus 2', source: 'admin' },
+    ])
+  })
+
+  it('returns [] for null user and for users with no role edges', () => {
+    expect(getUserLeadershipRefs(null)).toEqual([])
+    expect(getUserLeadershipRefs(baseUser({ bacenta: { id: 'b-1', name: 'B' } }))).toEqual([])
   })
 })
 

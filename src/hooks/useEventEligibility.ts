@@ -190,13 +190,16 @@ export function useEventEligibility(
       // the background fetch revalidates.
       let cachedCaps = hit.viewerCaps
       let cachedSlice = withId(hit.viewerSlice)
-      const localIsSA = localStorage.getItem('superAdminOverride') === '1'
-      const localIsSV = !localIsSA && localStorage.getItem('superViewerOverride') === '1'
-      if (hit.event && (localIsSA || localIsSV) && !hit.viewerCaps?.canManage && !hit.viewerCaps?.canViewFullEvent) {
+      // user.isSuperAdmin/isSuperViewer already incorporate the persisted
+      // override flags (enrichUser → readSuperFlag) — never read the raw
+      // localStorage keys here; the flag value is an email now, not '1'.
+      const effectiveIsSA = !!user?.isSuperAdmin
+      const effectiveIsSV = !!user?.isSuperViewer
+      if (hit.event && (effectiveIsSA || effectiveIsSV) && !hit.viewerCaps?.canManage && !hit.viewerCaps?.canViewFullEvent) {
         const eventScope = { level: hit.event.scope_level, id: hit.event.scope_church_id, name: hit.event.scope_church_name }
         const allElig = withId(hit.eligible)
         const eligSet = hit.eligibleIds ?? new Set(allElig.map((r: any) => r.id))
-        cachedCaps = localIsSA
+        cachedCaps = effectiveIsSA
           ? { ...cachedCaps, canManage: true, canCheckIn: eligSet.has(user.userId), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
           : { ...cachedCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
         cachedSlice = allElig

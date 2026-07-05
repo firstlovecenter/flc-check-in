@@ -17,6 +17,20 @@ import {
   mergeRoleLists,
 } from './auth'
 import { upsertMemberProfile } from './supabaseCheckins'
+import { cacheHierarchyChain, type HierarchyNode } from './hierarchyCache'
+
+/** Ancestor chain (highest level first) from a member_profiles-shaped row's
+ *  flat columns. Gaps are fine — cacheHierarchyChain only links adjacent
+ *  levels. */
+function profileRowToHierarchyChain(row: any): HierarchyNode[] {
+  const levels = ['denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta']
+  const chain: HierarchyNode[] = []
+  for (const lvl of levels) {
+    const id = row?.[`${lvl}_id`]
+    if (id) chain.push({ level: lvl, id, name: row[`${lvl}_name`] || null })
+  }
+  return chain
+}
 
 const SYNC_TS_PREFIX = 'flc:lastGraphProfileSync:'
 /** Re-probe graph on every authed route visit (profile may not be in Supabase yet). */
@@ -82,7 +96,10 @@ export async function syncGraphProfileForUser(
   if (memberTitle) localStorage.setItem('memberTitle', memberTitle)
 
   const row = member ? memberToProfileRow(member) : null
-  if (row) persistChurchContextFromProfileRow(row)
+  if (row) {
+    persistChurchContextFromProfileRow(row)
+    cacheHierarchyChain(profileRowToHierarchyChain(row))  // fire-and-forget
+  }
   if ((user as any).churchScopes) {
     persistChurchContextFromJwt((user as any).churchScopes)
   }

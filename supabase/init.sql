@@ -1197,3 +1197,188 @@ grant execute on function
 --    select table_name from information_schema.tables where table_schema='public';
 --    select routine_name from information_schema.routines where routine_schema='public';
 -- ════════════════════════════════════════════════════════════════════════════
+
+-- ════════════════════════════════════════════════════════════════════════════
+--  Migrations 021–023 (appended; see supabase/migrations/ for rationale)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- 021: superviewers (view-only counterpart of superadmins)
+create table if not exists public.superviewers (
+  email      text primary key,
+  created_at timestamptz default now()
+);
+alter table public.superviewers enable row level security;
+revoke select on public.superviewers from anon, authenticated;
+
+create or replace function public.is_super_viewer(p_email text)
+returns boolean
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select exists (
+    select 1 from public.superviewers
+    where email = lower(trim(p_email))
+  );
+$$;
+
+-- 022: church_hierarchy cache + recursive scope RPCs
+create table if not exists public.church_hierarchy (
+  id                 text primary key,
+  level              text not null check (level in
+    ('bacenta','governorship','council','stream','campus','oversight','denomination')),
+  name               text,
+  parent_id          text,
+  parent_level       text,
+  children_synced_at timestamptz,
+  updated_at         timestamptz not null default now()
+);
+create index if not exists church_hierarchy_parent_idx
+  on public.church_hierarchy (parent_id);
+alter table public.church_hierarchy enable row level security;
+drop policy if exists anon_all_church_hierarchy on public.church_hierarchy;
+create policy anon_all_church_hierarchy on public.church_hierarchy
+  for all to anon using (true) with check (true);
+
+create or replace function public.get_descendant_scopes(p_level text, p_id text)
+returns table (level text, id text, name text, parent_id text)
+language sql
+stable
+set search_path = public
+as $$
+  with recursive tree as (
+    select h.id, h.level, h.name, h.parent_id, h.children_synced_at, 0 as depth
+    from public.church_hierarchy h
+    where h.id = p_id and h.level = p_level
+    union all
+    select c.id, c.level, c.name, c.parent_id, c.children_synced_at, t.depth + 1
+    from public.church_hierarchy c
+    join tree t on c.parent_id = t.id
+    where t.depth < 10
+  )
+  select t.level, t.id, t.name, t.parent_id
+  from tree t
+  where not exists (
+    select 1 from tree x
+    where x.level <> 'bacenta' and x.children_synced_at is null
+  );
+$$;
+
+create or replace function public.get_ancestor_scopes(p_level text, p_id text)
+returns table (level text, id text, name text, parent_id text)
+language sql
+stable
+set search_path = public
+as $$
+  with recursive up as (
+    select h.id, h.level, h.name, h.parent_id, 0 as depth
+    from public.church_hierarchy h
+    where h.id = p_id and h.level = p_level
+    union all
+    select p.id, p.level, p.name, p.parent_id, u.depth + 1
+    from public.church_hierarchy p
+    join up u on u.parent_id = p.id
+    where u.depth < 10
+  )
+  select u.level, u.id, u.name, u.parent_id
+  from up u
+  order by u.depth desc;
+$$;
+
+-- 023: server-side rollups
+create or replace function public.get_defaulted_profiles(p_event_id uuid, p_member_ids text[])
+returns table (
+  id text, email text, title text, first_name text, last_name text,
+  phone text, picture_url text, roles text[],
+  bacenta_id text, bacenta_name text,
+  governorship_id text, governorship_name text,
+  council_id text, council_name text,
+  stream_id text, stream_name text,
+  campus_id text, campus_name text,
+  oversight_id text, oversight_name text,
+  denomination_id text, denomination_name text,
+  scope_ids jsonb, updated_at timestamptz
+)
+language sql
+stable
+set search_path = public
+as $$
+  select
+    p.id, p.email, p.title, p.first_name, p.last_name,
+    p.phone, p.picture_url, p.roles,
+    p.bacenta_id, p.bacenta_name,
+    p.governorship_id, p.governorship_name,
+    p.council_id, p.council_name,
+    p.stream_id, p.stream_name,
+    p.campus_id, p.campus_name,
+    p.oversight_id, p.oversight_name,
+    p.denomination_id, p.denomination_name,
+    p.scope_ids, p.updated_at
+  from public.member_profiles p
+  where p.id = any (p_member_ids)
+    and not exists (
+      select 1 from public.checkin_records r
+      where r.event_id = p_event_id and r.member_id = p.id
+    );
+$$;
+
+create or replace function public.get_risky_checkin_member_ids(p_event_id uuid)
+returns setof text
+language sql
+stable
+set search_path = public
+as $$
+  select r.member_id
+  from public.checkin_records r
+  where r.event_id = p_event_id
+    and r.method <> 'MANUAL'
+    and coalesce(r.device_fingerprint, '') <> ''
+    and r.device_fingerprint in (
+      select r2.device_fingerprint
+      from public.checkin_records r2
+      where r2.event_id = p_event_id
+        and r2.method <> 'MANUAL'
+        and coalesce(r2.device_fingerprint, '') <> ''
+      group by r2.device_fingerprint
+      having count(*) > 1
+    );
+$$;
+
+create or replace function public.get_member_attendance_stats(p_member_id text)
+returns table (
+  scoped_count int,
+  attended_count int,
+  late_count int,
+  last_check_in timestamptz
+)
+language sql
+stable
+set search_path = public
+as $$
+  select
+    (select count(*)::int from public.event_scope_members s where s.member_id = p_member_id),
+    (select count(*)::int from public.checkin_records r where r.member_id = p_member_id),
+    (select count(*)::int from public.checkin_records r where r.member_id = p_member_id and r.is_late),
+    (select max(r.checked_in_at) from public.checkin_records r where r.member_id = p_member_id);
+$$;
+
+create or replace view public.special_groups_with_counts
+with (security_invoker = true) as
+select
+  g.id, g.name, g.description, g.created_by, g.created_at, g.updated_at,
+  coalesce(c.cnt, 0)::int as member_count
+from public.special_groups g
+left join (
+  select group_id, count(*) as cnt
+  from public.special_group_members
+  group by group_id
+) c on c.group_id = g.id;
+
+grant execute on function
+  public.is_super_viewer(text),
+  public.get_descendant_scopes(text, text),
+  public.get_ancestor_scopes(text, text),
+  public.get_defaulted_profiles(uuid, text[]),
+  public.get_risky_checkin_member_ids(uuid),
+  public.get_member_attendance_stats(text)
+  to anon;

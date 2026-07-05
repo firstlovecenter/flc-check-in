@@ -329,13 +329,81 @@ async function checkSuperViewerTable(email: string): Promise<boolean> {
   return !!data
 }
 
+// The super flags persist the result of the Supabase allowlist RPCs across
+// reloads. They store the email they were granted for, so a flag left behind
+// by (or hand-crafted for) a different account is ignored. Legacy value '1'
+// (pre-email format) is accepted until verifySuperPrivileges() rewrites it.
+function readSuperFlag(key: string, email: string): boolean {
+  const v = localStorage.getItem(key)
+  if (!v) return false
+  return v === '1' || (!!email && v === email)
+}
+
+const VERIFY_SUPER_TS_KEY = 'flc:superFlagsVerifiedAt'
+const VERIFY_SUPER_INTERVAL = 5 * 60 * 1000
+
+/** Re-check the superadmins / superviewers allowlists and sync the local
+ *  flags. Corrects both stale grants (revoked in the table) and tampered
+ *  flags (set by hand in devtools). Returns true when either flag changed.
+ *  Throttled per session; RPC failures leave the flags untouched. */
+export async function verifySuperPrivileges(
+  user: { email?: string } | null | undefined,
+  opts?: { force?: boolean },
+): Promise<boolean> {
+  const email = (user?.email || '').toLowerCase().trim()
+  if (!email) return false
+  try {
+    const last = Number(sessionStorage.getItem(VERIFY_SUPER_TS_KEY) || 0)
+    if (!opts?.force && Date.now() - last < VERIFY_SUPER_INTERVAL) return false
+  } catch { /* private mode */ }
+
+  let isSA: boolean, isSV: boolean
+  try {
+    [isSA, isSV] = await Promise.all([
+      checkSuperAdminTable(email),
+      checkSuperViewerTable(email),
+    ])
+  } catch {
+    return false // network/RPC failure — keep current flags, retry next interval
+  }
+  try { sessionStorage.setItem(VERIFY_SUPER_TS_KEY, String(Date.now())) } catch { /* ignore */ }
+
+  const hadSA = readSuperFlag('superAdminOverride', email)
+  const hadSV = readSuperFlag('superViewerOverride', email)
+  if (isSA) {
+    localStorage.setItem('superAdminOverride', email)
+    localStorage.removeItem('superViewerOverride')
+  } else if (isSV) {
+    localStorage.setItem('superViewerOverride', email)
+    localStorage.removeItem('superAdminOverride')
+  } else {
+    localStorage.removeItem('superAdminOverride')
+    localStorage.removeItem('superViewerOverride')
+  }
+  const changed = hadSA !== isSA || hadSV !== (!isSA && isSV)
+  if (changed) {
+    // Let live providers (ChurchFocusContext etc.) re-read getCurrentUser().
+    try { window.dispatchEvent(new Event('flc:privileges-changed')) } catch { /* SSR */ }
+  }
+  return changed
+}
+
+/** Fire-and-forget wrapper for route guards. */
+export function verifySuperPrivilegesBackground(user: { email?: string } | null | undefined): void {
+  verifySuperPrivileges(user).catch(() => { /* best-effort */ })
+}
+
 export function enrichUser(payload) {
   const roles = mergeRoleLists(payload?.roles)
-  // isSuperAdmin can come from the JWT role OR from the localStorage override
-  // (set by loginWithCredentials after a Supabase table check).
-  const localOverride = localStorage.getItem('superAdminOverride') === '1'
-  const superAdmin = roles.includes('superAdmin') || localOverride
-  const superViewer = !superAdmin && localStorage.getItem('superViewerOverride') === '1'
+  // isSuperAdmin can come from the JWT role OR from the localStorage flag
+  // (set by loginWithCredentials after a Supabase table check, re-verified
+  // in the background by verifySuperPrivileges).
+  // Product policy: denomination admins inherit superadmin-level privileges.
+  const email = (payload?.email || '').toLowerCase().trim()
+  const localOverride = readSuperFlag('superAdminOverride', email)
+  const denominationAdmin = roles.includes('adminDenomination')
+  const superAdmin = roles.includes('superAdmin') || localOverride || denominationAdmin
+  const superViewer = !superAdmin && readSuperFlag('superViewerOverride', email)
   const level = getLevelFromRoles(roles);
   const unitName =
     payload.bacenta?.name ||
@@ -467,12 +535,13 @@ export async function loginWithCredentials(email, password) {
   persistChurchContext(userFields)
 
   // Await both checks — likely already resolved (ran concurrently above).
+  const normalizedEmail = email.toLowerCase().trim()
   const [isSA, isSV] = await Promise.all([saCheckPromise, svCheckPromise])
   if (isSA) {
-    localStorage.setItem('superAdminOverride', '1')
+    localStorage.setItem('superAdminOverride', normalizedEmail)
     localStorage.removeItem('superViewerOverride')
   } else if (isSV) {
-    localStorage.setItem('superViewerOverride', '1')
+    localStorage.setItem('superViewerOverride', normalizedEmail)
     localStorage.removeItem('superAdminOverride')
   } else {
     localStorage.removeItem('superAdminOverride')

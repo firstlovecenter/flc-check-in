@@ -33,6 +33,14 @@ export function ChurchFocusProvider({ children }: { children: ReactNode }) {
     setUser(getCurrentUser())
   }, [location.pathname])
 
+  // Re-sync immediately when the background superadmin/superviewer
+  // re-verification changes the local privilege flags (auth.ts).
+  useEffect(() => {
+    const onChange = () => setUser(getCurrentUser())
+    window.addEventListener('flc:privileges-changed', onChange)
+    return () => window.removeEventListener('flc:privileges-changed', onChange)
+  }, [])
+
   const availableScopes = useMemo(() => getUserRoleScopes(user), [user?.userId])
 
   const storageKey = `${STORAGE_KEY}:${user?.userId ?? 'anon'}`

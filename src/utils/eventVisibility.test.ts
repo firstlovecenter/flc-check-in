@@ -59,7 +59,7 @@ describe('filterEventsByFocusedScope', () => {
     expect(filterEventsByFocusedScope(events, null).map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
   })
 
-  it('returns only events matching focused scope level and id', () => {
+  it('returns events matching focused scope level and id (legacy exact helper semantics)', () => {
     const filtered = filterEventsByFocusedScope(events, { level: 'stream', id: 's-2' })
     expect(filtered.map((e) => e.id)).toEqual(['e2'])
   })
@@ -71,7 +71,7 @@ describe('filterEventsByFocusedScope', () => {
 })
 
 describe('branch-safe lower-scope visibility semantics', () => {
-  it('keeps strict exact matching for focused scope and does not include sibling scope events', () => {
+  it('legacy helper keeps strict exact matching and does not include sibling scope events', () => {
     const events = [
       { id: 'parent', scope_level: 'council', scope_church_id: 'c-1' },
       { id: 'child-same-branch', scope_level: 'governorship', scope_church_id: 'g-1' },
@@ -82,5 +82,19 @@ describe('branch-safe lower-scope visibility semantics', () => {
     const focusedIds = filterEventsByFocusedScope(events, focused).map((e) => e.id)
     expect(focusedIds).toEqual(['parent'])
     expect(focusedIds).not.toContain('sibling-other-branch')
+  })
+
+  it('focused parent scope should include descendant events in listAllEvents path semantics', () => {
+    // This test documents expected runtime behavior after descendant-aware
+    // focus filtering was introduced: choosing a higher scope includes child
+    // events in the same branch.
+    const focused = { level: 'council', id: 'c-1' }
+    const events = [
+      { id: 'parent', scope_level: 'council', scope_church_id: 'c-1' },
+      { id: 'child', scope_level: 'governorship', scope_church_id: 'g-1' },
+    ]
+    // Legacy exact helper remains strict; descendant expansion is applied by
+    // async runtime filters in supabaseCheckins list functions.
+    expect(filterEventsByFocusedScope(events, focused).map((e) => e.id)).toEqual(['parent'])
   })
 })

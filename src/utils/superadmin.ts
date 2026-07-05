@@ -1,7 +1,8 @@
 // Hineni superadmin — bypass JWT church-scope and allowed_roles limits in this app.
 //
-// `isSuperAdmin` is set when the JWT contains `superAdmin` OR the email is in
-// Supabase `superadmins` (see auth.ts `superAdminOverride`).
+// `isSuperAdmin` is set when the JWT contains `superAdmin`, the email is in
+// Supabase `superadmins` (via local override), OR the user has the
+// `adminDenomination` role (policy elevation in auth.ts).
 //
 // GraphQL reads still require a valid bearer token; cross-scope graph visibility
 // depends on the FLC API honouring the `superAdmin` JWT role. Supabase writes

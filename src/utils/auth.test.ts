@@ -156,4 +156,18 @@ describe('auth role merge wiring', () => {
     // Once explicit role edges exist, flat fallback should not override them.
     expect(streamContexts.map((c: any) => c.id)).not.toContain('flat-stream')
   })
+
+  it('treats denomination admins as superadmin-equivalent for app privileges', () => {
+    installMemoryStorage()
+    installWindow()
+
+    const user = enrichUser({
+      roles: ['adminDenomination'],
+      denomination: { id: 'den-1', name: 'Denomination 1' },
+    })
+
+    expect(user.isSuperAdmin).toBe(true)
+    expect(user.isSuperViewer).toBe(false)
+    expect(user.isAdmin).toBe(true)
+  })
 })

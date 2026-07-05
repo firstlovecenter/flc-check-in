@@ -5,9 +5,10 @@
 import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
-import { getUserChurchRefs } from './userScope'
-import { getChurchAncestors } from './membersApi'
-import type { AppUser } from '../types/app'
+import { getUserLeadershipRefs } from './userScope'
+import { childScopeLevel, getChildChurches, getChurchAncestors } from './membersApi'
+import { fetchDescendantScopesFromDb } from './hierarchyCache'
+import type { AppUser, CheckinEventRow } from '../types/app'
 
 type FocusedScope = { level?: string; id?: string }
 
@@ -17,6 +18,152 @@ export function filterEventsByFocusedScope<T extends { scope_level?: string; sco
 ): T[] {
   if (!focusedScope?.level || !focusedScope?.id) return events
   return events.filter((evt) => evt.scope_level === focusedScope.level && evt.scope_church_id === focusedScope.id)
+}
+
+const DESC_SCOPE_TTL = 60 * 1000
+const _descendantScopeCache = new Map<string, { keys: Set<string>; ts: number }>()
+const DESC_SCOPE_HOME_TIMEOUT_MS = 2500
+
+function withFallbackAfter<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let settled = false
+  return new Promise((resolve) => {
+    const timer = globalThis.setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(fallback)
+    }, ms)
+    promise.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        resolve(value)
+      },
+      () => {
+        if (settled) return
+        settled = true
+        globalThis.clearTimeout(timer)
+        resolve(fallback)
+      },
+    )
+  })
+}
+
+function exactScopeKeys(scopes: Array<{ level: string; id: string }>): Set<string> {
+  return new Set(
+    (scopes || [])
+      .filter((s) => s?.level && s?.id)
+      .map((s) => `${s.level}:${s.id}`),
+  )
+}
+
+// Descendant expansion for a scope: church_hierarchy RPC first (one round
+// trip; only answers when the cached subtree is provably complete — see
+// migration 022), then the per-level GraphQL BFS as fallback. The BFS goes
+// through getChildChurches, which mirrors every child list it fetches back
+// into church_hierarchy — so the slow path heals the fast path.
+async function getDescendantScopeKeysForScope(scope: { level: string; id: string }): Promise<Set<string>> {
+  const cacheKey = `${scope.level}:${scope.id}`
+  const hit = _descendantScopeCache.get(cacheKey)
+  if (hit && Date.now() - hit.ts < DESC_SCOPE_TTL) return hit.keys
+
+  // 1. Postgres cache (single recursive-CTE RPC).
+  try {
+    const rows = await fetchDescendantScopesFromDb(scope)
+    if (rows?.length) {
+      const keys = new Set(rows.map((r) => `${r.level}:${r.id}`))
+      keys.add(cacheKey) // root is included by the RPC, but be explicit
+      _descendantScopeCache.set(cacheKey, { keys, ts: Date.now() })
+      return keys
+    }
+  } catch { /* fall through to graph BFS */ }
+
+  // 2. GraphQL BFS (original path).
+  const keys = new Set<string>()
+  const queue: Array<{ level: string; id: string }> = [{ level: scope.level, id: scope.id }]
+  const visited = new Set<string>()
+  let hadError = false
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    const k = `${cur.level}:${cur.id}`
+    if (visited.has(k)) continue
+    visited.add(k)
+    keys.add(k)
+
+    const childLevel = childScopeLevel(cur.level)
+    if (!childLevel) continue
+    try {
+      const children = await getChildChurches({ level: cur.level, id: cur.id })
+      for (const c of children || []) {
+        if (c?.id) queue.push({ level: childLevel, id: c.id })
+      }
+    } catch {
+      hadError = true
+    }
+  }
+
+  if (hadError) {
+    // Deterministic fallback: exact scope only; do not cache partial trees.
+    return new Set([cacheKey])
+  }
+
+  _descendantScopeCache.set(cacheKey, { keys, ts: Date.now() })
+  return keys
+}
+
+async function getDescendantScopeKeysForScopes(scopes: Array<{ level: string; id: string }>): Promise<Set<string>> {
+  const out = new Set<string>()
+  const valid = (scopes || []).filter((s) => s?.level && s?.id)
+  const expanded = await Promise.all(
+    valid.map((s) => getDescendantScopeKeysForScope({ level: s.level, id: s.id })),
+  )
+  for (const keys of expanded) {
+    for (const k of keys) out.add(k)
+  }
+  return out
+}
+
+async function queryEventsByExpandedScopeKeys(
+  expandedScopeKeys: Set<string>,
+  {
+    statuses,
+    excludeSpecialGroup = false,
+    limit,
+  }: { statuses?: string[]; excludeSpecialGroup?: boolean; limit?: number } = {},
+) {
+  if (!expandedScopeKeys.size) return []
+  const expandedScopes = [...expandedScopeKeys].map((k) => {
+    const [level, id] = k.split(':')
+    return { level, id }
+  })
+
+  const batches: Array<Array<{ level: string; id: string }>> = []
+  for (let i = 0; i < expandedScopes.length; i += SCOPE_OR_BATCH_SIZE) {
+    batches.push(expandedScopes.slice(i, i + SCOPE_OR_BATCH_SIZE))
+  }
+
+  const resultSets = await Promise.all(batches.map(async (batch) => {
+    let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
+    if (excludeSpecialGroup) q = q.neq('scope_level', 'special_group')
+    const orFilter = batch
+      .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
+      .join(',')
+    q = q.or(orFilter)
+    if (statuses?.length) q = q.in('status', statuses)
+    q = q.order('starts_at', { ascending: false })
+    if (limit) q = q.limit(limit)
+    const { data, error } = await q
+    if (error) throw error
+    return (data || []).map(mapEventRow)
+  }))
+
+  const byId = new Map<string, any>()
+  for (const rows of resultSets) {
+    for (const row of rows) byId.set(row.id, row)
+  }
+  const sorted = [...byId.values()].sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+  return limit ? sorted.slice(0, limit) : sorted
 }
 
 // ─── Column projections (Phase 2.1) ──────────────────────────────────────
@@ -60,6 +207,7 @@ const AUDIT_LOG_COLUMNS =
 // Keyed by the scope filter string so different users get separate cache
 // buckets (relevant when multiple users share a device / test session).
 const EVENTS_LIST_TTL = 30 * 1000  // 30 s
+const SCOPE_OR_BATCH_SIZE = 40
 const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
 const _allEventsCaches    = new Map<string, { data: any[]; ts: number }>()
@@ -89,40 +237,47 @@ function triggerAutoEnd() {
 // Listing functions short-circuit to [] when they see this value.
 const _NO_SCOPE = '__no_scope__'
 
-// Build a PostgREST OR filter that covers every church level in the user's
-// ancestry. Sub-scope leaders can discover higher-scope events they are
-// structurally part of (e.g. a bacenta leader can see a stream-level event).
-// SuperAdmins bypass the filter and see all events (returns null).
-// Anyone without any resolvable church IDs returns _NO_SCOPE — listing
-// functions return [] early and skip the DB round-trip.
+// Build a PostgREST OR filter for event visibility.
 //
-// The per-level resolution rules live in utils/userScope.ts; this function
-// only assembles the resulting clauses.
-function buildScopeOrFilter(user: AppUser): string | null {
+// Policy (product rule): visibility derives from where the user LEADS or
+// ADMINS — never from where they merely sit as a member. The clause set is:
+//   1. Every church the user holds a role edge for (getUserLeadershipRefs).
+//   2. The ANCESTOR chain of each of those churches — a leader inside a
+//      stream is an expected attendee of that stream's events, so events at
+//      ancestor scopes of the church they lead are visible. Ancestors of the
+//      user's own membership chain (flat profile refs) are NOT consulted.
+// Descendant scopes are handled separately (listLowerScopeEventsVisibleToUser).
+//
+// SuperAdmins/superViewers bypass the filter and see all events (null).
+// No role edges at all returns _NO_SCOPE — listing functions return [] early
+// and skip the DB round-trip.
+async function buildScopeOrFilter(user: AppUser): Promise<string | null> {
   if (user.isSuperAdmin || user.isSuperViewer) return null
-  const refs = getUserChurchRefs(user)
-  if (refs.length === 0) return _NO_SCOPE
+  const anchors = getUserLeadershipRefs(user)
+  if (anchors.length === 0) return _NO_SCOPE
 
-  // Flat/active refs encode the full ancestor chain (bacenta → denomination)
-  // from the member_profiles row. Only include them at levels where the user
-  // actually holds an admin or leader role — levels above that are hierarchy
-  // context only, not event-access scope. Admin/leader refs are always included.
-  const roleLevels = new Set<string>()
-  for (const role of user.roles ?? []) {
-    const lower = role.toLowerCase()
-    for (const lvl of ['bacenta','governorship','council','stream','campus','oversight','denomination']) {
-      if (lower.includes(lvl)) { roleLevels.add(lvl); break }
+  const seen = new Set(anchors.map((a) => `${a.level}:${a.id}`))
+  const clauses = anchors.map((a) => `and(scope_level.eq.${a.level},scope_church_id.eq.${a.id})`)
+
+  // Ancestor expansion is best-effort: hierarchy cache first inside
+  // getChurchAncestors (in-memory TTL), then graph, then church_hierarchy.
+  // On total failure the user still sees events at their own scopes.
+  const chains = await Promise.all(
+    anchors.map((a) =>
+      getChurchAncestors({ level: a.level, id: a.id }).catch(() => [] as Array<{ level: string; id: string }>),
+    ),
+  )
+  for (const chain of chains) {
+    for (const node of chain || []) {
+      if (!node?.id || !node.level || node.level === 'special_group') continue
+      const key = `${node.level}:${node.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      clauses.push(`and(scope_level.eq.${node.level},scope_church_id.eq.${node.id})`)
     }
   }
 
-  const filtered = refs.filter(r =>
-    r.source === 'admin' || r.source === 'leader' || roleLevels.has(r.level)
-  )
-
-  if (filtered.length === 0) return _NO_SCOPE
-  return filtered
-    .map((r) => `and(scope_level.eq.${r.level},scope_church_id.eq.${r.id})`)
-    .join(',')
+  return clauses.join(',')
 }
 
 // Client-side relevance gate applied after fetching.
@@ -173,7 +328,9 @@ export async function upsertMemberProfile(user) {
   const { data, error } = await supabase
     .from('member_profiles')
     .upsert(row, { onConflict: 'id' })
-    .select()
+    // Explicit columns, not '*': anon SELECT on face_descriptor is revoked
+    // by migration 024 and a '*' representation would fail outright.
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
     .single()
   if (error) throw error
   return data
@@ -188,7 +345,8 @@ export async function bulkUpsertMemberProfiles(rows) {
   const { data, error } = await supabase
     .from('member_profiles')
     .upsert(stamped, { onConflict: 'id' })
-    .select()
+    // Explicit columns, not '*' — see upsertMemberProfile.
+    .select(MEMBER_PROFILE_LIST_COLUMNS)
   if (error) throw error
   return data || []
 }
@@ -311,7 +469,7 @@ export async function listActiveEvents(user?: AppUser) {
   // Best-effort background sync: end expired events so DB stays up-to-date.
   triggerAutoEnd()
 
-  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
   // and each scoped user (their orFilter string). Without this, a public-page
@@ -381,7 +539,7 @@ export async function listActiveSpecialGroupEventsForUser(memberId: string) {
 /** Recent past events (ENDED or time-expired ACTIVE), within `daysBack` days,
  *  filtered to the calling user's church hierarchy scope. */
 export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
-  const scopeFilter = user ? buildScopeOrFilter(user) : null
+  const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   const cacheKey    = `past:${user?.userId ?? 'anon'}:${scopeFilter ?? 'all'}`
   const cached = _pastEventsCaches.get(cacheKey)
@@ -432,55 +590,48 @@ async function listAllSpecialGroupEventsForUser(memberId: string) {
 
 async function listLowerScopeEventsVisibleToUser(user: AppUser, limit = 200, existingIds?: Set<string>) {
   if (!user || user.isSuperAdmin || user.isSuperViewer) return []
-  const refs = getUserChurchRefs(user)
-  if (refs.length === 0) return []
-  const refKeys = new Set(refs.map((r) => `${r.level}:${r.id}`))
-  const roleAnchorKeys = new Set(
-    refs
-      .filter((r) => r.source === 'admin' || r.source === 'leader')
-      .map((r) => `${r.level}:${r.id}`),
+  // Role edges only — getUserChurchRefs would let a flat membership ref
+  // shadow a role edge with the same church id and drop it entirely.
+  const roleAnchorScopes = getUserLeadershipRefs(user)
+    .map((r) => ({ level: r.level, id: r.id }))
+  if (roleAnchorScopes.length === 0) return []
+
+  const expandedScopeKeys = await withFallbackAfter(
+    getDescendantScopeKeysForScopes(roleAnchorScopes),
+    DESC_SCOPE_HOME_TIMEOUT_MS,
+    exactScopeKeys(roleAnchorScopes),
   )
-
-  const { data, error } = await supabase
-    .from('checkin_events')
-    .select(CHECKIN_EVENT_LIST_COLUMNS)
-    .neq('scope_level', 'special_group')
-    .order('starts_at', { ascending: false })
-    .limit(limit)
-  if (error) throw error
-
-  const candidates = (data || []).map(mapEventRow).filter((evt) => !existingIds?.has(evt.id))
-  if (candidates.length === 0) return []
-
-  const checks = await Promise.all(candidates.map(async (evt) => {
-    const ownKey = `${evt.scope_level}:${evt.scope_church_id}`
-    if (refKeys.has(ownKey)) return { evt, ok: true }
-    if (roleAnchorKeys.size === 0) return { evt, ok: false }
-    if (!evt.scope_level || !evt.scope_church_id || evt.scope_level === 'special_group') return { evt, ok: false }
-    const ancestors = await getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => [])
-    const ok = ancestors.some((a: any) => roleAnchorKeys.has(`${a.level}:${a.id}`))
-    return { evt, ok }
-  }))
-  return checks.filter((c) => c.ok).map((c) => c.evt)
+  if (!expandedScopeKeys.size) return []
+  const rows = await queryEventsByExpandedScopeKeys(expandedScopeKeys, { excludeSpecialGroup: true })
+  const fresh = rows.filter((evt) => !existingIds?.has(evt.id))
+  return limit > 0 ? fresh.slice(0, limit) : fresh
 }
 
 /** All events (past, active, future) for the user's scope, newest-first.
  *  Used by the home screen so leaders always see their events.
  *  Special-group events are merged in separately because buildScopeOrFilter
- *  never generates special_group clauses. */
+ *  never generates special_group clauses.
+ *
+ *  When a focusedScope is set, the focus (plus its descendants) becomes the
+ *  SQL predicate itself — one indexed query on (scope_level, scope_church_id)
+ *  — instead of fetching everything the user's roles allow and narrowing the
+ *  array in JS afterwards. */
 export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: FocusedScope; limit?: number }) {
   triggerAutoEnd()
-  const scopeFilter = user ? buildScopeOrFilter(user) : null
+
+  const focus = opts?.focusedScope
+  if (user && focus?.level && focus?.id) {
+    return listAllEventsForFocusedScope(user, { level: focus.level, id: focus.id }, opts)
+  }
+
+  const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   // Key must include both userId (separate buckets for same-hierarchy users with
   // different group memberships) AND scopeFilter (so post-hydration re-fetches
   // get a fresh bucket when the scope has widened rather than hitting stale data).
-  const focusKey = opts?.focusedScope?.level && opts?.focusedScope?.id
-    ? `${opts.focusedScope.level}:${opts.focusedScope.id}`
-    : 'all'
   const cacheKey = user?.userId
-    ? `all:${user.userId}:${scopeFilter ?? 'nofilter'}:focus:${focusKey}`
-    : `all:${scopeFilter ?? 'all'}:focus:${focusKey}`
+    ? `all:${user.userId}:${scopeFilter ?? 'nofilter'}`
+    : `all:${scopeFilter ?? 'all'}`
   const cached = _allEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -494,7 +645,7 @@ export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: Focu
   // (who already get all events from the main query).
   const [{ data, error }, groupEvents] = await Promise.all([
     query,
-    user?.userId && !user.isSuperAdmin
+    user?.userId && !user.isSuperAdmin && !user.isSuperViewer
       ? listAllSpecialGroupEventsForUser(user.userId)
       : Promise.resolve([] as any[]),
   ])
@@ -502,7 +653,11 @@ export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: Focu
   const mapped = (data || []).map(mapEventRow)
 
   const lowerScopeEvents = user && scopeFilter !== null
-    ? await listLowerScopeEventsVisibleToUser(user, Math.max(200, opts?.limit ?? 50), new Set(mapped.map((e) => e.id)))
+    ? await withFallbackAfter(
+        listLowerScopeEventsVisibleToUser(user, Math.max(200, opts?.limit ?? 50), new Set(mapped.map((e) => e.id))),
+        DESC_SCOPE_HOME_TIMEOUT_MS,
+        [] as CheckinEventRow[],
+      )
     : []
 
   // Merge extra events (special-group + lower-scope hierarchy visibility),
@@ -519,8 +674,57 @@ export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: Focu
     }
   }
 
-  const relevant = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
-  const result = filterEventsByFocusedScope(relevant, opts?.focusedScope)
+  const result = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
+  _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+  return result
+}
+
+/** Server-side focused listing. The focus must be one of the user's own
+ *  church refs (superadmin/superviewer excepted) — a tampered sessionStorage
+ *  focus outside the user's tree returns [], matching what the old
+ *  fetch-then-filter path would have produced. */
+async function listAllEventsForFocusedScope(
+  user: AppUser,
+  focus: { level: string; id: string },
+  opts?: { limit?: number },
+) {
+  const cacheKey = `allfocus:${user.userId ?? 'anon'}:${focus.level}:${focus.id}`
+  const cached = _allEventsCaches.get(cacheKey)
+  if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+
+  // Defensive: special_group never comes from the scope switcher today
+  // (availableScopes only holds church levels), but keep old semantics.
+  if (focus.level === 'special_group') {
+    const { data, error } = await supabase
+      .from('checkin_events')
+      .select(CHECKIN_EVENT_LIST_COLUMNS)
+      .eq('scope_level', 'special_group')
+      .eq('scope_church_id', focus.id)
+      .order('starts_at', { ascending: false })
+      .limit(opts?.limit ?? 50)
+    if (error) throw error
+    const result = (data || []).map(mapEventRow)
+    _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+    return result
+  }
+
+  if (!user.isSuperAdmin && !user.isSuperViewer) {
+    // Focus options come from the user's role scopes (getUserRoleScopes), so
+    // authorize against role edges — membership refs grant nothing.
+    const authorized = getUserLeadershipRefs(user)
+      .some((r) => r.level === focus.level && r.id === focus.id)
+    if (!authorized) return []
+  }
+
+  const scopeKeys = await withFallbackAfter(
+    getDescendantScopeKeysForScope(focus),
+    DESC_SCOPE_HOME_TIMEOUT_MS,
+    exactScopeKeys([focus]),
+  )
+  const result = await queryEventsByExpandedScopeKeys(scopeKeys, {
+    excludeSpecialGroup: true,
+    limit: Math.max(200, opts?.limit ?? 50),
+  })
   _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
@@ -568,21 +772,18 @@ export async function listEventsForAdminScopes(
   scopes: Array<{ level: string; id: string }>,
   { statuses, user }: { statuses?: string[]; user?: AppUser } = {}
 ) {
-  let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
-  if (user?.isSuperAdmin) {
-    // Superadmins see every event — no scope restriction.
-  } else {
-    if (!scopes?.length) return []
-    // OR over (scope_level + scope_church_id) pairs.
-    const orFilter = scopes
-      .map((s) => `and(scope_level.eq.${s.level},scope_church_id.eq.${s.id})`)
-      .join(',')
-    q = q.or(orFilter)
+  if (user?.isSuperAdmin || user?.isSuperViewer) {
+    let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
+    if (statuses?.length) q = q.in('status', statuses)
+    const { data, error } = await q.order('starts_at', { ascending: false })
+    if (error) throw error
+    return (data || []).map(mapEventRow)
   }
-  if (statuses?.length) q = q.in('status', statuses)
-  const { data, error } = await q.order('starts_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapEventRow)
+
+  if (!scopes?.length) return []
+  const expandedScopeKeys = await getDescendantScopeKeysForScopes(scopes)
+  if (expandedScopeKeys.size === 0) return []
+  return queryEventsByExpandedScopeKeys(expandedScopeKeys, { statuses })
 }
 
 /** Lists events the member has personally attended (has a checkin_record for).
@@ -934,23 +1135,17 @@ export async function listCheckedIn(eventId): Promise<any[]> {
 }
 
 /** Defaulted = eligible members with NO record for this event. Caller passes
- *  the eligible set (typically from member_profiles filtered by event scope). */
+ *  the eligible set (typically from member_profiles filtered by event scope).
+ *  One RPC round trip: the anti-join runs in Postgres (migration 023) instead
+ *  of fetching every record row and diffing in JS. */
 export async function listDefaulted(eventId, eligibleMemberIds) {
   if (!eligibleMemberIds?.length) return []
-  const { data: records, error } = await supabase
-    .from('checkin_records')
-    .select('member_id')
-    .eq('event_id', eventId)
+  const { data, error } = await supabase.rpc('get_defaulted_profiles', {
+    p_event_id: eventId,
+    p_member_ids: eligibleMemberIds,
+  })
   if (error) throw error
-  const checkedIn = new Set((records || []).map((r) => r.member_id))
-  const defaultedIds = eligibleMemberIds.filter((id) => !checkedIn.has(id))
-  if (!defaultedIds.length) return []
-  const { data: profiles, error: pe } = await supabase
-    .from('member_profiles')
-    .select(MEMBER_PROFILE_LIST_COLUMNS)
-    .in('id', defaultedIds)
-  if (pe) throw pe
-  return profiles || []
+  return data || []
 }
 
 /** Fetch the current user's check-in record for a specific event (null if none). */
@@ -979,24 +1174,18 @@ export async function getAttendanceStats(graphMemberId: string): Promise<{
   lastCheckIn: string | null
 } | null> {
   if (!graphMemberId) return null
-  const [scopeRes, recordRes] = await Promise.all([
-    supabase
-      .from('event_scope_members')
-      .select('event_id')
-      .eq('member_id', graphMemberId),
-    supabase
-      .from('checkin_records')
-      .select('event_id, checked_in_at, is_late')
-      .eq('member_id', graphMemberId)
-      .order('checked_in_at', { ascending: false }),
-  ])
-  if (scopeRes.error) throw scopeRes.error
-  if (recordRes.error) throw recordRes.error
+  // Aggregates run in Postgres (migration 023) — one RPC instead of pulling
+  // every scope row + record row for the member and counting in JS.
+  const { data, error } = await supabase.rpc('get_member_attendance_stats', {
+    p_member_id: graphMemberId,
+  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) return null
 
-  const scopedCount   = (scopeRes.data  || []).length
-  const records       = (recordRes.data || [])
-  const attendedCount = records.length
-  const lateCount     = records.filter((r) => r.is_late).length
+  const scopedCount   = row.scoped_count ?? 0
+  const attendedCount = row.attended_count ?? 0
+  const lateCount     = row.late_count ?? 0
 
   return {
     scopedCount,
@@ -1004,7 +1193,7 @@ export async function getAttendanceStats(graphMemberId: string): Promise<{
     lateCount,
     onTimeCount: attendedCount - lateCount,
     pct: scopedCount > 0 ? Math.round((attendedCount / scopedCount) * 100) : null,
-    lastCheckIn: records[0]?.checked_in_at || null,
+    lastCheckIn: row.last_check_in || null,
   }
 }
 
@@ -1086,27 +1275,13 @@ export async function listAuditLogForEvent(eventId: string): Promise<any[]> {
  */
 export async function getRiskyCheckIns(eventId: string): Promise<Set<string>> {
   if (!eventId) return new Set()
-  const { data, error } = await supabase
-    .from('checkin_records')
-    .select('member_id, device_fingerprint, method')
-    .eq('event_id', eventId)
+  // GROUP BY / HAVING runs in Postgres (migration 023) — the client no longer
+  // downloads every record row to tally fingerprints in JS.
+  const { data, error } = await supabase.rpc('get_risky_checkin_member_ids', {
+    p_event_id: eventId,
+  })
   if (error) throw error
-  if (!data || data.length === 0) return new Set()
-
-  // Group by fingerprint, ignoring MANUAL and blank fingerprints.
-  const fpMap = new Map<string, string[]>()
-  for (const row of data) {
-    if (!row.device_fingerprint || row.method === 'MANUAL') continue
-    const existing = fpMap.get(row.device_fingerprint) ?? []
-    existing.push(row.member_id)
-    fpMap.set(row.device_fingerprint, existing)
-  }
-
-  const risky = new Set<string>()
-  for (const members of fpMap.values()) {
-    if (members.length > 1) members.forEach((m) => risky.add(m))
-  }
-  return risky
+  return new Set<string>((data as string[] | null) || [])
 }
 
 function toIso(v) {
@@ -1157,26 +1332,14 @@ export interface SpecialGroupMember {
 }
 
 export async function listSpecialGroups(): Promise<SpecialGroup[]> {
+  // Counts come from the special_groups_with_counts view (migration 023) —
+  // one query, no per-member row fetch.
   const { data, error } = await supabase
-    .from('special_groups')
-    .select('id, name, description, created_by, created_at, updated_at')
+    .from('special_groups_with_counts')
+    .select('id, name, description, created_by, created_at, updated_at, member_count')
     .order('name', { ascending: true })
   if (error) throw error
-  // Attach member counts via a second query (Supabase doesn't support
-  // COUNT in select without an RPC, so we do a lightweight aggregate).
-  const groups = data || []
-  if (!groups.length) return []
-  const ids = groups.map((g) => g.id)
-  const { data: counts, error: ce } = await supabase
-    .from('special_group_members')
-    .select('group_id')
-    .in('group_id', ids)
-  if (ce) throw ce
-  const countMap = new Map<string, number>()
-  for (const row of counts || []) {
-    countMap.set(row.group_id, (countMap.get(row.group_id) ?? 0) + 1)
-  }
-  return groups.map((g) => ({ ...g, member_count: countMap.get(g.id) ?? 0 }))
+  return data || []
 }
 
 export async function getSpecialGroup(groupId: string): Promise<SpecialGroup | null> {

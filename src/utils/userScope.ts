@@ -149,6 +149,58 @@ export function getUserChurchRefs(user: AppUser | null | undefined): UserScopeRe
   return out
 }
 
+/** Church levels that can carry admin/leader edges (everything but special_group). */
+const ROLE_EDGE_LEVELS: ScopeLevel[] = [
+  'bacenta', 'governorship', 'council', 'stream', 'campus', 'oversight', 'denomination',
+]
+
+/** Every church the user holds an actual ROLE edge for — `isAdminFor<L>Of` /
+ *  `leads<L>Of` single-edge refs plus the top-level `isAdminFor<Level>` /
+ *  `leads<Level>` arrays. Flat profile refs (where the user merely sits as a
+ *  member) are deliberately NOT consulted: event visibility is based on where
+ *  the user leads/admins, never on where they are a member.
+ *
+ *  Reads the edges directly rather than filtering getUserChurchRefs() by
+ *  source — there, a flat ref with the same church id shadows the role edge
+ *  (first push wins, tagged 'flat'), which would wrongly drop the church for
+ *  the common case of a leader who is also a member of the church they lead.
+ *
+ *  Returned in SCOPE_LEVELS order (lowest → highest), deduped by (level, id);
+ *  when both an admin and a leader edge exist for the same church, the admin
+ *  tag wins (matters to capability checks, not visibility). */
+export function getUserLeadershipRefs(user: AppUser | null | undefined): UserScopeRef[] {
+  if (!user) return []
+  const seen = new Set<string>()
+  const out: UserScopeRef[] = []
+  const push = (level: ScopeLevel, id: string | undefined, name: string | undefined, source: UserScopeSource) => {
+    if (typeof id !== 'string' || !id) return
+    const key = `${level}:${id}`
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push({ level, id, name, source })
+  }
+
+  for (const level of ROLE_EDGE_LEVELS) {
+    const cs = user.churchScopes as Record<string, { id: string; name?: string } | null | undefined> | undefined
+    if (cs) {
+      const adminRef = cs[`isAdminFor${cap(level)}Of`]
+      if (adminRef?.id) push(level, adminRef.id, adminRef.name, 'admin')
+      const leadsRef = cs[`leads${cap(level)}Of`]
+      if (leadsRef?.id) push(level, leadsRef.id, leadsRef.name, 'leader')
+    }
+    const adminArr = (user as any)[`isAdminFor${cap(level)}`]
+    if (Array.isArray(adminArr)) {
+      for (const ref of adminArr) if (ref?.id) push(level, ref.id, ref.name, 'admin')
+    }
+    const leadsArr = (user as any)[`leads${cap(level)}`]
+    if (Array.isArray(leadsArr)) {
+      for (const ref of leadsArr) if (ref?.id) push(level, ref.id, ref.name, 'leader')
+    }
+  }
+
+  return out
+}
+
 /** Returns true if the user holds an `isAdminFor<L>Of` edge for the given
  *  level, either in the JWT or via the graph-hydrated profile. Use this
  *  instead of checking role-string prefixes — it's resilient to role renames. */

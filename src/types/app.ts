@@ -45,7 +45,9 @@ export interface AppUser {
   level?: ScopeLevel
   unitName?: string
   isAdmin: boolean
-  /** True when the JWT contains the 'superAdmin' role.
+  /** True for users with app-level superadmin privileges.
+   *  Sources: JWT 'superAdmin' role, local superadmin override, or
+   *  denomination-admin policy elevation.
    *  Superadmins bypass all FLC member-graph checks and have full
    *  management capabilities on every event. */
   isSuperAdmin?: boolean

@@ -189,8 +189,13 @@ function readPersistedEvents(userId?: string): CheckinEventRow[] | null {
     const raw = localStorage.getItem(`${HOME_CACHE_KEY}:${userId}`)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { ts: number; events: CheckinEventRow[] }
-    if (!parsed?.events || Date.now() - parsed.ts > HOME_CACHE_MAX_AGE_MS) return null
-    return parsed.events
+    if (
+      typeof parsed?.ts !== 'number' ||
+      !Array.isArray(parsed.events) ||
+      Date.now() - parsed.ts > HOME_CACHE_MAX_AGE_MS
+    ) return null
+    const events = parsed.events.filter(isRenderableEvent)
+    return events.length ? events : null
   } catch { return null }
 }
 
@@ -207,6 +212,21 @@ function writePersistedEvents(userId: string | undefined, events: CheckinEventRo
 function focusCacheSuffix(focusedScope: { level?: string; id?: string } | null | undefined) {
   if (!focusedScope?.level || !focusedScope?.id) return 'all'
   return `${focusedScope.level}:${focusedScope.id}`
+}
+
+function isRenderableEvent(evt: Partial<CheckinEventRow> | null | undefined): evt is CheckinEventRow {
+  return !!(
+    evt &&
+    typeof evt.id === 'string' &&
+    typeof evt.name === 'string' &&
+    typeof evt.status === 'string'
+  )
+}
+
+function formatEventDate(value: string | null | undefined): string {
+  const date = new Date(value ?? '')
+  if (Number.isNaN(date.getTime())) return 'TBD'
+  return format(date, 'd MMM')
 }
 
 export default function LeaderHomeScreen() {
@@ -522,7 +542,7 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
       </div>
       <div className='shrink-0 text-right'>
         <p className='tnum m-0 text-xs font-semibold text-muted-foreground'>
-          {format(new Date(evt.starts_at), 'd MMM')}
+          {formatEventDate(evt.starts_at)}
         </p>
         <span
           className='text-[10px] font-semibold uppercase tracking-wider'
