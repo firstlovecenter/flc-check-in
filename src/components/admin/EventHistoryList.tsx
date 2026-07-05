@@ -3,20 +3,16 @@ import { Link } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import {
-  listEventsForAdminScopes,
+  listAllEvents,
   listEventsAttendedByMember,
-  listScopedEventsForMember,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
-import { resolveCurrentMember } from '../../utils/membersApi'
-import { getUserChurchRef } from '../../utils/userScope'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
-import type { ScopeLevel } from '../../types/app'
 
 const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED'] as const
 
@@ -33,20 +29,14 @@ export default function EventHistoryList() {
     let cancelled = false
     ;(async () => {
       try {
-        const ownRef = user?.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
-        const scopes = ownRef ? [{ level: ownRef.level, id: ownRef.id }] : []
-        const member = await resolveCurrentMember(user).catch(() => null)
-        if (cancelled) return
-        const [adminEvts, attendedEvts, scopedEvts] = await Promise.all([
-          listEventsForAdminScopes(scopes, { user }),
+        const [scopeEvts, attendedEvts] = await Promise.all([
+          listAllEvents(user ?? undefined, { limit: 200 }),
           listEventsAttendedByMember(user!.userId),
-          member?.id ? listScopedEventsForMember(member.id) : Promise.resolve([]),
         ])
         if (cancelled) return
         const byId = new Map<string, any>()
-        for (const e of adminEvts) byId.set(e.id, e)
+        for (const e of scopeEvts) byId.set(e.id, e)
         for (const e of attendedEvts) if (!byId.has(e.id)) byId.set(e.id, e)
-        for (const e of scopedEvts) if (!byId.has(e.id)) byId.set(e.id, e)
         const STATUS_RANK: Record<string, number> = { ACTIVE: 0, PAUSED: 1, ENDED: 2 }
         const merged = [...byId.values()].sort((a, b) => {
           const rankDiff = (STATUS_RANK[a.status] ?? 3) - (STATUS_RANK[b.status] ?? 3)

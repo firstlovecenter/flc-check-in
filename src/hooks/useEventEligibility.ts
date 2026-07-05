@@ -314,6 +314,7 @@ export function useEventEligibility(
                 || graphError?.message?.includes('Service Unavailable')
                 || graphError?.message?.includes('502')
                 || graphError?.message?.includes('Failed to fetch')
+                || graphError?.message?.includes('Load failed')
                 || graphError?.message?.includes('ERR_NAME_NOT_RESOLVED')
               throw new Error(
                 isServiceDown
@@ -326,6 +327,10 @@ export function useEventEligibility(
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
+        // Visibility should be tied to current church scope, not only the
+        // event-time snapshot. Start with snapshot IDs, then widen from graph
+        // when needed so leadership handovers can still view church-owned events.
+        let visibilityMemberIdSet = allMemberIdSet
         // Special-group: membership IS eligibility (roles are irrelevant).
         // All other events: filter by allowed_roles regardless of who is viewing —
         // allowed_roles defines "expected attendance" and must drive the count
@@ -335,6 +340,24 @@ export function useEventEligibility(
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         ).filter((r) => r != null && r.id != null && r.id !== '')
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
+
+        // Snapshot rows can legitimately omit newly assigned leaders/admins
+        // (for example after a leadership handover). If the current viewer is
+        // missing from snapshot IDs, verify structural membership against the
+        // live scope graph and use that set for capability checks.
+        if (!isSpecialGroup && viewer?.id && !allMemberIdSet.has(viewer.id)) {
+          try {
+            const scopeMembers = await getMembersInScope({
+              level: evt.scope_level,
+              churchId: evt.scope_church_id,
+            })
+            if (!cancelled) {
+              visibilityMemberIdSet = new Set<string>((scopeMembers || []).map((m: any) => m.id))
+            }
+          } catch {
+            // Keep snapshot set on graph failure.
+          }
+        }
 
         // Background: stale snapshot profiles (scope_ids null) break sub-scope
         // filtering. Re-fetch from graph, upsert fresh profiles, and update state.
@@ -359,7 +382,7 @@ export function useEventEligibility(
         // unavailable (viewer === null, ancestors === []), fall back to the
         // AppUser profile. Only the EXACT scope level is granted access —
         // ancestors do not see events below their scope (superAdmin handled above).
-        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
+        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, visibilityMemberIdSet)
         // Special-group events: church-hierarchy checks are irrelevant.
         // Any member present in the group snapshot can self-check-in.
         if (isSpecialGroup && !rawCaps.canManage && allMemberIdSet.has(user.userId)) {

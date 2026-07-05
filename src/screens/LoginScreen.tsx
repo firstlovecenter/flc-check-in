@@ -24,17 +24,23 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       const user = await loginWithCredentials(email, password)
-      navigate('/home')
+
       if (!user.isSuperAdmin) {
-        resolveCurrentMember(user)
-          .then((member) => {
-            if (member && !isLeaderOrAdmin(member)) {
-              logout()
-              window.location.assign('/?notLeader=1')
-            }
-          })
-          .catch(() => {})
+        try {
+          const member = await resolveCurrentMember(user)
+          if (!member || !isLeaderOrAdmin(member)) {
+            logout()
+            setError('This app is for leaders and admins only.')
+            return
+          }
+        } catch {
+          logout()
+          setError('We could not verify your leader/admin profile. Please try again.')
+          return
+        }
       }
+
+      navigate('/home')
     } catch (err: any) {
       setError(err.message || 'Login failed. Check your credentials.')
     } finally {

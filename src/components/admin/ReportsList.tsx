@@ -7,6 +7,8 @@ import {
   listCheckedIn,
   getEvent,
   bulkUpsertMemberProfiles,
+  listEventScopeMembersWithProfiles,
+  listSpecialGroupMembers,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
@@ -45,8 +47,35 @@ export default function ReportsList() {
   async function handleDownload(eventId: string) {
     try {
       const evt = await getEvent(eventId)
-      const members = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
-      const rows = members.map(memberToProfileRow)
+      let rows: any[] = []
+
+      if (evt.scope_level === 'special_group') {
+        // Special-group membership is authoritative for denominator/export.
+        // Snapshot profiles can be partial (inner-join on member_profiles).
+        const [snapRows, members] = await Promise.all([
+          listEventScopeMembersWithProfiles(eventId),
+          listSpecialGroupMembers(evt.scope_church_id),
+        ])
+        const snapById = new Map((snapRows || []).map((r: any) => [r.id, r]))
+        rows = members.map((m) => {
+          const prof = snapById.get(m.member_id)
+          if (prof) return prof
+          return {
+            id: m.member_id,
+            first_name: (m.member_name || '').split(' ')[0] || m.member_name || m.member_id,
+            last_name: (m.member_name || '').split(' ').slice(1).join(' '),
+            roles: [],
+            bacenta_name: '',
+            governorship_name: '',
+            council_name: '',
+            stream_name: '',
+          }
+        })
+      } else {
+        const members = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+        rows = members.map(memberToProfileRow)
+      }
+
       await bulkUpsertMemberProfiles(rows)
       const recs = await listCheckedIn(eventId)
       const recordByMember = new Map(recs.map((r) => [r.member_id, r]))

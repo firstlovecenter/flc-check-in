@@ -9,6 +9,7 @@ import { cn } from '../../lib/utils'
 import {
   getEvent, listCheckedIn, bulkUpsertMemberProfiles,
   listEventScopeMembersWithProfiles,
+  listSpecialGroupMembers,
 } from '../../utils/supabaseCheckins'
 import {
   getMembersInScope, memberToProfileRow,
@@ -59,6 +60,17 @@ export default function ScopeBreakdown({ eventId }) {
         let allRows: any[]
         if (snapshotProfiles.length > 0) {
           allRows = snapshotProfiles
+        } else if (evt.scope_level === 'special_group') {
+          // Special groups are not modeled in the church hierarchy graph.
+          const members = await listSpecialGroupMembers(evt.scope_church_id)
+          if (cancelled) return
+          allRows = members.map((m) => ({
+            id: m.member_id,
+            first_name: m.member_name?.split(' ')[0] ?? '',
+            last_name: m.member_name?.split(' ').slice(1).join(' ') ?? '',
+            roles: [],
+            picture_url: (m as any).picture_url ?? null,
+          }))
         } else {
           const graphMembers = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
           if (cancelled) return
@@ -66,7 +78,11 @@ export default function ScopeBreakdown({ eventId }) {
           bulkUpsertMemberProfiles(allRows).catch(() => {})
         }
         const allowed = new Set(evt.allowed_roles || [])
-        const eligibleRows = allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
+        const isSpecialGroup = evt.scope_level === 'special_group'
+        const eligibleRows = (isSpecialGroup
+          ? allRows
+          : allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
+        ).filter((r) => r != null && r.id != null)
         const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
         const allMemberIdSet = new Set(allRows.map((r) => r.id))
         const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)

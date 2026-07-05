@@ -9,7 +9,7 @@ import { EmptyState } from '../components/layout/EmptyState'
 import { Alert } from '../components/ui/alert'
 import { Button } from '../components/ui/button'
 import ChurchScopeSwitcher from '../components/ChurchScopeSwitcher'
-import { getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
+import { canCreateMeetings, getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
   getEvent, listCheckedIn,
@@ -204,13 +204,20 @@ function writePersistedEvents(userId: string | undefined, events: CheckinEventRo
   } catch { /* quota / disabled storage */ }
 }
 
+function focusCacheSuffix(focusedScope: { level?: string; id?: string } | null | undefined) {
+  if (!focusedScope?.level || !focusedScope?.id) return 'all'
+  return `${focusedScope.level}:${focusedScope.id}`
+}
+
 export default function LeaderHomeScreen() {
   const user = getCurrentUser()
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
-  useChurchFocus() // ensures the provider is active; no filtering on the home screen
+  const canCreate = canCreateMeetings(user)
+  const { focusedScope } = useChurchFocus()
+  const homeCacheKey = `${user?.userId ?? 'anon'}:${focusCacheSuffix(focusedScope)}`
   const [state, setState] = useState<HomeState>(() => {
-    const cached = readPersistedEvents(user?.userId)
+    const cached = readPersistedEvents(homeCacheKey)
     return cached ? { status: 'ok', events: cached } : { status: 'loading' }
   })
   const [refreshKey, setRefreshKey] = useState(0)
@@ -230,10 +237,17 @@ export default function LeaderHomeScreen() {
     return { live, upcoming, past, pastSlice: past.slice(0, 5) }
   }, [state])
 
-  // Cleanup legacy storage from removed "Church in Focus" feature.
+  // Cleanup legacy storage from the removed v1 Church-in-Focus key.
   useEffect(() => {
     try { localStorage.removeItem('flc:churchInFocus') } catch { /* ignore */ }
   }, [])
+
+  // Re-seed UI state from cache when the focus changes.
+  useEffect(() => {
+    const cached = readPersistedEvents(homeCacheKey)
+    if (cached) setState({ status: 'ok', events: cached })
+    else setState({ status: 'loading' })
+  }, [homeCacheKey])
 
   // Warm the chunks for the screens a leader is most likely to open next
   // (check-in form, event dashboard) once the browser is idle, so tapping an
@@ -283,7 +297,7 @@ export default function LeaderHomeScreen() {
     let cancelled = false
     ;(async () => {
       // On re-fetch, keep showing current data while loading (don't flash spinner)
-      if (refreshKey > 0 && state.status === 'ok') {
+      if (state.status === 'ok') {
         // silent refresh — keep old state visible
       } else {
         setState({ status: 'loading' })
@@ -343,10 +357,10 @@ export default function LeaderHomeScreen() {
             })()
           : Promise.resolve(false)
 
-        const events = await listAllEvents(activeUser ?? undefined)
+        const events = await listAllEvents(activeUser ?? undefined, { focusedScope: focusedScope ?? undefined })
         if (cancelled) return
         setState({ status: 'ok', events })
-        writePersistedEvents(activeUser?.userId, events)
+        writePersistedEvents(homeCacheKey, events)
 
         // Re-fetch ONLY when hydration actually widened the scope set.
         if (needsAncestors) {
@@ -356,10 +370,10 @@ export default function LeaderHomeScreen() {
             const scopeKeyAfter = scopeFingerprint(freshUser)
             if (scopeKeyAfter === scopeKeyBefore) return
             try {
-              const events2 = await listAllEvents(freshUser ?? undefined)
+              const events2 = await listAllEvents(freshUser ?? undefined, { focusedScope: focusedScope ?? undefined })
               if (cancelled) return
               setState({ status: 'ok', events: events2 })
-              writePersistedEvents(freshUser?.userId, events2)
+              writePersistedEvents(homeCacheKey, events2)
             } catch { /* keep the first-paint state */ }
           })
         }
@@ -368,13 +382,13 @@ export default function LeaderHomeScreen() {
       }
     })()
     return () => { cancelled = true }
-  }, [refreshKey])
+  }, [refreshKey, focusedScope?.id, focusedScope?.level, homeCacheKey])
 
   return (
     <PageShell>
       <HomeGreeting user={user} />
       <PageMain>
-        {isAdmin && !user?.isSuperViewer && (
+        {canCreate && (
           <div className='mb-6'>
             <Button type='button' onClick={() => navigate('/admin/events/new')} className='gap-2'>
               <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
@@ -407,7 +421,7 @@ export default function LeaderHomeScreen() {
                   </svg>
                 }
                 action={
-                  isAdmin && !user?.isSuperViewer ? (
+                  canCreate ? (
                     <Button type='button' onClick={() => navigate('/admin/events/new')}>
                       Create event
                     </Button>
@@ -447,7 +461,7 @@ export default function LeaderHomeScreen() {
                     <p className='section-heading m-0'>Recent</p>
                     {past.length > 5 && (
                       <Link
-                        to='/admin/history'
+                        to='/history'
                         className='text-xs font-semibold text-primary no-underline hover:underline'
                       >
                         View all history →
@@ -459,7 +473,7 @@ export default function LeaderHomeScreen() {
                   </div>
                   {past.length > 5 && (
                     <Link
-                      to='/admin/history'
+                      to='/history'
                       className='mt-3 flex items-center justify-center rounded-lg bg-primary/5 py-2.5 text-xs font-semibold tracking-tight text-primary no-underline hover:bg-primary/10'
                     >
                       + {past.length - 5} more in history

@@ -9,6 +9,7 @@ import Spinner from './components/Spinner'
 import { ChurchFocusProvider } from './contexts/ChurchFocusContext'
 import OfflineBanner from './components/OfflineBanner'
 import { ToastHost } from './components/Toast'
+import { getCurrentUser } from './utils/auth'
 
 // Lazy-load route screens so vendor chunks (leaflet, zxing, qrcode,
 // papaparse) only download when the user actually navigates to a screen that
@@ -49,6 +50,14 @@ function RedirectAdminEvent({ tail = '' }) {
   return <Navigate to={`/events/${eventId}${tail}`} replace />
 }
 
+function RedirectLegacyAdminHistory() {
+  return <Navigate to='/history' replace />
+}
+
+function UnknownRouteRedirect() {
+  return <Navigate to={getCurrentUser() ? '/home' : '/'} replace />
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -85,7 +94,8 @@ export default function App() {
         {/* Admin-only */}
         <Route path='/admin/events/new' element={<RequireAuth><CreateEventScreen /></RequireAuth>} />
         <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
-        <Route path='/admin/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
+        <Route path='/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
+        <Route path='/admin/history' element={<RedirectLegacyAdminHistory />} />
         <Route path='/admin/members' element={<RequireAuth><MemberSearchScreen /></RequireAuth>} />
         <Route path='/admin/members/:memberId' element={<RequireAuth><MemberDetailScreen /></RequireAuth>} />
         <Route path='/admin/sync-members' element={<RequireAuth><SyncMembersScreen /></RequireAuth>} />
@@ -97,7 +107,7 @@ export default function App() {
         <Route path='/admin/events/:eventId/defaulted' element={<RedirectAdminEvent tail='/members?status=absent' />} />
         <Route path='/admin/events/:eventId/scopes' element={<RedirectAdminEvent tail='/scopes' />} />
 
-        <Route path='*' element={<Navigate to='/' replace />} />
+        <Route path='*' element={<UnknownRouteRedirect />} />
       </Routes>
       </Suspense>
       </ChurchFocusProvider>

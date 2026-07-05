@@ -123,6 +123,19 @@ export function isAdmin(roles = []) {
   return roles.some(r => r.startsWith('admin'));
 }
 
+function normalizeRoleList(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  return input.filter((r): r is string => typeof r === 'string' && r.length > 0)
+}
+
+export function mergeRoleLists(...roleLists: unknown[]): string[] {
+  const merged = new Set<string>()
+  for (const list of roleLists) {
+    for (const role of normalizeRoleList(list)) merged.add(role)
+  }
+  return [...merged]
+}
+
 function uniqueChurchContexts(contexts) {
   const seen = new Set()
   return contexts.filter((ctx) => {
@@ -201,6 +214,49 @@ function localFallbackChurchContexts(payload) {
   ].filter(Boolean))
 }
 
+function contextRank(level: string | undefined, source: string | undefined): number {
+  const idx = SCOPE_LEVELS.indexOf((level as any) ?? 'bacenta')
+  const levelScore = idx < 0 ? 0 : idx * 10
+  const sourceScore = source === 'admin' ? 3 : source === 'leader' ? 2 : source === 'active' ? 1 : 0
+  return levelScore + sourceScore
+}
+
+function buildChurchContexts(payload: any) {
+  const bySource = localFallbackChurchContexts(payload)
+
+  const roleScoped = uniqueChurchContexts([
+    ...(payload?.isAdminForDenomination || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Denomination', level: 'denomination', source: 'admin' })),
+    ...(payload?.isAdminForOversight || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Oversight', level: 'oversight', source: 'admin' })),
+    ...(payload?.isAdminForCampus || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Campus', level: 'campus', source: 'admin' })),
+    ...(payload?.isAdminForStream || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Stream', level: 'stream', source: 'admin' })),
+    ...(payload?.isAdminForCouncil || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Council', level: 'council', source: 'admin' })),
+    ...(payload?.isAdminForGovernorship || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Governorship', level: 'governorship', source: 'admin' })),
+    ...(payload?.leadsDenomination || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Denomination', level: 'denomination', source: 'leader' })),
+    ...(payload?.leadsOversight || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Oversight', level: 'oversight', source: 'leader' })),
+    ...(payload?.leadsCampus || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Campus', level: 'campus', source: 'leader' })),
+    ...(payload?.leadsStream || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Stream', level: 'stream', source: 'leader' })),
+    ...(payload?.leadsCouncil || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Council', level: 'council', source: 'leader' })),
+    ...(payload?.leadsGovernorship || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Governorship', level: 'governorship', source: 'leader' })),
+    ...(payload?.leadsBacenta || []).map((x: any) => ({ id: x?.id, name: x?.name || 'Bacenta', level: 'bacenta', source: 'leader' })),
+    payload?.churchScopes?.isAdminForDenominationOf?.id ? { id: payload.churchScopes.isAdminForDenominationOf.id, name: payload.churchScopes.isAdminForDenominationOf.name || 'Denomination', level: 'denomination', source: 'admin' } : null,
+    payload?.churchScopes?.isAdminForOversightOf?.id ? { id: payload.churchScopes.isAdminForOversightOf.id, name: payload.churchScopes.isAdminForOversightOf.name || 'Oversight', level: 'oversight', source: 'admin' } : null,
+    payload?.churchScopes?.isAdminForCampusOf?.id ? { id: payload.churchScopes.isAdminForCampusOf.id, name: payload.churchScopes.isAdminForCampusOf.name || 'Campus', level: 'campus', source: 'admin' } : null,
+    payload?.churchScopes?.isAdminForStreamOf?.id ? { id: payload.churchScopes.isAdminForStreamOf.id, name: payload.churchScopes.isAdminForStreamOf.name || 'Stream', level: 'stream', source: 'admin' } : null,
+    payload?.churchScopes?.isAdminForCouncilOf?.id ? { id: payload.churchScopes.isAdminForCouncilOf.id, name: payload.churchScopes.isAdminForCouncilOf.name || 'Council', level: 'council', source: 'admin' } : null,
+    payload?.churchScopes?.isAdminForGovernorshipOf?.id ? { id: payload.churchScopes.isAdminForGovernorshipOf.id, name: payload.churchScopes.isAdminForGovernorshipOf.name || 'Governorship', level: 'governorship', source: 'admin' } : null,
+    payload?.churchScopes?.leadsDenominationOf?.id ? { id: payload.churchScopes.leadsDenominationOf.id, name: payload.churchScopes.leadsDenominationOf.name || 'Denomination', level: 'denomination', source: 'leader' } : null,
+    payload?.churchScopes?.leadsOversightOf?.id ? { id: payload.churchScopes.leadsOversightOf.id, name: payload.churchScopes.leadsOversightOf.name || 'Oversight', level: 'oversight', source: 'leader' } : null,
+    payload?.churchScopes?.leadsCampusOf?.id ? { id: payload.churchScopes.leadsCampusOf.id, name: payload.churchScopes.leadsCampusOf.name || 'Campus', level: 'campus', source: 'leader' } : null,
+    payload?.churchScopes?.leadsStreamOf?.id ? { id: payload.churchScopes.leadsStreamOf.id, name: payload.churchScopes.leadsStreamOf.name || 'Stream', level: 'stream', source: 'leader' } : null,
+    payload?.churchScopes?.leadsCouncilOf?.id ? { id: payload.churchScopes.leadsCouncilOf.id, name: payload.churchScopes.leadsCouncilOf.name || 'Council', level: 'council', source: 'leader' } : null,
+    payload?.churchScopes?.leadsGovernorshipOf?.id ? { id: payload.churchScopes.leadsGovernorshipOf.id, name: payload.churchScopes.leadsGovernorshipOf.name || 'Governorship', level: 'governorship', source: 'leader' } : null,
+    payload?.churchScopes?.leadsBacentaOf?.id ? { id: payload.churchScopes.leadsBacentaOf.id, name: payload.churchScopes.leadsBacentaOf.name || 'Bacenta', level: 'bacenta', source: 'leader' } : null,
+  ].filter((x: any) => !!x?.id))
+
+  const base = roleScoped.length > 0 ? roleScoped : bySource
+  return [...base].sort((a: any, b: any) => contextRank(b.level, b.source) - contextRank(a.level, a.source))
+}
+
 const TOKEN_SKEW_SEC = 30  // treat token as expired 30s early
 
 export function isTokenExpired(token: string): boolean {
@@ -241,7 +297,8 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
     const { id, ...userFields } = data.user ?? {}
     // Persist church refs from the refresh response so getCurrentUser() can use them.
     persistChurchContext(userFields)
-    const user = enrichUser({ ...mergeChurchContext(payload), ...userFields, userId: payload.userId ?? id })
+    const mergedRoles = mergeRoleLists(payload?.roles, userFields?.roles)
+    const user = enrichUser({ ...mergeChurchContext(payload), ...userFields, roles: mergedRoles, userId: payload.userId ?? id })
     import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {
       syncGraphProfileForUserBackground(user, { force: true })
     })
@@ -273,7 +330,7 @@ async function checkSuperViewerTable(email: string): Promise<boolean> {
 }
 
 export function enrichUser(payload) {
-  const roles = payload.roles || []
+  const roles = mergeRoleLists(payload?.roles)
   // isSuperAdmin can come from the JWT role OR from the localStorage override
   // (set by loginWithCredentials after a Supabase table check).
   const localOverride = localStorage.getItem('superAdminOverride') === '1'
@@ -288,11 +345,12 @@ export function enrichUser(payload) {
     payload.campus?.name ||
     payload.oversight?.name ||
     payload.denomination?.name || '';
-  const churchContexts = localFallbackChurchContexts(payload)
+  const churchContexts = buildChurchContexts(payload)
   const activeChurch = churchContexts[0] || null
   const title = localStorage.getItem('memberTitle') || payload.title || undefined
   return {
     ...payload,
+    roles,
     title,
     level: activeChurch?.level || level,
     unitName: activeChurch?.name || unitName,
@@ -307,6 +365,15 @@ export function enrichUser(payload) {
 /** Returns "Title FirstName LastName" — any missing parts are omitted. */
 export function formatName(user: { title?: string; firstName?: string; lastName?: string } | null | undefined): string {
   return [user?.title, user?.firstName, user?.lastName].filter(Boolean).join(' ')
+}
+
+export function canCreateMeetings(user: any): boolean {
+  if (!user) return false
+  if (user.isSuperViewer) return false
+  if (user.isSuperAdmin) return true
+  const roles = mergeRoleLists(user.roles)
+  return roles.some((role) => /^admin(Governorship|Council|Stream|Campus|Oversight|Denomination)$/.test(role))
+    || roles.some((role) => /^leader(Governorship|Council|Stream|Campus|Oversight|Denomination)$/.test(role))
 }
 
 export async function fetchLeadChurchesByEmail(email, accessToken) {
@@ -422,7 +489,8 @@ export async function loginWithCredentials(email, password) {
     toRemove.forEach((k) => localStorage.removeItem(k))
   } catch { /* ignore */ }
 
-  const user = enrichUser({ ...payload, ...userFields, userId: payload.userId ?? id });
+  const mergedRoles = mergeRoleLists(payload?.roles, userFields?.roles)
+  const user = enrichUser({ ...payload, ...userFields, roles: mergedRoles, userId: payload.userId ?? id });
 
   // Every login: fresh graph probe → member_profiles + churchContext (see graphProfileSync.ts).
   import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {

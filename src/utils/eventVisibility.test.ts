@@ -10,7 +10,7 @@
 // (e.g. draft events, private flags) have a clear place to live.
 
 import { describe, it, expect } from 'vitest'
-import { isEventRelevantToUser } from './supabaseCheckins'
+import { isEventRelevantToUser, filterEventsByFocusedScope } from './supabaseCheckins'
 import type { AppUser } from '../types/app'
 
 const baseUser = (overrides: Partial<AppUser> = {}): AppUser => ({
@@ -44,5 +44,43 @@ describe('isEventRelevantToUser', () => {
 
   it('handles missing allowed_roles and scope_level gracefully', () => {
     expect(isEventRelevantToUser({}, baseUser())).toBe(true)
+  })
+})
+
+describe('filterEventsByFocusedScope', () => {
+  const events = [
+    { id: 'e1', scope_level: 'stream', scope_church_id: 's-1' },
+    { id: 'e2', scope_level: 'stream', scope_church_id: 's-2' },
+    { id: 'e3', scope_level: 'council', scope_church_id: 'c-1' },
+  ]
+
+  it('returns all events when no focused scope is selected', () => {
+    expect(filterEventsByFocusedScope(events, undefined).map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
+    expect(filterEventsByFocusedScope(events, null).map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
+  })
+
+  it('returns only events matching focused scope level and id', () => {
+    const filtered = filterEventsByFocusedScope(events, { level: 'stream', id: 's-2' })
+    expect(filtered.map((e) => e.id)).toEqual(['e2'])
+  })
+
+  it('returns empty list when focused scope has no matching events', () => {
+    const filtered = filterEventsByFocusedScope(events, { level: 'governorship', id: 'g-1' })
+    expect(filtered).toEqual([])
+  })
+})
+
+describe('branch-safe lower-scope visibility semantics', () => {
+  it('keeps strict exact matching for focused scope and does not include sibling scope events', () => {
+    const events = [
+      { id: 'parent', scope_level: 'council', scope_church_id: 'c-1' },
+      { id: 'child-same-branch', scope_level: 'governorship', scope_church_id: 'g-1' },
+      { id: 'sibling-other-branch', scope_level: 'council', scope_church_id: 'c-2' },
+    ]
+
+    const focused = { level: 'council', id: 'c-1' }
+    const focusedIds = filterEventsByFocusedScope(events, focused).map((e) => e.id)
+    expect(focusedIds).toEqual(['parent'])
+    expect(focusedIds).not.toContain('sibling-other-branch')
   })
 })

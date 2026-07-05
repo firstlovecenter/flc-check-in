@@ -6,7 +6,18 @@ import { supabase } from './supabase'
 import { generateQrSecretHex } from './checkinsCrypto'
 import { pointInGeofence } from './geo'
 import { getUserChurchRefs } from './userScope'
+import { getChurchAncestors } from './membersApi'
 import type { AppUser } from '../types/app'
+
+type FocusedScope = { level?: string; id?: string }
+
+export function filterEventsByFocusedScope<T extends { scope_level?: string; scope_church_id?: string }>(
+  events: T[],
+  focusedScope?: FocusedScope | null,
+): T[] {
+  if (!focusedScope?.level || !focusedScope?.id) return events
+  return events.filter((evt) => evt.scope_level === focusedScope.level && evt.scope_church_id === focusedScope.id)
+}
 
 // ─── Column projections (Phase 2.1) ──────────────────────────────────────
 // Explicit column lists keep transferred-bytes small. The biggest win:
@@ -419,18 +430,57 @@ async function listAllSpecialGroupEventsForUser(memberId: string) {
   return (data || []).map(mapEventRow)
 }
 
+async function listLowerScopeEventsVisibleToUser(user: AppUser, limit = 200, existingIds?: Set<string>) {
+  if (!user || user.isSuperAdmin || user.isSuperViewer) return []
+  const refs = getUserChurchRefs(user)
+  if (refs.length === 0) return []
+  const refKeys = new Set(refs.map((r) => `${r.level}:${r.id}`))
+  const roleAnchorKeys = new Set(
+    refs
+      .filter((r) => r.source === 'admin' || r.source === 'leader')
+      .map((r) => `${r.level}:${r.id}`),
+  )
+
+  const { data, error } = await supabase
+    .from('checkin_events')
+    .select(CHECKIN_EVENT_LIST_COLUMNS)
+    .neq('scope_level', 'special_group')
+    .order('starts_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+
+  const candidates = (data || []).map(mapEventRow).filter((evt) => !existingIds?.has(evt.id))
+  if (candidates.length === 0) return []
+
+  const checks = await Promise.all(candidates.map(async (evt) => {
+    const ownKey = `${evt.scope_level}:${evt.scope_church_id}`
+    if (refKeys.has(ownKey)) return { evt, ok: true }
+    if (roleAnchorKeys.size === 0) return { evt, ok: false }
+    if (!evt.scope_level || !evt.scope_church_id || evt.scope_level === 'special_group') return { evt, ok: false }
+    const ancestors = await getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => [])
+    const ok = ancestors.some((a: any) => roleAnchorKeys.has(`${a.level}:${a.id}`))
+    return { evt, ok }
+  }))
+  return checks.filter((c) => c.ok).map((c) => c.evt)
+}
+
 /** All events (past, active, future) for the user's scope, newest-first.
  *  Used by the home screen so leaders always see their events.
  *  Special-group events are merged in separately because buildScopeOrFilter
  *  never generates special_group clauses. */
-export async function listAllEvents(user?: AppUser) {
+export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: FocusedScope; limit?: number }) {
   triggerAutoEnd()
   const scopeFilter = user ? buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   // Key must include both userId (separate buckets for same-hierarchy users with
   // different group memberships) AND scopeFilter (so post-hydration re-fetches
   // get a fresh bucket when the scope has widened rather than hitting stale data).
-  const cacheKey = user?.userId ? `all:${user.userId}:${scopeFilter ?? 'nofilter'}` : `all:${scopeFilter ?? 'all'}`
+  const focusKey = opts?.focusedScope?.level && opts?.focusedScope?.id
+    ? `${opts.focusedScope.level}:${opts.focusedScope.id}`
+    : 'all'
+  const cacheKey = user?.userId
+    ? `all:${user.userId}:${scopeFilter ?? 'nofilter'}:focus:${focusKey}`
+    : `all:${scopeFilter ?? 'all'}:focus:${focusKey}`
   const cached = _allEventsCaches.get(cacheKey)
   if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
 
@@ -438,28 +488,27 @@ export async function listAllEvents(user?: AppUser) {
     .from('checkin_events')
     .select(CHECKIN_EVENT_LIST_COLUMNS)
     .order('starts_at', { ascending: false })
-    .limit(50)
+    .limit(opts?.limit ?? 50)
   if (scopeFilter) query = query.or(scopeFilter)
   // scopeFilter is non-null for normal users, null for superAdmin/superViewer
   // (who already get all events from the main query).
-  const [{ data, error }, groupEvents, scopedEvents] = await Promise.all([
+  const [{ data, error }, groupEvents] = await Promise.all([
     query,
     user?.userId && !user.isSuperAdmin
       ? listAllSpecialGroupEventsForUser(user.userId)
-      : Promise.resolve([] as any[]),
-    user?.userId && scopeFilter !== null
-      ? listScopedEventsForMember(user.userId)
       : Promise.resolve([] as any[]),
   ])
   if (error) throw error
   const mapped = (data || []).map(mapEventRow)
 
-  // Merge extra events (special-group + event_scope_members snapshot),
+  const lowerScopeEvents = user && scopeFilter !== null
+    ? await listLowerScopeEventsVisibleToUser(user, Math.max(200, opts?.limit ?? 50), new Set(mapped.map((e) => e.id)))
+    : []
+
+  // Merge extra events (special-group + lower-scope hierarchy visibility),
   // dedup by id, then re-sort by starts_at descending.
-  // The scope-member lookup catches parent-scope events (e.g. stream events
-  // for a council leader) without requiring ancestor IDs to be hydrated.
   let merged = mapped
-  const extra = [...groupEvents, ...scopedEvents]
+  const extra = [...groupEvents, ...lowerScopeEvents]
   if (extra.length > 0) {
     const seen = new Set(mapped.map((e) => e.id))
     const fresh = extra.filter((e) => !seen.has(e.id))
@@ -470,7 +519,8 @@ export async function listAllEvents(user?: AppUser) {
     }
   }
 
-  const result = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
+  const relevant = user ? merged.filter((evt) => isEventRelevantToUser(evt, user)) : merged
+  const result = filterEventsByFocusedScope(relevant, opts?.focusedScope)
   _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }

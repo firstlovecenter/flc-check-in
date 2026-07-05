@@ -106,7 +106,7 @@ function PanelBody({ user, onClose, userMenuOpen, setUserMenuOpen, isDark, onTog
         {isSuperAdmin && (
           <NavItem to='/admin/groups' icon={ICONS.groups} label='Groups'   onClick={onClose} />
         )}
-        <NavItem to='/admin/history' icon={ICONS.history} label='History'  onClick={onClose} />
+        <NavItem to='/history' icon={ICONS.history} label='History'  onClick={onClose} />
       </nav>
 
       {/* Footer — expandable user section */}

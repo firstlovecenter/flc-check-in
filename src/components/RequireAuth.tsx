@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
 import { syncGraphProfileForUserBackground } from '../utils/graphProfileSync'
 import LocationPermissionBanner from './LocationPermissionBanner'
+import Spinner from './Spinner'
 
 type State = 'checking' | 'ok' | 'redirect'
 
@@ -17,15 +18,20 @@ export default function RequireAuth({ children }) {
 
   useEffect(() => {
     if (state !== 'checking') return
-    refreshSession().then((user) => {
-      if (user) {
-        syncGraphProfileForUserBackground(user, { force: true })
-        setState('ok')
-      } else {
+    refreshSession()
+      .then((user) => {
+        if (user) {
+          syncGraphProfileForUserBackground(user, { force: true })
+          setState('ok')
+        } else {
+          logout()
+          setState('redirect')
+        }
+      })
+      .catch(() => {
         logout()
         setState('redirect')
-      }
-    })
+      })
   }, [state])
 
   // Returning session (valid token): re-probe graph periodically for scope moves.
@@ -36,7 +42,7 @@ export default function RequireAuth({ children }) {
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />
-  if (state === 'checking') return null  // brief blank while refreshing
+  if (state === 'checking') return <Spinner fullPage />
   if (!getCurrentUser()) return <Navigate to='/' replace />
   // LocationPreWarmer is intentionally NOT mounted here. Most authed routes
   // (home, history, reports, biometrics, profile, etc.) never need GPS, so a

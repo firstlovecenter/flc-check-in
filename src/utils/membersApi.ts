@@ -397,7 +397,61 @@ export function getAdminScopes(member, user?: any) {
     seen.add(k)
     return true
   })
-  unique.sort((a, b) => SCOPE_LEVELS.indexOf(b.level) - SCOPE_LEVELS.indexOf(a.level))
+  unique.sort((a, b) => SCOPE_LEVELS.indexOf(b.level as any) - SCOPE_LEVELS.indexOf(a.level as any))
+  return unique
+}
+
+// ─── getCreatorScopes(member, user?) ───────────────────────────────────────
+// Returns church scopes that can be used as anchors for creating events.
+// Includes BOTH admin and leader edges from governorship and above so
+// higher-scope leaders can create meetings for lower-scope churches.
+export function getCreatorScopes(member, user?: any) {
+  if (user?.isSuperAdmin) return []
+  const scopes: Array<{ level: string; id: string; name: string }> = []
+  const push = (lvl: string, list: any[] | undefined) => {
+    for (const x of list || []) {
+      if (x?.id) scopes.push({ level: lvl, id: x.id, name: x.name || lvl })
+    }
+  }
+  if (member) {
+    push('governorship', member.isAdminForGovernorship)
+    push('council',      member.isAdminForCouncil)
+    push('stream',       member.isAdminForStream)
+    push('campus',       member.isAdminForCampus)
+    push('oversight',    member.isAdminForOversight)
+    push('denomination', member.isAdminForDenomination)
+    push('governorship', member.leadsGovernorship)
+    push('council',      member.leadsCouncil)
+    push('stream',       member.leadsStream)
+    push('campus',       member.leadsCampus)
+    push('oversight',    member.leadsOversight)
+    push('denomination', member.leadsDenomination)
+  }
+
+  // Fallback for accounts where graph edges are temporarily unavailable.
+  if (scopes.length === 0 && user) {
+    for (const ref of getUserAdminScopesFromJwt(user)) {
+      scopes.push({ level: ref.level, id: ref.id, name: ref.name || ref.level })
+    }
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+    for (const lvl of ['governorship','council','stream','campus','oversight','denomination']) {
+      const ref = user?.churchScopes?.[`leads${cap(lvl)}Of`]
+      if (ref?.id) scopes.push({ level: lvl, id: ref.id, name: ref.name || lvl })
+      const arr = user?.[`leads${cap(lvl)}`]
+      if (Array.isArray(arr)) {
+        for (const x of arr) if (x?.id) scopes.push({ level: lvl, id: x.id, name: x.name || lvl })
+      }
+    }
+  }
+
+  const seen = new Set<string>()
+  const unique = scopes.filter((s) => {
+    const k = `${s.level}:${s.id}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+  unique.sort((a, b) => SCOPE_LEVELS.indexOf(b.level as any) - SCOPE_LEVELS.indexOf(a.level as any))
   return unique
 }
 

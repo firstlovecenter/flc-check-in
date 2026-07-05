@@ -9,8 +9,8 @@ import {
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
 import {
-  resolveCurrentMember, getAdminScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
-  searchChurches, type ChurchSearchResult,
+  resolveCurrentMember, getCreatorScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
+  searchChurches, getChildChurches, childScopeLevel, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
 import { cn } from '../../lib/utils'
@@ -50,6 +50,9 @@ export default function CreateEventForm() {
   const [venueName, setVenueName] = useState('')
   // Selected admin scope (always one of `scopes`). Stored as "level:id".
   const [scopeId, setScopeId] = useState('')
+  const [targetScopeId, setTargetScopeId] = useState('')
+  const [targetScopeOptions, setTargetScopeOptions] = useState<AdminScope[]>([])
+  const [targetScopesLoading, setTargetScopesLoading] = useState(false)
   const [startsAt, setStartsAt] = useState(defaultStartsAt())
   const [durationPreset, setDurationPreset] = useState<'30' | '60' | '120' | 'custom'>('60')
   const [customMinutes, setCustomMinutes] = useState<number | string>(90)
@@ -88,13 +91,13 @@ export default function CreateEventForm() {
       try {
         const member = await resolveCurrentMember(user)
         if (cancelled) return
-        const adminScopes = getAdminScopes(member, user)
-        setScopes(adminScopes)
-        if (adminScopes.length > 0) {
+        const creatorScopes = getCreatorScopes(member, user)
+        setScopes(creatorScopes)
+        if (creatorScopes.length > 0) {
           const match = focusedScope
-            ? adminScopes.find((s) => s.id === focusedScope.id)
+            ? creatorScopes.find((s) => s.id === focusedScope.id)
             : null
-          const defaultScope = match ?? adminScopes[0]
+          const defaultScope = match ?? creatorScopes[0]
           setScopeId(`${defaultScope.level}:${defaultScope.id}`)
         }
       } catch (err: any) {
@@ -164,6 +167,60 @@ export default function CreateEventForm() {
     return scopes.find((s) => s.level === level && s.id === id) || null
   }, [isSuperAdmin, superMode, superScopes, selectedGroupIds, groups, scopeId, scopes])
 
+  const selectedTargetScope = useMemo<AdminScope | null>(() => {
+    if (isSuperAdmin) return selectedScope
+    if (!targetScopeId) return selectedScope
+    return targetScopeOptions.find((s) => `${s.level}:${s.id}` === targetScopeId) || selectedScope
+  }, [isSuperAdmin, selectedScope, targetScopeId, targetScopeOptions])
+
+  useEffect(() => {
+    if (isSuperAdmin || !selectedScope) {
+      setTargetScopeOptions([])
+      setTargetScopeId('')
+      return
+    }
+    let cancelled = false
+    const seen = new Set<string>()
+    const out: AdminScope[] = []
+    const push = (s: AdminScope) => {
+      const key = `${s.level}:${s.id}`
+      if (seen.has(key)) return
+      seen.add(key)
+      out.push(s)
+    }
+    setTargetScopesLoading(true)
+    ;(async () => {
+      try {
+        const queue: AdminScope[] = [selectedScope]
+        while (queue.length > 0) {
+          const current = queue.shift()!
+          push(current)
+          const childLevel = childScopeLevel(current.level)
+          if (!childLevel) continue
+          const children = await getChildChurches({ level: current.level, id: current.id })
+          for (const c of children) {
+            queue.push({ level: childLevel, id: c.id, name: c.name })
+          }
+        }
+        if (!cancelled) {
+          setTargetScopeOptions(out)
+          setTargetScopeId((prev) => {
+            if (prev && out.some((s) => `${s.level}:${s.id}` === prev)) return prev
+            return `${selectedScope.level}:${selectedScope.id}`
+          })
+        }
+      } catch {
+        if (!cancelled) {
+          setTargetScopeOptions([selectedScope])
+          setTargetScopeId(`${selectedScope.level}:${selectedScope.id}`)
+        }
+      } finally {
+        if (!cancelled) setTargetScopesLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isSuperAdmin, selectedScope?.id, selectedScope?.level])
+
   // Roles available for this scope = leadership levels strictly below it.
   const availableRoles = useMemo(
     () => {
@@ -171,9 +228,9 @@ export default function CreateEventForm() {
         // Group events span any level — expose all roles so the admin can restrict.
         return allowedRolesForScope('denomination')
       }
-      return selectedScope ? allowedRolesForScope(selectedScope.level) : []
+      return selectedTargetScope ? allowedRolesForScope(selectedTargetScope.level) : []
     },
-    [selectedScope, isSuperAdmin, superMode]
+    [selectedTargetScope, isSuperAdmin, superMode]
   )
 
   // When the scope changes, reset the role selection to "all eligible roles checked."
@@ -207,7 +264,7 @@ export default function CreateEventForm() {
     if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) {
       setError('Select at least one group.'); return
     }
-    if (!isSuperAdmin && !selectedScope) { setError('No admin scope.'); return }
+    if (!isSuperAdmin && !selectedTargetScope) { setError('No creation scope.'); return }
     if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
     if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError('Pick at least one allowed role.'); return }
     if (geofence.type === 'polygon') {
@@ -219,7 +276,7 @@ export default function CreateEventForm() {
     // Determine the DB anchor scope.
     // Multi-church: use first scope as anchor; snapshot will union all.
     // People mode: denomination anchor; snapshot seeded with specific IDs.
-    const anchorScope = selectedScope!
+    const anchorScope = selectedTargetScope!
 
     setSubmitting(true)
     try {
@@ -308,8 +365,8 @@ export default function CreateEventForm() {
   if (!isSuperAdmin && !scopesLoading && scopes.length === 0) {
     return (
       <div className='surface-card p-5 text-center text-sm text-muted-foreground'>
-        <p className='mb-2 text-destructive'>No admin scope found.</p>
-        <p>You don't appear in the FLC member graph as an admin of any church. Ask your stream lead to update your relationships.</p>
+        <p className='mb-2 text-destructive'>No creation scope found.</p>
+        <p>You don't appear in the FLC member graph as a higher-scope leader/admin. Ask your stream lead to update your relationships.</p>
       </div>
     )
   }
@@ -473,6 +530,27 @@ export default function CreateEventForm() {
             ))}
           </select>
         )}
+
+        {!isSuperAdmin && selectedScope && (
+          <Field label='Create for church within this scope'>
+            {targetScopesLoading ? (
+              <Spinner />
+            ) : (
+              <select
+                required
+                value={targetScopeId || `${selectedScope.level}:${selectedScope.id}`}
+                onChange={(e) => setTargetScopeId(e.target.value)}
+                className='input-field'
+              >
+                {targetScopeOptions.map((s) => (
+                  <option key={`${s.level}:${s.id}`} value={`${s.level}:${s.id}`}>
+                    {s.level.toUpperCase()} · {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        )}
       </Section>
 
       <Section title='Time window'>
@@ -551,7 +629,7 @@ export default function CreateEventForm() {
         ) : (
           <>
             <p className='text-xs mb-1 text-muted-foreground'>
-              Leaders within this {selectedScope?.level}.
+              Leaders within this {selectedTargetScope?.level}.
             </p>
             <div className='flex flex-wrap gap-2'>
               {availableRoles.map((r) => (
@@ -643,6 +721,7 @@ export default function CreateEventForm() {
           (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) ||
           (isSuperAdmin && superMode === 'group' && (selectedGroupIds.length === 0 || !selectedScope)) ||
           (!isSuperAdmin && !selectedScope)
+          || (!isSuperAdmin && !selectedTargetScope)
         }
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'
       >

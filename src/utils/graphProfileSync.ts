@@ -14,6 +14,7 @@ import {
 import {
   persistChurchContextFromProfileRow,
   persistChurchContextFromJwt,
+  mergeRoleLists,
 } from './auth'
 import { upsertMemberProfile } from './supabaseCheckins'
 
@@ -93,7 +94,7 @@ export async function syncGraphProfileForUser(
     title: row?.title || user.title,
     first_name: row?.first_name || user.firstName,
     last_name: row?.last_name || user.lastName,
-    roles: row?.roles?.length ? row.roles : user.roles || [],
+    roles: mergeRoleLists(row?.roles, user.roles),
     phone: row?.phone || (user as any).phone,
     picture_url: row?.picture_url || (user as any).pictureUrl,
   })
