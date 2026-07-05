@@ -11,8 +11,13 @@ role and RLS cannot express "only my scope" rules.
    gated by `VITE_USE_SUPABASE_TOKEN_EXCHANGE=1`).
 3. This function does **not** check the token's signature itself — it forwards
    the token to the FLC GraphQL API (`FLC_GRAPHQL_URL`), which verifies tokens
-   server-side and answers "Unauthenticated" for forged/expired ones. If the
-   API accepts it, the token is genuine.
+   server-side and answers the literal error message "Unauthenticated" for
+   forged/expired ones. If the API accepts it, the token is genuine. Only that
+   specific message is treated as proof the token is bad (401 `invalid_token`);
+   any other GraphQL-level error (schema bug, resolver exception, transient
+   hiccup) returns 503 `graph_error` instead, so a real, currently-logged-in
+   user isn't forced through the anon-key fallback / dead-ended on "not in
+   scope" over something that had nothing to do with their credential.
 4. The member's `leads*` / `isAdminFor*` edges from that **live graph response**
    (not the token payload) become the claims, then a Supabase-signed JWT
    (`EXCHANGE_JWT_SECRET` = the project JWT secret) is minted with:
