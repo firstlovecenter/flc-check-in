@@ -12,6 +12,31 @@ import type { AppUser, CheckinEventRow } from '../types/app'
 
 type FocusedScope = { level?: string; id?: string }
 
+/** Run async tasks with a concurrency cap instead of firing all at once.
+ *  Scope/event queries here are batched (URL length limits, OR-filter size),
+ *  and every leader/admin who loads a scoped screen re-runs all the batches —
+ *  unbounded Promise.all turns one screen view into a burst of dozens of
+ *  simultaneous Supabase connections that multiplies with concurrent
+ *  viewers during a live service. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => PromiseLike<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
+const BATCH_CONCURRENCY = 5
+
 export function filterEventsByFocusedScope<T extends { scope_level?: string; scope_church_id?: string }>(
   events: T[],
   focusedScope?: FocusedScope | null,
@@ -115,8 +140,8 @@ async function getDescendantScopeKeysForScope(scope: { level: string; id: string
 async function getDescendantScopeKeysForScopes(scopes: Array<{ level: string; id: string }>): Promise<Set<string>> {
   const out = new Set<string>()
   const valid = (scopes || []).filter((s) => s?.level && s?.id)
-  const expanded = await Promise.all(
-    valid.map((s) => getDescendantScopeKeysForScope({ level: s.level, id: s.id })),
+  const expanded = await mapWithConcurrency(valid, BATCH_CONCURRENCY, (s) =>
+    getDescendantScopeKeysForScope({ level: s.level, id: s.id }),
   )
   for (const keys of expanded) {
     for (const k of keys) out.add(k)
@@ -143,7 +168,7 @@ async function queryEventsByExpandedScopeKeys(
     batches.push(expandedScopes.slice(i, i + SCOPE_OR_BATCH_SIZE))
   }
 
-  const resultSets = await Promise.all(batches.map(async (batch) => {
+  const resultSets = await mapWithConcurrency(batches, BATCH_CONCURRENCY, async (batch) => {
     let q = supabase.from('checkin_events').select(CHECKIN_EVENT_LIST_COLUMNS)
     if (excludeSpecialGroup) q = q.neq('scope_level', 'special_group')
     const orFilter = batch
@@ -156,7 +181,7 @@ async function queryEventsByExpandedScopeKeys(
     const { data, error } = await q
     if (error) throw error
     return (data || []).map(mapEventRow)
-  }))
+  })
 
   const byId = new Map<string, any>()
   for (const rows of resultSets) {
@@ -837,29 +862,6 @@ export async function addMemberToEventScope(
   await snapshotEventScopeMembers(eventId, [profileRow.id])
 }
 
-/** Run async tasks with a concurrency cap instead of firing all at once.
- *  A large event's member snapshot can span dozens of batched queries, and
- *  every leader/admin who opens that event's dashboard re-runs all of them —
- *  unbounded Promise.all turns one screen view into a burst of dozens of
- *  simultaneous Supabase connections that multiplies with concurrent
- *  viewers during a live service. */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => PromiseLike<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length)
-  let next = 0
-  async function worker() {
-    while (next < items.length) {
-      const i = next++
-      results[i] = await fn(items[i])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
-  return results
-}
-
 /** Load the scope snapshot for an event joined with current member_profiles.
  *  Returns member_profiles rows for every snapshotted member that has a
  *  profile row. Members who have never logged in are omitted from the join
@@ -881,8 +883,7 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   const batches: string[][] = []
   for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH))
 
-  // See mapWithConcurrency above for why this isn't Promise.all.
-  const BATCH_CONCURRENCY = 5
+  // See mapWithConcurrency near the top of this file for why this isn't Promise.all.
   const results = await mapWithConcurrency(batches, BATCH_CONCURRENCY, (batch) =>
     supabase
       .from('member_profiles')
