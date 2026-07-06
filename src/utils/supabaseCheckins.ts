@@ -837,6 +837,29 @@ export async function addMemberToEventScope(
   await snapshotEventScopeMembers(eventId, [profileRow.id])
 }
 
+/** Run async tasks with a concurrency cap instead of firing all at once.
+ *  A large event's member snapshot can span dozens of batched queries, and
+ *  every leader/admin who opens that event's dashboard re-runs all of them —
+ *  unbounded Promise.all turns one screen view into a burst of dozens of
+ *  simultaneous Supabase connections that multiplies with concurrent
+ *  viewers during a live service. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => PromiseLike<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 /** Load the scope snapshot for an event joined with current member_profiles.
  *  Returns member_profiles rows for every snapshotted member that has a
  *  profile row. Members who have never logged in are omitted from the join
@@ -858,13 +881,13 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   const batches: string[][] = []
   for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH))
 
-  const results = await Promise.all(
-    batches.map((batch) =>
-      supabase
-        .from('member_profiles')
-        .select(MEMBER_PROFILE_LIST_COLUMNS)
-        .in('id', batch),
-    ),
+  // See mapWithConcurrency above for why this isn't Promise.all.
+  const BATCH_CONCURRENCY = 5
+  const results = await mapWithConcurrency(batches, BATCH_CONCURRENCY, (batch) =>
+    supabase
+      .from('member_profiles')
+      .select(MEMBER_PROFILE_LIST_COLUMNS)
+      .in('id', batch),
   )
   for (const { error } of results) if (error) throw error
   return results.flatMap((r) => r.data || [])
