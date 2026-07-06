@@ -58,22 +58,38 @@ export default function RequireAuth({ children }) {
   // Background token refresh for long-lived mounts (see TOKEN_CHECK_INTERVAL_MS
   // above). refreshInFlight guards against a slow/flaky connection causing two
   // overlapping refresh attempts if one tick's call hasn't resolved by the next.
+  //
+  // A failed *proactive* refresh (token still valid, just near expiry) must
+  // NOT log the user out — it just retries next tick / next foreground. Doing
+  // otherwise would recreate the exact bug this fix targets: a transient
+  // network/backend hiccup getting mistaken for a real auth failure. Only a
+  // token that has actually gone expired hands off to the 'checking' state,
+  // which reuses the mount-time refresh-or-logout path above.
   const refreshInFlight = useRef(false)
   useEffect(() => {
     if (state !== 'ok') return
-    const id = setInterval(() => {
+    const checkAndRefresh = () => {
       if (refreshInFlight.current) return
       const token = localStorage.getItem('accessToken')
-      if (!token || !isTokenNearExpiry(token)) return
+      if (!token) return
+      if (isTokenExpired(token)) { setState('checking'); return }
+      if (!isTokenNearExpiry(token)) return
       refreshInFlight.current = true
-      refreshSession()
-        .then((user) => {
-          if (!user) { logout(); setState('redirect') }
-        })
-        .catch(() => { logout(); setState('redirect') })
-        .finally(() => { refreshInFlight.current = false })
-    }, TOKEN_CHECK_INTERVAL_MS)
-    return () => clearInterval(id)
+      refreshSession().finally(() => { refreshInFlight.current = false })
+    }
+    const id = setInterval(checkAndRefresh, TOKEN_CHECK_INTERVAL_MS)
+    // setInterval is throttled/suspended by mobile OSes while the PWA is
+    // backgrounded (screen lock, app switch) — routine during a 1.5-2h live
+    // service. Re-check the moment the app is foregrounded again instead of
+    // waiting for the next scheduled tick.
+    const onVisible = () => { if (document.visibilityState === 'visible') checkAndRefresh() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', checkAndRefresh)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', checkAndRefresh)
+    }
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />

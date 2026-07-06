@@ -269,12 +269,12 @@ export function isTokenExpired(token: string): boolean {
 // that check only runs every TOKEN_CHECK_INTERVAL_MS, and a slow/flaky
 // connection (packed venue, weak signal) can make a refresh take a while to
 // land — so "due for refresh" needs more slack than "currently unusable".
-const PROACTIVE_REFRESH_SEC = 5 * 60
+const TOKEN_PROACTIVE_REFRESH_SEC = 5 * 60
 
 export function isTokenNearExpiry(token: string): boolean {
   const payload = decodeJWT(token)
   if (!payload?.exp) return true
-  return payload.exp - PROACTIVE_REFRESH_SEC < Date.now() / 1000
+  return payload.exp - TOKEN_PROACTIVE_REFRESH_SEC < Date.now() / 1000
 }
 
 export function getCurrentUser() {
@@ -288,14 +288,21 @@ export function getCurrentUser() {
 
 // Attempt a silent token refresh using the stored refreshToken.
 // Returns the new enriched user on success, null on failure.
+const REFRESH_TIMEOUT_MS = 10_000
+
 export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | null> {
   const refreshToken = localStorage.getItem('refreshToken')
   if (!refreshToken) return null
   try {
+    // A stalled request (dropped mobile connection mid-flight) must not hang
+    // forever — RequireAuth's background poll gates on this call settling to
+    // release its in-flight guard, so an unbounded hang would silently
+    // disable proactive refresh for the rest of the session.
     const res = await fetch(`${authApiUrl()}/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
+      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     })
     if (!res.ok) return null
     const data = await res.json().catch(() => null)
