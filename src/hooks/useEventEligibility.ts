@@ -28,6 +28,8 @@ import {
   getAdminScopes, countChildScopes,
 } from '../utils/membersApi'
 import { getUserChurchRef } from '../utils/userScope'
+import { getUserLeadershipRefs } from '../utils/userScope'
+import { friendlyErrorMessage } from '../utils/network'
 import { bypassesScopeAndRoleLimits } from '../utils/superadmin'
 import { SCOPE_LEVELS } from '../types/app'
 import type { AppUser, CheckinEventRow, ScopeLevel } from '../types/app'
@@ -57,6 +59,107 @@ interface CachedEligibility {
 }
 
 const eligibilityCache = new Map<string, CachedEligibility>()
+
+function candidateUserIds(user: AppUser | null | undefined, viewer: any | null): string[] {
+  return [
+    viewer?.id,
+    user?.graphMemberId,
+    user?.userId,
+  ].filter((id, idx, arr): id is string =>
+    typeof id === 'string' && id.length > 0 && arr.indexOf(id) === idx,
+  )
+}
+
+function hasAnyId(ids: string[], set: Set<string> | null | undefined): boolean {
+  return ids.some((id) => set?.has(id))
+}
+
+function fallbackCapsFromUser(
+  user: AppUser,
+  evt: CheckinEventRow,
+  ids: string[],
+  eligibleIdSet: Set<string>,
+  allMemberIdSet: Set<string>,
+  ancestors: any[],
+) {
+  const eventScope = {
+    level: evt.scope_level,
+    id: evt.scope_church_id,
+    name: evt.scope_church_name,
+  }
+  const refs = getUserLeadershipRefs(user)
+  const eventScopeIdx = SCOPE_LEVELS.indexOf(evt.scope_level)
+  const ancestorByLevel = new Map<string, any>((ancestors || []).map((a: any) => [a.level, a]))
+  const canCheckIn = hasAnyId(ids, eligibleIdSet)
+
+  const exactAdmin = refs.some((r) =>
+    r.source === 'admin' && r.level === evt.scope_level && r.id === evt.scope_church_id,
+  )
+  if (exactAdmin) {
+    return {
+      canManage: true,
+      canCheckIn: false,
+      canView: true,
+      canViewFullEvent: false,
+      canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')),
+      viewerScope: eventScope,
+    }
+  }
+
+  const exactLeader = refs.some((r) =>
+    r.source === 'leader' && r.level === evt.scope_level && r.id === evt.scope_church_id,
+  )
+  if (exactLeader) {
+    return {
+      canManage: false,
+      canCheckIn,
+      canView: true,
+      canViewFullEvent: true,
+      canManuallyCheckIn: false,
+      viewerScope: eventScope,
+    }
+  }
+
+  for (const ref of refs) {
+    const refIdx = SCOPE_LEVELS.indexOf(ref.level)
+    if (refIdx <= eventScopeIdx) continue
+    const ancestor = ancestorByLevel.get(ref.level)
+    const containsEvent = ancestor?.id === ref.id
+      || getUserChurchRef(user, evt.scope_level)?.id === evt.scope_church_id
+    if (!containsEvent) continue
+    return {
+      canManage: false,
+      canCheckIn: false,
+      canView: true,
+      canViewFullEvent: true,
+      canManuallyCheckIn: false,
+      viewerScope: eventScope,
+    }
+  }
+
+  const inEventScope = getUserChurchRef(user, evt.scope_level)?.id === evt.scope_church_id
+  if (inEventScope || hasAnyId(ids, allMemberIdSet)) {
+    const scopedRef = refs
+      .filter((r) => SCOPE_LEVELS.indexOf(r.level) < eventScopeIdx)
+      .sort((a, b) => SCOPE_LEVELS.indexOf(b.level) - SCOPE_LEVELS.indexOf(a.level))[0]
+    if (scopedRef) {
+      return {
+        canManage: false,
+        canCheckIn,
+        canView: true,
+        canViewFullEvent: false,
+        canManuallyCheckIn: false,
+        viewerScope: {
+          level: scopedRef.level,
+          id: scopedRef.id,
+          name: scopedRef.name ?? '',
+        },
+      }
+    }
+  }
+
+  return null
+}
 
 function persistKey(cacheKey: string) { return ELIGIBILITY_STORAGE_PREFIX + cacheKey }
 
@@ -147,7 +250,11 @@ export interface EventEligibilityResult {
 export function useEventEligibility(
   eventId: string | undefined,
   user: AppUser | null,
-  { pollMs, refreshKey = 0 }: { pollMs?: number; refreshKey?: number } = {},
+  {
+    pollMs,
+    refreshKey = 0,
+    loadRecords = true,
+  }: { pollMs?: number; refreshKey?: number; loadRecords?: boolean } = {},
 ): EventEligibilityResult {
   const [event, setEvent]         = useState<CheckinEventRow | null>(null)
   const [eligible, setEligible]   = useState<any[]>([])
@@ -212,7 +319,7 @@ export function useEventEligibility(
       setChildCount(hit.childCount)
       setScopeMemberCount(hit.scopeMemberCount ?? null)
       setEvent(hit.event)
-      setRecords(hit.records)
+      setRecords(loadRecords ? hit.records : [])
       setInitialLoading(false)
       // Still revalidate in background — don't return early.
     }
@@ -233,10 +340,11 @@ export function useEventEligibility(
           }
         }
 
-        // Tier 1: get event + current check-in records in parallel (fast DB reads).
+        // Tier 1: get event and, when requested by the screen, current
+        // check-in records. Dashboards opt out and use aggregate RPC polling.
         const [evt, recs] = await Promise.all([
           getEvent(eventId),
-          listCheckedIn(eventId),
+          loadRecords ? listCheckedIn(eventId) : Promise.resolve([]),
         ])
         if (cancelled) return
         setEvent(evt)
@@ -330,6 +438,7 @@ export function useEventEligibility(
 
         const allowed = new Set<string>(evt.allowed_roles || [])
         const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
+        const viewerIds = candidateUserIds(user, viewer)
         // Visibility should be tied to current church scope, not only the
         // event-time snapshot. Start with snapshot IDs, then widen from graph
         // when needed so leadership handovers can still view church-owned events.
@@ -388,7 +497,7 @@ export function useEventEligibility(
         let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, visibilityMemberIdSet)
         // Special-group events: church-hierarchy checks are irrelevant.
         // Any member present in the group snapshot can self-check-in.
-        if (isSpecialGroup && !rawCaps.canManage && allMemberIdSet.has(user.userId)) {
+        if (isSpecialGroup && !rawCaps.canManage && hasAnyId(viewerIds, allMemberIdSet)) {
           rawCaps = {
             canManage: false,
             canCheckIn: true,
@@ -401,6 +510,12 @@ export function useEventEligibility(
               name: evt.scope_church_name,
             },
           }
+        }
+        const fallbackCaps = !rawCaps.canView && !rawCaps.canCheckIn && !rawCaps.canManage
+          ? fallbackCapsFromUser(user, evt, viewerIds, eligibleIdSet, visibilityMemberIdSet, ancestors)
+          : null
+        if (fallbackCaps) {
+          rawCaps = fallbackCaps
         }
         if (!rawCaps.canManage && viewer === null) {
           // Graph unavailable — reconstruct viewerScope from the JWT/profile.
@@ -427,7 +542,7 @@ export function useEventEligibility(
               const ownRef = user.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
               if (ownRef) {
                 const viewerScope = { level: ownRef.level, id: ownRef.id, name: ownRef.name ?? '' }
-                rawCaps = { canManage: false, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
+                rawCaps = { canManage: false, canCheckIn: hasAnyId(viewerIds, eligibleIdSet), canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
               }
             }
           }
@@ -439,7 +554,7 @@ export function useEventEligibility(
         }
         const scopeFallback = rawCaps.canViewFullEvent ? eventScope : (rawCaps.viewerScope ?? eventScope)
         const caps = user.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: eligibleIdSet.has(user.userId), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
+          ? { ...rawCaps, canManage: true, canCheckIn: hasAnyId(viewerIds, eligibleIdSet), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
           : user.isSuperViewer
           ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
           : rawCaps.canViewFullEvent
@@ -494,7 +609,7 @@ export function useEventEligibility(
             childCount: childTotal,
             scopeMemberCount: resolvedScopeCount,
             event: evt,
-            records: recs,
+            records: loadRecords ? recs : [],
             ts: Date.now(),
           }
           eligibilityCache.set(cacheKey, entry)
@@ -502,14 +617,14 @@ export function useEventEligibility(
         }
       } catch (err: any) {
         if (!cancelled) {
-          setError(err.message)
+          setError(friendlyErrorMessage(err))
           setInitialLoading(false)
         }
       }
     })()
 
     return () => { cancelled = true }
-  }, [eventId, user?.userId, user?.email, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId, user?.userId, user?.email, refreshKey, loadRecords]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Optional poll: cheaply refresh records + event status only ────────
   // The expensive eligibility pipeline above is NOT re-run on every tick.
@@ -522,17 +637,17 @@ export function useEventEligibility(
     const id = setInterval(async () => {
       try {
         const [recs, evt] = await Promise.all([
-          listCheckedIn(eventId),
+          loadRecords ? listCheckedIn(eventId) : Promise.resolve(null),
           getEvent(eventId),
         ])
         if (!cancelled) {
-          setRecords(recs)
+          if (loadRecords && recs) setRecords(recs)
           setEvent(evt)
         }
       } catch { /* swallow transient poll errors */ }
     }, pollMs)
     return () => { cancelled = true; clearInterval(id) }
-  }, [eventId, pollMs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId, pollMs, loadRecords]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     event, eligible, eligibleIds, viewerCaps, viewerSlice,

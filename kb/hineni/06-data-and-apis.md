@@ -7,7 +7,7 @@ Primary persistence for events and attendance.
 | Area | Tables / concepts |
 |------|-------------------|
 | Events | `checkin_events` — status, scope, geofence, secrets, `is_public` |
-| Records | `checkin_records` — check-in/out timestamps, method |
+| Records | `checkin_records` — a row = Present, no row = Absent; `checked_in_at` + method. (Checkout/late columns are legacy — unread.) |
 | Profiles | `member_profiles` — face descriptor, hierarchy columns |
 | Groups | `special_groups`, members junction |
 | Audit | `checkin_audit_log` (append-only) |
@@ -15,7 +15,7 @@ Primary persistence for events and attendance.
 Use **RPCs** for atomic check-in, device claim, PIN validation — do not bypass with raw inserts
 unless mirroring an existing pattern.
 
-Realtime channel pattern: `dashboard:${eventId}` on `checkin_records`.
+Dashboard counters come from the `get_event_dashboard_stats` RPC (polled — no Realtime channel).
 
 ## FL member graph → Supabase (primary data flow)
 

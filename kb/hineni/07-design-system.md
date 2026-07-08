@@ -51,12 +51,12 @@ Prefer **Button** + Tailwind over new inline `style={{}}`.
 
 ## Status colors (attendance only)
 
+Attendance is binary — exactly two statuses:
+
 | Meaning | Token |
 |---------|-------|
-| Present / still in | `--success` / `text-success` |
-| Late / left | `--warning` |
+| Present | `--success` / `text-success` |
 | Absent | `--destructive` |
-| Checked out | `--out` |
 
 Do not use pink for “live” attendance dots — green pulse on home event cards.
 

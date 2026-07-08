@@ -33,8 +33,8 @@ function profileRowToHierarchyChain(row: any): HierarchyNode[] {
 }
 
 const SYNC_TS_PREFIX = 'flc:lastGraphProfileSync:'
-/** Re-probe graph on every authed route visit (profile may not be in Supabase yet). */
-const SESSION_RESYNC_MS = 10 * 1000
+/** Re-probe occasionally while a session is active; login/refresh still force sync. */
+const SESSION_RESYNC_MS = 30 * 60 * 1000
 
 function syncKey(userId: string) {
   return `${SYNC_TS_PREFIX}${userId}`

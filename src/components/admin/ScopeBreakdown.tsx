@@ -169,11 +169,13 @@ export default function ScopeBreakdown({ eventId }) {
     const nameCol = `${childLevel}_name`
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
 
+    // Only two attendance metrics: attended (has a record) and absent.
+    // total is kept internally purely to sort the groups by size.
     type GroupStats = {
       id: string; name: string
-      total: number; attended: number; stillIn: number; left: number; absent: number
+      total: number; attended: number; absent: number
     }
-    const blank = (id: string, name: string): GroupStats => ({ id, name, total: 0, attended: 0, stillIn: 0, left: 0, absent: 0 })
+    const blank = (id: string, name: string): GroupStats => ({ id, name, total: 0, attended: 0, absent: 0 })
 
     const map = new Map<string, GroupStats>()
     if (childChurches) {
@@ -198,7 +200,7 @@ export default function ScopeBreakdown({ eventId }) {
       }
       if (!key) {
         const rec = recordByMember.get(m.id) || null
-        const status = !rec ? 'Defaulted' : rec.checked_out_at ? 'Checked Out' : 'Checked In'
+        const status = rec ? 'Present' : 'Absent'
         unassigned.push({ member: m, record: rec, status })
         continue
       }
@@ -206,10 +208,10 @@ export default function ScopeBreakdown({ eventId }) {
       g.total++
       const rec = recordByMember.get(m.id)
       const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
-      if (rec) { g.attended++; if (rec.checked_out_at) g.left++; else g.stillIn++ }
+      if (rec) g.attended++
       else if (!notStarted) g.absent++
     }
-    const statusOrder = { 'Checked In': 0, 'Checked Out': 1, 'Defaulted': 2 }
+    const statusOrder = { Present: 0, Absent: 1 }
     return {
       groups: [...map.values()].sort((a, b) => b.total - a.total),
       unassignedRows: unassigned.sort((a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3)),
@@ -221,11 +223,11 @@ export default function ScopeBreakdown({ eventId }) {
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
     return sliceRows.map((m) => {
       const r = recordByMember.get(m.id) || null
-      const status = !r ? 'Defaulted' : r.checked_out_at ? 'Checked Out' : 'Checked In'
+      const status = r ? 'Present' : 'Absent'
       return { member: m, record: r, status }
     }).sort((a, b) => {
-      const order = { 'Checked In': 0, 'Checked Out': 1, 'Defaulted': 2 }
-      return (order[a.status] ?? 3) - (order[b.status] ?? 3)
+      const order = { Present: 0, Absent: 1 }
+      return (order[a.status] ?? 2) - (order[b.status] ?? 2)
     })
   }, [sliceRows, currentLevel, childLevel, records])
 
@@ -356,7 +358,6 @@ function ScopeCard({
   const scopeQ = `level=${childLevel}&churchId=${group.id}&churchName=${encodeURIComponent(group.name)}`
   const presentLink = `${membersBase}?status=present&${scopeQ}`
   const absentLink  = `${membersBase}?status=absent&${scopeQ}`
-  const allLink     = `${membersBase}?status=all&${scopeQ}`
 
   return (
     <div className='overflow-hidden rounded-2xl border border-border bg-card'>
@@ -382,7 +383,6 @@ function ScopeCard({
         <div className='flex shrink-0 items-center gap-2.5'>
           <span className='tnum text-sm font-bold text-success'>{group.attended}</span>
           <span className='tnum text-sm font-bold text-destructive'>{group.absent}</span>
-          <span className='tnum text-sm font-bold text-foreground'>{group.total}</span>
           <svg
             viewBox='0 0 24 24' width='16' height='16'
             className={cn('shrink-0 text-muted-foreground/60 transition-transform duration-200', isExpanded && 'rotate-180')}
@@ -397,11 +397,9 @@ function ScopeCard({
       {isExpanded && (
         <div className='border-t border-border px-4 pb-4 pt-3'>
           <div className='overflow-hidden rounded-xl border border-border'>
-            <ExpandedStatRow icon='present' label='Leaders Checked In' count={group.attended} to={presentLink} />
+            <ExpandedStatRow icon='present' label='Present' count={group.attended} to={presentLink} />
             <div className='h-px bg-border' />
-            <ExpandedStatRow icon='absent'  label='Leaders Absent'     count={group.absent}   to={absentLink} />
-            <div className='h-px bg-border' />
-            <ExpandedStatRow icon='primary' label='Total Expected'     count={group.total}    to={allLink} />
+            <ExpandedStatRow icon='absent'  label='Absent'  count={group.absent}   to={absentLink} />
           </div>
           <Link
             to={drillPath}
@@ -432,17 +430,11 @@ const EXPANDED_ICONS = {
       <line x1='12' y1='9' x2='12' y2='13' /><line x1='12' y1='17' x2='12.01' y2='17' />
     </svg>
   ),
-  primary: (
-    <svg viewBox='0 0 24 24' width='18' height='18' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
-      <path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' /><circle cx='9' cy='7' r='4' />
-      <path d='M23 21v-2a4 4 0 0 0-3-3.87' /><path d='M16 3.13a4 4 0 0 1 0 7.75' />
-    </svg>
-  ),
 }
 
-function ExpandedStatRow({ icon, label, count, to }: { icon: 'present' | 'absent' | 'primary'; label: string; count: number; to?: string }) {
-  const iconBg   = icon === 'present' ? 'bg-success/15 text-success'     : icon === 'absent' ? 'bg-destructive/15 text-destructive' : 'bg-primary/15 text-primary'
-  const countClr = icon === 'present' ? 'text-success' : icon === 'absent' ? 'text-destructive' : 'text-foreground'
+function ExpandedStatRow({ icon, label, count, to }: { icon: 'present' | 'absent'; label: string; count: number; to?: string }) {
+  const iconBg   = icon === 'present' ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+  const countClr = icon === 'present' ? 'text-success' : 'text-destructive'
   const inner = (
     <>
       <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', iconBg)}>
@@ -473,7 +465,7 @@ function MemberRow({ member: m, record: r, status }: { member: any; record: any;
   const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
   const unit = m.bacenta_name || m.governorship_name || m.council_name || (m.roles || [])[0] || '—'
   const initials = [(m.first_name || '')[0], (m.last_name || '')[0]].filter(Boolean).join('').toUpperCase() || '?'
-  const statusClass = status === 'Checked In' ? 'text-success' : status === 'Checked Out' ? 'text-warning' : 'text-destructive'
+  const statusClass = status === 'Present' ? 'text-success' : 'text-destructive'
 
   return (
     <div className='flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-card px-4 py-3.5'>

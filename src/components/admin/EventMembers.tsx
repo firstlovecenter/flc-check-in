@@ -26,9 +26,9 @@ import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 type Status = 'present' | 'absent' | 'all'
 
 const STATUS_TITLES: Record<Status, string> = {
-  present: 'Leaders Present',
-  absent:  'Leaders Absent',
-  all:     'All Expected Leaders',
+  present: 'Present',
+  absent:  'Absent',
+  all:     'All Expected',
 }
 
 function membersWithId(list: any[] | null | undefined): any[] {
@@ -140,9 +140,8 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     const csv = Papa.unparse(filteredRows.map(({ member: m, record: r }) => ({
       Name:   [m.first_name, m.last_name].filter(Boolean).join(' '),
       Unit:   m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
-      Status: !r ? 'Absent' : r.checked_out_at ? 'Checked Out' : 'Checked In',
+      Status: r ? 'Present' : 'Absent',
       'Checked In At':  r?.checked_in_at  ? format(new Date(r.checked_in_at),  'yyyy-MM-dd HH:mm:ss') : '',
-      'Checked Out At': r?.checked_out_at ? format(new Date(r.checked_out_at), 'yyyy-MM-dd HH:mm:ss') : '',
       Method: r?.method || '',
       Phone:  m.phone || '',
     })))
@@ -308,17 +307,16 @@ const MemberCard = memo(function MemberCard({
         </div>
         <div className='shrink-0 text-right'>
           {status === 'all' && (
-            <Badge variant={isAbsent ? 'warning' : r?.checked_out_at ? 'muted' : 'success'} className='text-[10px]'>
-              {isAbsent ? 'Absent' : r?.checked_out_at ? 'Left' : 'Present'}
+            <Badge variant={isAbsent ? 'destructive' : 'success'} className='text-[10px]'>
+              {isAbsent ? 'Absent' : 'Present'}
             </Badge>
           )}
           {!isAbsent && r?.checked_in_at && (
-            <p className='m-0 mt-0.5 text-[11px] text-muted-foreground'>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
+            <p className='m-0 mt-0.5 text-xs font-semibold text-foreground'>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
           )}
           {!isAbsent && r?.method && (
             <Badge variant='outline' className='mt-0.5 text-[10px] uppercase tracking-wide'>{r.method}</Badge>
           )}
-          {!isAbsent && r?.is_late && <Badge variant='warning' className='mt-0.5 text-[10px]'>Late</Badge>}
         </div>
       </div>
 

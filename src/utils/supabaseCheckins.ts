@@ -219,9 +219,11 @@ const CHECKIN_EVENT_FULL_COLUMNS = '*'
 // ('*') for rows that are mostly filtered out anyway.
 const CHECKIN_EVENT_GEO_COLUMNS = CHECKIN_EVENT_LIST_COLUMNS + ', geofence_polygon'
 
+// Attendance is binary — a record means Present, no record means Absent.
+// Legacy checkout/late columns still exist in the DB but are never read.
 const CHECKIN_RECORD_COLUMNS =
   'id, event_id, member_id, member_name, member_role, member_unit_name, ' +
-  'checked_in_at, checked_out_at, auto_checked_out, outside_since, is_late, ' +
+  'checked_in_at, ' +
   'method, geo_verified, check_in_lat, check_in_lng, device_fingerprint, ' +
   'manual_reason, verified_by'
 
@@ -289,7 +291,11 @@ async function buildScopeOrFilter(user: AppUser): Promise<string | null> {
   // On total failure the user still sees events at their own scopes.
   const chains = await Promise.all(
     anchors.map((a) =>
-      getChurchAncestors({ level: a.level, id: a.id }).catch(() => [] as Array<{ level: string; id: string }>),
+      withFallbackAfter(
+        getChurchAncestors({ level: a.level, id: a.id }),
+        DESC_SCOPE_HOME_TIMEOUT_MS,
+        [] as Array<{ level: string; id: string }>,
+      ),
     ),
   )
   for (const chain of chains) {
@@ -869,6 +875,21 @@ export async function addMemberToEventScope(
  *  Returns [] if no snapshot exists yet (caller should fall back to graph). */
 export async function listEventScopeMembersWithProfiles(eventId: string): Promise<any[]> {
   if (!eventId) return []
+  try {
+    const { data, error } = await supabase.rpc('get_event_scope_profiles', {
+      p_event_id: eventId,
+    })
+    if (!error) return data || []
+    if (!/function .*get_event_scope_profiles|could not find/i.test(error.message || '')) {
+      throw error
+    }
+  } catch (err: any) {
+    if (!/function .*get_event_scope_profiles|could not find/i.test(err?.message || '')) {
+      throw err
+    }
+    // Older deployments without migration 026 fall back to the batched path.
+  }
+
   const { data: snap, error: se } = await supabase
     .from('event_scope_members')
     .select('member_id')
@@ -965,7 +986,6 @@ export async function resumeEvent(eventId) { invalidateEventListCache(); return 
 // Manually ending an event. Calls the end_event_now RPC which atomically:
 //  - Flips status to ENDED.
 //  - Truncates ends_at to now() if the scheduled end was still in the future.
-//  - Closes every open checkin_record (auto_checked_out = true).
 // Admins see the result immediately — no waiting for the every-minute cron.
 export async function endEvent(eventId) {
   invalidateEventListCache()
@@ -1109,9 +1129,6 @@ export async function submitManualCheckIn({
   if (event && !pointInGeofence({ lat, lng }, event)) {
     return { ok: false, reason: 'admin_outside_fence' }
   }
-  const isLate = event
-    ? Date.now() > new Date(event.starts_at).getTime() + (event.grace_period_min || 0) * 60_000
-    : false
   const { data, error } = await supabase
     .from('checkin_records')
     .insert({
@@ -1127,7 +1144,6 @@ export async function submitManualCheckIn({
       device_fingerprint: fingerprint || `manual:${admin.id}`,
       manual_reason: reason || null,
       verified_by: `admin:${admin.id}`,
-      is_late: isLate,
     })
     .select().single()
   if (error) {
@@ -1135,15 +1151,6 @@ export async function submitManualCheckIn({
     return { ok: false, reason: 'db_error', error: error.message }
   }
   return { ok: true, record: data }
-}
-
-/** Heartbeat from a checked-in leader. Server decides whether to checkout. */
-export async function reportLocation(eventId, memberId, lat, lng) {
-  const { data, error } = await supabase.rpc('report_member_location', {
-    p_event_id: eventId, p_member_id: memberId, p_lat: lat, p_lng: lng,
-  })
-  if (error) throw error
-  return data
 }
 
 // ─── Dashboard reads ────────────────────────────────────────────────────────
@@ -1154,20 +1161,6 @@ export async function listCheckedIn(eventId): Promise<any[]> {
     .select(CHECKIN_RECORD_COLUMNS)
     .eq('event_id', eventId)
     .order('checked_in_at', { ascending: false })
-  if (error) throw error
-  return data || []
-}
-
-/** Defaulted = eligible members with NO record for this event. Caller passes
- *  the eligible set (typically from member_profiles filtered by event scope).
- *  One RPC round trip: the anti-join runs in Postgres (migration 023) instead
- *  of fetching every record row and diffing in JS. */
-export async function listDefaulted(eventId, eligibleMemberIds) {
-  if (!eligibleMemberIds?.length) return []
-  const { data, error } = await supabase.rpc('get_defaulted_profiles', {
-    p_event_id: eventId,
-    p_member_ids: eligibleMemberIds,
-  })
   if (error) throw error
   return data || []
 }
@@ -1187,14 +1180,12 @@ export async function getMyRecord(eventId, memberId) {
 // ─── Attendance Stats ─────────────────────────────────────────────────────────
 
 /** Returns aggregate attendance statistics for a member across all events they
- *  were in scope for.  Pass the graph member ID (same value stored in
+ *  were in scope for. Present = checked in, Absent = not checked in — nothing
+ *  else. Pass the graph member ID (same value stored in
  *  event_scope_members.member_id and member_profiles.id). */
 export async function getAttendanceStats(graphMemberId: string): Promise<{
-  scopedCount: number
-  attendedCount: number
-  lateCount: number
-  onTimeCount: number
-  pct: number | null
+  presentCount: number
+  absentCount: number
   lastCheckIn: string | null
 } | null> {
   if (!graphMemberId) return null
@@ -1207,16 +1198,12 @@ export async function getAttendanceStats(graphMemberId: string): Promise<{
   const row = Array.isArray(data) ? data[0] : data
   if (!row) return null
 
-  const scopedCount   = row.scoped_count ?? 0
-  const attendedCount = row.attended_count ?? 0
-  const lateCount     = row.late_count ?? 0
+  const scopedCount  = row.scoped_count ?? 0
+  const presentCount = row.attended_count ?? 0
 
   return {
-    scopedCount,
-    attendedCount,
-    lateCount,
-    onTimeCount: attendedCount - lateCount,
-    pct: scopedCount > 0 ? Math.round((attendedCount / scopedCount) * 100) : null,
+    presentCount,
+    absentCount: Math.max(0, scopedCount - presentCount),
     lastCheckIn: row.last_check_in || null,
   }
 }
@@ -1306,6 +1293,47 @@ export async function getRiskyCheckIns(eventId: string): Promise<Set<string>> {
   })
   if (error) throw error
   return new Set<string>((data as string[] | null) || [])
+}
+
+/** Only two attendance metrics exist app-wide: checked in and absent. */
+export interface DashboardStats {
+  attended: number
+  absent: number
+  viewer_checked_in: boolean
+  updated_at: string
+}
+
+export async function getEventDashboardStats(input: {
+  eventId: string
+  memberIds?: string[] | null
+  totalExpected?: number | null
+  notStarted?: boolean
+  viewerMemberIds?: string[]
+}): Promise<DashboardStats> {
+  const { data, error } = await supabase.rpc('get_event_dashboard_stats', {
+    p_event_id: input.eventId,
+    p_member_ids: input.memberIds ?? null,
+    p_total_expected: input.totalExpected ?? null,
+    p_not_started: !!input.notStarted,
+    p_viewer_member_ids: input.viewerMemberIds ?? [],
+  })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    attended: row?.attended ?? 0,
+    absent: row?.absent ?? 0,
+    viewer_checked_in: !!row?.viewer_checked_in,
+    updated_at: row?.updated_at ?? new Date().toISOString(),
+  }
+}
+
+export async function getRiskyCheckInCount(eventId: string): Promise<number> {
+  if (!eventId) return 0
+  const { data, error } = await supabase.rpc('get_risky_checkin_count', {
+    p_event_id: eventId,
+  })
+  if (error) throw error
+  return Number(data ?? 0)
 }
 
 function toIso(v) {

@@ -7,6 +7,11 @@ import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { loginWithCredentials, logout } from '../utils/auth'
 import { resolveCurrentMember, isLeaderOrAdmin } from '../utils/membersApi'
+import { friendlyErrorMessage } from '../utils/network'
+
+function hasLeaderOrAdminRole(roles: string[] | undefined): boolean {
+  return (roles || []).some((role) => /^(leader|admin)(Bacenta|Governorship|Council|Stream|Campus|Oversight|Denomination)$/.test(role))
+}
 
 export default function LoginScreen() {
   const navigate = useNavigate()
@@ -33,16 +38,18 @@ export default function LoginScreen() {
             setError('This app is for leaders and admins only.')
             return
           }
-        } catch {
-          logout()
-          setError('We could not verify your leader/admin profile. Please try again.')
-          return
+        } catch (err) {
+          if (!hasLeaderOrAdminRole(user.roles)) {
+            logout()
+            setError(friendlyErrorMessage(err))
+            return
+          }
         }
       }
 
       navigate('/home')
     } catch (err: any) {
-      setError(err.message || 'Login failed. Check your credentials.')
+      setError(friendlyErrorMessage(err) || 'Login failed. Check your credentials.')
     } finally {
       setLoading(false)
     }

@@ -35,7 +35,9 @@ except crypto generation.
 | Remote check-in | Geofence in RPC |
 | Device sharing | `claim_device_for_event` + risky banner |
 | Clock skew | Postgres `now()` |
-| Walk-away | Location heartbeat + auto-checkout edge function |
+
+(Walk-away tracking was removed — attendance is binary Present/Absent, so
+there is no location heartbeat or auto-checkout.)
 
 Details: [README.md](../../README.md) anti-fraud table.
 

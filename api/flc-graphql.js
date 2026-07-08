@@ -30,6 +30,7 @@ function normaliseTarget(raw) {
 }
 
 const TARGET = normaliseTarget(process.env.VITE_MEMBER_GRAPHQL_URL || process.env.MEMBER_GRAPHQL_URL)
+const UPSTREAM_TIMEOUT_MS = 12_000
 
 if (!TARGET) {
   console.error('[flc-graphql] VITE_MEMBER_GRAPHQL_URL is not set or invalid — add a full URL to the Vercel project env vars')
@@ -53,6 +54,7 @@ export default async function handler(req, res) {
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
       },
       body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
     const data = await upstreamRes.json().catch(() => ({}))
     res.status(upstreamRes.status).json(data)

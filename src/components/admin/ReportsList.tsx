@@ -29,9 +29,8 @@ type ExportOptions = {
   includeAttendanceSnapshot: boolean
   includePresentList: boolean
   includeAbsenteeList: boolean
-  statusFilter: 'all' | 'checked_in' | 'checked_out' | 'absent'
+  statusFilter: 'all' | 'present' | 'absent'
   methodFilter: 'all' | 'QR' | 'PIN' | 'MANUAL'
-  lateFilter: 'all' | 'late_only' | 'on_time_only'
   geoFilter: 'all' | 'verified_only' | 'unverified_only'
   unitContains: string
 }
@@ -49,7 +48,6 @@ const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   includeAbsenteeList: true,
   statusFilter: 'all',
   methodFilter: 'all',
-  lateFilter: 'all',
   geoFilter: 'all',
   unitContains: '',
 }
@@ -65,22 +63,6 @@ const EXPORT_PRESETS: ExportPreset[] = [
       includeAbsenteeList: true,
       statusFilter: 'all',
       methodFilter: 'all',
-      lateFilter: 'all',
-      geoFilter: 'all',
-      unitContains: '',
-    },
-  },
-  {
-    id: 'latecomers_only',
-    label: 'Latecomers Only',
-    options: {
-      includeSummary: true,
-      includeAttendanceSnapshot: true,
-      includePresentList: true,
-      includeAbsenteeList: false,
-      statusFilter: 'all',
-      methodFilter: 'all',
-      lateFilter: 'late_only',
       geoFilter: 'all',
       unitContains: '',
     },
@@ -95,7 +77,6 @@ const EXPORT_PRESETS: ExportPreset[] = [
       includeAbsenteeList: true,
       statusFilter: 'absent',
       methodFilter: 'all',
-      lateFilter: 'all',
       geoFilter: 'all',
       unitContains: '',
     },
@@ -111,7 +92,6 @@ function optionsEqual(a: ExportOptions, b: ExportOptions) {
     && a.includeAbsenteeList === b.includeAbsenteeList
     && a.statusFilter === b.statusFilter
     && a.methodFilter === b.methodFilter
-    && a.lateFilter === b.lateFilter
     && a.geoFilter === b.geoFilter
     && normUnitA === normUnitB
 }
@@ -262,28 +242,22 @@ export default function ReportsList() {
         const r = recordByMember.get(m.id)
         const fullName = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
         const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || ''
-        const status = !r ? 'Absent' : r.checked_out_at ? 'Checked Out' : 'Checked In'
+        const status = r ? 'Present' : 'Absent'
         return {
           name: fullName,
           role: (m.roles || [])[0] || '',
           unit,
           status,
           checkedInAt: r?.checked_in_at ? format(new Date(r.checked_in_at), 'yyyy-MM-dd HH:mm:ss') : '',
-          checkedOutAt: r?.checked_out_at ? format(new Date(r.checked_out_at), 'yyyy-MM-dd HH:mm:ss') : '',
-          autoCheckedOut: r?.checked_out_at ? (r.auto_checked_out ? 'Yes' : 'No') : '',
           method: r?.method || '',
-          isLate: r ? (r.is_late ? 'Yes' : 'No') : '',
           geoVerified: r ? (r.geo_verified ? 'Yes' : 'No') : '',
         }
       })
 
       const filteredRows = memberRows.filter((r) => {
-        if (options.statusFilter === 'checked_in' && r.status !== 'Checked In') return false
-        if (options.statusFilter === 'checked_out' && r.status !== 'Checked Out') return false
+        if (options.statusFilter === 'present' && r.status !== 'Present') return false
         if (options.statusFilter === 'absent' && r.status !== 'Absent') return false
         if (options.methodFilter !== 'all' && r.method !== options.methodFilter) return false
-        if (options.lateFilter === 'late_only' && r.isLate !== 'Yes') return false
-        if (options.lateFilter === 'on_time_only' && (r.status === 'Absent' || r.isLate !== 'No')) return false
         if (options.geoFilter === 'verified_only' && r.geoVerified !== 'Yes') return false
         if (options.geoFilter === 'unverified_only' && (r.status === 'Absent' || r.geoVerified !== 'No')) return false
         if (options.unitContains.trim()) {
@@ -293,11 +267,8 @@ export default function ReportsList() {
         return true
       })
 
-      const attended = filteredRows.filter((r) => r.status !== 'Absent')
+      const attended = filteredRows.filter((r) => r.status === 'Present')
       const absentees = filteredRows.filter((r) => r.status === 'Absent')
-      const checkedOut = filteredRows.filter((r) => r.status === 'Checked Out').length
-      const currentlyIn = filteredRows.filter((r) => r.status === 'Checked In').length
-      const attendanceRate = filteredRows.length > 0 ? Math.round((attended.length / filteredRows.length) * 100) : 0
       const now = format(new Date(), 'yyyy-MM-dd HH:mm:ss')
 
       const csvRows: (string | number)[][] = []
@@ -314,7 +285,6 @@ export default function ReportsList() {
           ['Criteria', [
             `status=${options.statusFilter}`,
             `method=${options.methodFilter}`,
-            `late=${options.lateFilter}`,
             `geo=${options.geoFilter}`,
             `unit~${options.unitContains || 'any'}`,
           ].join('; ')],
@@ -325,20 +295,16 @@ export default function ReportsList() {
       if (options.includeAttendanceSnapshot) {
         csvRows.push(
           ['Attendance Snapshot'],
-          ['Population In Report', filteredRows.length],
-          ['Attended (any check-in)', attended.length],
-          ['Currently Present (checked in)', currentlyIn],
-          ['Checked Out', checkedOut],
+          ['Present', attended.length],
           ['Absent', absentees.length],
-          ['Attendance Rate', `${attendanceRate}%`],
           [],
         )
       }
 
       if (options.includePresentList) {
         csvRows.push(
-          ['Present / Attended List'],
-          ['#', 'Name', 'Role', 'Unit', 'Status', 'Checked In At', 'Checked Out At', 'Auto Checked Out', 'Method', 'Is Late', 'Geo Verified'],
+          ['Present List'],
+          ['#', 'Name', 'Role', 'Unit', 'Status', 'Checked In At', 'Method', 'Geo Verified'],
           ...attended.map((r, idx) => [
             idx + 1,
             r.name,
@@ -346,10 +312,7 @@ export default function ReportsList() {
             r.unit,
             r.status,
             r.checkedInAt,
-            r.checkedOutAt,
-            r.autoCheckedOut,
             r.method,
-            r.isLate,
             r.geoVerified,
           ]),
           [],
@@ -524,7 +487,7 @@ export default function ReportsList() {
                 checked={exportOptions.includePresentList}
                 onChange={(e) => patchExportOptions({ includePresentList: e.target.checked })}
               />
-              Present / attended list
+              Present list
             </label>
             <label className='check-row'>
               <input
@@ -544,8 +507,7 @@ export default function ReportsList() {
               onChange={(e) => patchExportOptions({ statusFilter: e.target.value as ExportOptions['statusFilter'] })}
             >
               <option value='all'>All</option>
-              <option value='checked_in'>Checked in</option>
-              <option value='checked_out'>Checked out</option>
+              <option value='present'>Present</option>
               <option value='absent'>Absent</option>
             </Select>
 
@@ -558,16 +520,6 @@ export default function ReportsList() {
               <option value='QR'>QR</option>
               <option value='PIN'>PIN</option>
               <option value='MANUAL'>Manual</option>
-            </Select>
-
-            <Label>Late</Label>
-            <Select
-              value={exportOptions.lateFilter}
-              onChange={(e) => patchExportOptions({ lateFilter: e.target.value as ExportOptions['lateFilter'] })}
-            >
-              <option value='all'>All</option>
-              <option value='late_only'>Late only</option>
-              <option value='on_time_only'>On-time only</option>
             </Select>
 
             <Label>Geo verification</Label>

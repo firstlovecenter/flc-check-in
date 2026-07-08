@@ -9,6 +9,8 @@
 //
 // Must not import ./supabase (that module imports this one).
 
+import { fetchWithTimeout } from './network'
+
 let _cached: { token: string; exp: number; flcToken: string } | null = null
 let _inflight: Promise<string | null> | null = null
 
@@ -41,7 +43,7 @@ async function exchange(flcToken: string): Promise<string | null> {
   try {
     const base = import.meta.env.VITE_SUPABASE_URL
     const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-    const res = await fetch(`${base}/functions/v1/flc-token-exchange`, {
+    const res = await fetchWithTimeout(`${base}/functions/v1/flc-token-exchange`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -49,7 +51,7 @@ async function exchange(flcToken: string): Promise<string | null> {
         Authorization: `Bearer ${anonKey}`,
       },
       body: JSON.stringify({ token: flcToken }),
-    })
+    }, { timeoutMs: 8_000 })
     if (!res.ok) return null
     const data = await res.json().catch(() => null)
     if (!data?.access_token) return null

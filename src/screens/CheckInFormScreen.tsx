@@ -14,7 +14,6 @@ import GeofenceGuard from '../components/checkin/GeofenceGuard'
 import QRScanner from '../components/checkin/QRScanner'
 import PinEntry from '../components/checkin/PinEntry'
 import RotatingPinDisplay from '../components/checkin/RotatingPinDisplay'
-import LocationHeartbeat from '../components/checkin/LocationHeartbeat'
 import LocationPreWarmer from '../components/LocationPreWarmer'
 import { getCurrentUser, formatName, logout } from '../utils/auth'
 import {
@@ -23,6 +22,7 @@ import {
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
 import { vibrateSuccess } from '../utils/haptics'
+import { friendlyErrorMessage } from '../utils/network'
 
 // Submission failures that are about the DEVICE or ACCOUNT, not the attempt —
 // these get the hard error screen (with Logout) instead of an inline retry.
@@ -75,17 +75,11 @@ export default function CheckInFormScreen() {
         const tabs = evt.allowed_check_in_methods.filter((m) => m !== 'MANUAL')
         setActiveTab(tabs[0] || null)
       } catch (err: any) {
-        if (!cancelled) setHardError(err.message)
+        if (!cancelled) setHardError(friendlyErrorMessage(err))
       }
     })()
     return () => { cancelled = true }
   }, [eventId, user.userId])
-
-  const handleHeartbeatCheckedOut = useCallback(async () => {
-    const updated = await getMyRecord(eventId, user.userId)
-    setExistingRecord(updated)
-  }, [eventId, user.userId])
-
 
   const submit = useCallback(async (method: 'QR' | 'PIN', payload: { qrToken?: string; pin?: string }, position) => {
     if (submitting) return
@@ -114,7 +108,7 @@ export default function CheckInFormScreen() {
       }
     } catch (err: any) {
       setConfirming(false)
-      setSubmitError(err?.message || 'Check-in failed. Check your connection and try again.')
+      setSubmitError(friendlyErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -188,47 +182,31 @@ export default function CheckInFormScreen() {
     )
   }
 
-  // ── Already checked in or checked out ────────────────────────────────────
+  // ── Already checked in ────────────────────────────────────────────────────
   // Use `success` (just submitted) or `existingRecord` (returning to the screen)
-  const activeRecord = success
-    ? { ...success, checked_out_at: null }  // just submitted, not yet checked out
-    : existingRecord
+  const activeRecord = success || existingRecord
 
   if (activeRecord) {
-    const checkedOut = !!activeRecord.checked_out_at
-
     return (
       <PageShell>
         <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
         <PageMainNarrow className='flex flex-col gap-4 py-8'>
           <Card>
             <CardContent className='p-6 text-center'>
-              {checkedOut ? (
-                <>
-                  <div className='mb-3 text-4xl'>👋</div>
-                  <h2 className='mb-1 text-xl font-bold tracking-tight text-foreground'>Checked Out</h2>
-                  <p className='text-sm text-muted-foreground'>{event.name}</p>
-                  <p className='mt-3 text-xs text-muted-foreground'>
-                    Checked in {fmt(activeRecord.checked_in_at)} · Checked out {fmt(activeRecord.checked_out_at)}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className='mb-3 text-4xl'>✅</div>
-                  <h2 className='mb-1 text-xl font-bold tracking-tight text-success'>You&apos;re checked in</h2>
-                  <p className='text-sm text-foreground'>{event.name}</p>
-                  <p className='mt-1 text-xs text-muted-foreground'>
-                    {event.scope_level} · {event.scope_church_name}
-                  </p>
-                  <div className='mt-4 flex flex-wrap justify-center gap-3'>
-                    <Badge variant='success'>{activeRecord.method || success?.method}</Badge>
-                    {(activeRecord.is_late ?? success?.is_late) && <Badge variant='warning'>Marked late</Badge>}
-                  </div>
-                  <p className='mt-3 text-xs text-muted-foreground'>
-                    Checked in at {fmt(activeRecord.checked_in_at)}
-                  </p>
-                </>
-              )}
+              <div className='mb-3 text-4xl'>✅</div>
+              <h2 className='mb-1 text-xl font-bold tracking-tight text-success'>You&apos;re checked in</h2>
+              <p className='text-sm text-foreground'>{event.name}</p>
+              <p className='mt-1 text-xs text-muted-foreground'>
+                {event.scope_level} · {event.scope_church_name}
+              </p>
+              <div className='mt-4 flex flex-wrap justify-center gap-3'>
+                <Badge variant='success'>{activeRecord.method || success?.method}</Badge>
+              </div>
+              <p className='mt-3 text-sm font-semibold text-foreground'>
+                {/* submit_checkin's response omits checked_in_at — a fresh
+                    submit just happened, so "now" is the accurate time. */}
+                Checked in at {fmt(activeRecord.checked_in_at ?? new Date().toISOString())}
+              </p>
             </CardContent>
           </Card>
 
@@ -237,14 +215,6 @@ export default function CheckInFormScreen() {
           <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
             Back to Home
           </Link>
-
-          {!checkedOut && (
-            <LocationHeartbeat
-              eventId={event.id}
-              memberId={user.userId}
-              onCheckedOut={handleHeartbeatCheckedOut}
-            />
-          )}
         </PageMainNarrow>
       </PageShell>
     )

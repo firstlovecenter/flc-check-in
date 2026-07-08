@@ -5,6 +5,8 @@
 // Always call the same-origin proxy — never the Lambda directly.
 // Dev  → Vite proxy rewrites /api/flc-auth → Lambda (vite.config.js).
 // Prod → Vercel serverless function at api/flc-auth/[...path].js forwards it.
+import { fetchWithTimeout } from './network'
+
 function leadChurchesUrl() {
   const base = typeof window !== 'undefined' ? window.location.origin : ''
   return `${base}/api/flc-auth/churches`
@@ -298,12 +300,11 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
     // forever — RequireAuth's background poll gates on this call settling to
     // release its in-flight guard, so an unbounded hang would silently
     // disable proactive refresh for the rest of the session.
-    const res = await fetch(`${authApiUrl()}/refresh`, {
+    const res = await fetchWithTimeout(`${authApiUrl()}/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
-      signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
-    })
+    }, { timeoutMs: REFRESH_TIMEOUT_MS })
     if (!res.ok) return null
     const data = await res.json().catch(() => null)
     if (!data?.tokens?.accessToken) return null
@@ -467,14 +468,14 @@ export async function fetchLeadChurchesByEmail(email, accessToken) {
   if (!email) throw new Error('Email is required to load church contexts')
   if (!accessToken) throw new Error('Access token is required to load church contexts')
 
-  const response = await fetch(leadChurchesUrl(), {
+  const response = await fetchWithTimeout(leadChurchesUrl(), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ email }),
-  })
+  }, { timeoutMs: 10_000, retries: 1, retryUnsafe: true })
 
   const json = await response.json().catch(() => ({}))
   if (!response.ok) {
@@ -536,12 +537,12 @@ export async function loginWithCredentials(email, password) {
   const saCheckPromise = checkSuperAdminTable(email.toLowerCase().trim()).catch(() => null)
   const svCheckPromise = checkSuperViewerTable(email.toLowerCase().trim()).catch(() => null)
 
-  const res = await fetch(`${authApiUrl()}/login`, {
+  const res = await fetchWithTimeout(`${authApiUrl()}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json();
+  }, { timeoutMs: 12_000 });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || 'Login failed');
 
   localStorage.setItem('accessToken',  data.tokens.accessToken);
@@ -606,22 +607,22 @@ export function logout() {
 }
 
 export async function requestPasswordReset(email: string) {
-  const res = await fetch(`${authApiUrl()}/forgot-password`, {
+  const res = await fetchWithTimeout(`${authApiUrl()}/forgot-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
-  })
+  }, { timeoutMs: 12_000 })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || data.message || 'Request failed')
   return data
 }
 
 export async function confirmPasswordReset(token: string, newPassword: string) {
-  const res = await fetch(`${authApiUrl()}/reset-password`, {
+  const res = await fetchWithTimeout(`${authApiUrl()}/reset-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
-  })
+  }, { timeoutMs: 12_000 })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || data.message || 'Reset failed')
   return data

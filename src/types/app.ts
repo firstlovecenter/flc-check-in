@@ -141,6 +141,7 @@ export interface CheckinEventRow {
   is_public: boolean
 }
 
+// Attendance is binary: a record exists (Present) or it doesn't (Absent).
 export interface CheckinRecordRow {
   id: string
   event_id: string
@@ -149,9 +150,6 @@ export interface CheckinRecordRow {
   member_role: string | null
   member_unit_name: string | null
   checked_in_at: string
-  checked_out_at: string | null
-  auto_checked_out: boolean
-  is_late: boolean
   method: CheckInMethod
   geo_verified: boolean
   check_in_lat: number | null

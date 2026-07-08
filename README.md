@@ -43,8 +43,8 @@ immutable audit log.
 | Auth | FLC Lambda (JWT), proxied via Vite dev server / Vercel serverless |
 | Member directory | FLC GraphQL — `graphql-request`, same-origin proxy |
 | Database | Supabase Postgres — RLS on; atomicity via security-definer RPCs |
-| Realtime | Supabase Realtime (`postgres_changes` on `checkin_records`) |
-| Auto-checkout | Supabase Edge Function on a 1-minute cron schedule |
+| Live counters | `get_event_dashboard_stats` RPC polled by the dashboard (8–60 s tiers) |
+| Event expiry | Supabase Edge Function on a 1-minute cron schedule ends expired events |
 | Map | Leaflet + OpenStreetMap (no API key required) |
 | QR | `qrcode` (display) + `@zxing/browser` (scan) |
 | PIN | HOTP-style 6-digit OTP — HMAC-SHA256 over 15-second buckets |
@@ -109,11 +109,8 @@ Leader opens the app on their phone at the venue
      (see below)  (see below) (see below)
            │
            ▼  on success
-     "Checked in ✓" screen
-     Location heartbeat starts (60s GPS ping)
-           │
-           ▼  walks away / event ends
-     Auto-checkout by server
+     "Checked in ✓" screen — the member is Present
+     (attendance is binary: record = Present, no record = Absent)
 ```
 
 ### QR scan
@@ -156,9 +153,9 @@ Admins access a richer set of screens:
 | Screen | What it does |
 |---|---|
 | **Create Event** | Multi-section form: name, scope, time window, allowed methods, geofence (circle or polygon on a Leaflet map), grace period |
-| **Event Dashboard** | Live occupancy counter (Supabase Realtime), QR display, admin controls, risk warning banner if any device is shared across multiple members |
+| **Event Dashboard** | Live Present / Absent counters (polled Postgres RPC), QR display, admin controls, risk warning banner if any device is shared across multiple members |
 | **Admin Controls** | Pause, Resume, Extend (add minutes), Reset PIN, End event — all actions logged in the audit trail |
-| **Full Report** | Three tabs — Checked In, Defaulted (absent), Checked Out. Defaulted tab supports recording an absence reason. Risky check-ins (device shared across members) show a ⚠ badge. |
+| **Full Report** | Present, Absent, and Timeline tabs. Absent tab supports recording an absence reason. Risky check-ins (device shared across members) show a ⚠ badge. |
 | **Scope Breakdown** | Attendance counts broken down by Bacenta / Governorship / Council |
 | **CSV Reports** | Download full event data as a CSV |
 | **Event History** | Every event you administered or attended, with check-in status |
@@ -178,8 +175,7 @@ Admins access a richer set of screens:
 | Replayed face claim | Claim TTL 60 s; consumed on first use |
 | Device sharing | `claim_device_for_event` atomically reserves a fingerprint per member; duplicate → `device_already_used`; dashboard shows a warning banner if any fingerprint appears for more than one member |
 | Clock manipulation | Server (`now()` in Postgres) is the sole time authority |
-| Walking away after check-in | 60-second location heartbeat; leaving the geofence triggers auto-checkout |
-| Indefinite events | Admin can end early; cron auto-closes everyone still checked in when `ends_at` passes |
+| Indefinite events | Admin can end early; cron flips events to ENDED when `ends_at` passes |
 
 ---
 
@@ -191,7 +187,7 @@ All tables live in the `public` schema with RLS enabled.
 |---|---|
 | `member_profiles` | Cached FLC member info + `face_descriptor` (128 floats as JSON) |
 | `checkin_events` | One row per event — scope, time window, geofence, `qr_secret`, status |
-| `checkin_records` | One row per successful check-in — method, GPS, device, `is_late` |
+| `checkin_records` | One row per successful check-in — a row means Present; method, GPS, device |
 | `event_scope_members` | Expected attendees for an event (denormalised from FLC graph at creation) |
 | `checkin_attempts` | Every PIN attempt (for rate-limiting) — written only via `record_pin_attempt` RPC |
 | `checkin_devices` | Fingerprint reservations per event — written only via `claim_device_for_event` RPC |
@@ -212,8 +208,8 @@ directly write to the rate-limit or device tables.
 | `record_pin_attempt` | Validates HOTP and enforces rate-limit atomically |
 | `claim_face_match` | Inserts a short-lived face claim row |
 | `claim_device_for_event` | Reserves a fingerprint for one member per event |
-| `report_member_location` | Heartbeat — updates location and auto-checks out if outside fence |
-| `auto_checkout_expired_events` | Called by cron; closes all active events past `ends_at` |
+| `get_event_dashboard_stats` | Present / Absent counters for the dashboard (polled) |
+| `auto_checkout_expired_events` | Called by cron; ends active events past `ends_at` (legacy name) |
 | `reset_event_pin` | Admin resets the OTP secret for an event |
 
 ---
@@ -300,7 +296,7 @@ src/
       CreateEventScreen.tsx
       EventDashboardScreen.tsx
       EventEditScreen.tsx
-      FullReportScreen.tsx     Tabbed: Checked-In | Defaulted | Checked-Out
+      FullReportScreen.tsx     Tabbed: Present | Absent | Timeline
       ScopeBreakdownScreen.tsx
       ReportsScreen.tsx        CSV export
       EventHistoryScreen.tsx
@@ -322,7 +318,6 @@ src/
       PinEntry.tsx             6-digit input with rate-limit feedback
       FaceCapture.tsx          face-api.js camera — enrol or verify
       FaceEnrollSweep.tsx      5-frame enrolment with quality badge (good/fair/poor)
-      LocationHeartbeat.tsx    60-second GPS heartbeat while checked in
 
     admin/
       RequireAdmin.tsx         Route guard for admin-only screens
@@ -426,18 +421,16 @@ the same location.
    presses **Reset PIN** → new OTP works immediately.
 6. **Pause / Resume** — Admin pauses event; leader attempt is blocked with
    "event paused". Admin resumes; check-in succeeds.
-7. **Manual check-in** — Admin → Full Report → Defaulted tab → tap a member →
+7. **Manual check-in** — Admin → Full Report → Absent tab → tap a member →
    Manual Check-In → enter reason → confirm.
-8. **Location heartbeat** — After check-in, move 200 m outside the geofence.
-   Within ~60 s the heartbeat triggers an auto-checkout.
-9. **Auto-close** — Wait past `ends_at` (or press **End**). The cron job closes
-   all still-checked-in records automatically.
-10. **Absence reason** — Admin → Full Report → Defaulted tab → tap a defaulted
-    member → enter absence reason → save. Reason persists in `absence_notes`.
-11. **Audit log** — Admin → Event Dashboard → "Audit Log" link. Verify that
+8. **Auto-end** — Wait past `ends_at` (or press **End**). The cron job flips
+   the event to ENDED automatically.
+9. **Absence reason** — Admin → Full Report → Absent tab → tap an absent
+   member → enter absence reason → save. Reason persists in `absence_notes`.
+10. **Audit log** — Admin → Event Dashboard → "Audit Log" link. Verify that
     Pause, Resume, Manual Check-In, PIN Reset, and End actions all appear with
     timestamps and actor names.
-12. **Reports** — Admin → `/admin/reports` → download CSV. Open in a
+11. **Reports** — Admin → `/admin/reports` → download CSV. Open in a
     spreadsheet and verify all check-in records are present.
 
 ---

@@ -181,28 +181,11 @@ export default function ProfileScreen() {
                 <CardContent className='flex flex-col gap-4 p-5'>
                   <Section title='Attendance Stats'>
                     <div className='metric-grid grid-cols-2'>
+                      <StatBox label='Present' value={String(stats.presentCount)} tone='success' />
                       <StatBox
-                        label='Events Attended'
-                        value={`${stats.attendedCount} / ${stats.scopedCount}`}
-                      />
-                      <StatBox
-                        label='Attendance Rate'
-                        value={stats.pct != null ? `${stats.pct}%` : '—'}
-                        tone={
-                          stats.pct == null
-                            ? undefined
-                            : stats.pct >= 80
-                              ? 'success'
-                              : stats.pct >= 50
-                                ? 'warning'
-                                : 'destructive'
-                        }
-                      />
-                      <StatBox label='On Time' value={String(stats.onTimeCount)} tone='success' />
-                      <StatBox
-                        label='Late'
-                        value={String(stats.lateCount)}
-                        tone={stats.lateCount > 0 ? 'warning' : undefined}
+                        label='Absent'
+                        value={String(stats.absentCount)}
+                        tone={stats.absentCount > 0 ? 'destructive' : undefined}
                       />
                     </div>
                     {stats.lastCheckIn && (

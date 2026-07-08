@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Skeleton } from '../ui/skeleton'
 import { formatDistanceToNowStrict } from 'date-fns'
@@ -10,8 +10,11 @@ import { countChildScopes, childScopeLabel, allowedRolesForScope } from '../../u
 import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
-import { supabase } from '../../utils/supabase'
-import { listCheckedIn, getRiskyCheckIns } from '../../utils/supabaseCheckins'
+import {
+  getEventDashboardStats,
+  getRiskyCheckInCount,
+  type DashboardStats,
+} from '../../utils/supabaseCheckins'
 import AddMemberModal from './AddMemberModal'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
@@ -21,8 +24,18 @@ import { Badge } from '../ui/badge'
 import { Alert } from '../ui/alert'
 import { cn } from '../../lib/utils'
 
-// Records arrive via Realtime; poll only needs to refresh event status.
+// Event status is checked separately from dashboard summary stats.
 const POLL_MS = 60_000
+const CREATOR_DASHBOARD_POLL_MS = 8_000
+const ADMIN_DASHBOARD_POLL_MS = 15_000
+const MONITOR_DASHBOARD_POLL_MS = 30_000
+const BACKGROUND_DASHBOARD_POLL_MS = 60_000
+
+function uniqueIds(ids: Array<string | null | undefined>): string[] {
+  return ids.filter((id, idx, arr): id is string =>
+    typeof id === 'string' && id.length > 0 && arr.indexOf(id) === idx,
+  )
+}
 
 export default function EventDashboard({ eventId }) {
   const navigate = useNavigate()
@@ -40,36 +53,26 @@ export default function EventDashboard({ eventId }) {
   const [refreshKey, setRefreshKey] = useState(0)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
-  // Core eligibility data + poll for event status.
-  // Records are refreshed instantly via Supabase Realtime (see effect below).
+  // Core eligibility data + cheap poll for event status.
+  // Dashboard counters use aggregate RPC polling below, not full record loads.
   // The expensive graph pipeline is SWR-cached; navigation back here is instant.
   const {
     event, eligible, viewerCaps, viewerSlice,
-    childCount, scopeMemberCount, records, error, initialLoading, setRecords,
-  } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey })
+    childCount, scopeMemberCount, error, initialLoading,
+  } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey, loadRecords: false })
 
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date>(new Date())
-  useEffect(() => { setLastUpdatedAt(new Date()) }, [records])
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [dashboardStatsError, setDashboardStatsError] = useState<string | null>(null)
 
-  // Supabase Realtime: push check-in record changes to the UI without waiting
-  // for the poll tick. Falls back to the 60 s poll if Realtime is unavailable.
+  // Slow the stats poll right down while the tab is hidden.
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  )
   useEffect(() => {
-    if (!eventId) return
-    const channel = supabase
-      .channel(`dashboard:${eventId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'checkin_records', filter: `event_id=eq.${eventId}` },
-        async () => {
-          try {
-            const recs = await listCheckedIn(eventId)
-            setRecords(recs)
-          } catch { /* swallow; poll covers it */ }
-        },
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [eventId]) // eslint-disable-line react-hooks/exhaustive-deps
+    const onVisibility = () => setPageVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
 
   // If the viewer is at the LOWEST level allowed for this event, there are no
   // sub-scopes for them to oversee — send them straight to check-in instead of
@@ -103,14 +106,14 @@ export default function EventDashboard({ eventId }) {
   const [showAddMember, setShowAddMember] = useState(false)
   const isSuperAdmin = !!user?.isSuperAdmin
 
-  // Refresh risk count whenever records change (admin only).
+  // Refresh risk count alongside dashboard stats (admin only).
   useEffect(() => {
-    if (!eventId || !viewerCaps?.canManage || records.length === 0) return
-    getRiskyCheckIns(eventId)
-      .then((s) => setRiskyCount(s.size))
+    if (!eventId || !viewerCaps?.canManage) return
+    getRiskyCheckInCount(eventId)
+      .then(setRiskyCount)
       .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, records.length, viewerCaps?.canManage])
+  }, [eventId, dashboardStats?.updated_at, viewerCaps?.canManage])
 
   useEffect(() => {
     if (!scopeLevel || !scopeChurchId) return
@@ -161,63 +164,85 @@ export default function EventDashboard({ eventId }) {
     [scopedMembers, canViewWholeEvent, eligible, viewerSlice],
   )
 
-  // Stats model:
-  //   • attended  = anyone who has a record (cumulative — includes those who later left)
-  //   • stillIn   = checked in AND not yet checked out (currently present)
-  //   • left      = checked out (the "outgoing" tally for the event)
-  //   • absent    = expected but no record (never showed)
-  //   • total     = "Total Expected" — see denominator note below
-  // Invariants:
-  //   stillIn + left   === attended
-  //   attended + absent === total
-  const stats = useMemo(() => {
-    const sliceIds = new Set(displaySlice.map((m) => m.id))
-    const sliceRecords = records.filter((r) => sliceIds.has(r.member_id))
-    const leftCount = sliceRecords.filter((r) => r.checked_out_at != null).length
-    const attendedIds = new Set(sliceRecords.map((r) => r.member_id))
-    const stillIn = sliceRecords.length - leftCount
-    const attended = attendedIds.size
-
-    // "Total Expected" is anchored to the event-scope snapshot size, which is
-    // written once at creation, so it stays stable on refresh/revisit. The
-    // slice-derived count drifts upward because it only counts members who have
-    // a member_profiles row yet (created lazily as people log in).
-    //
-    // The snapshot holds every in-scope leader/admin, NOT role-filtered. So it
-    // is only a valid denominator when the event hasn't narrowed allowed_roles
-    // — otherwise the snapshot is a superset of the role-eligible population and
-    // would inflate "absent". When roles are restricted (or we're viewing a
-    // child-scope subset, which the whole-event snapshot can't be filtered to,
-    // or no snapshot exists) fall back to the role-filtered slice size.
-    const rolesUnrestricted = !!event &&
+  // Only two attendance metrics exist: Present and Absent. Postgres does
+  // the counting (get_event_dashboard_stats); the client just decides the scope:
+  //   • memberIds      — restrict counting to the viewer's slice (role-filtered
+  //                      or child-scope drill-down). null = whole event.
+  //   • totalExpected  — "expected" denominator for the absent count. Anchored
+  //                      to the event-scope snapshot size (stable, written once
+  //                      at creation) but ONLY when the whole event is visible
+  //                      and allowed_roles is unrestricted — otherwise the
+  //                      snapshot is a superset of the role-eligible population
+  //                      and would inflate "absent". null = memberIds length.
+  //   • notStarted     — no one can be absent before check-in opens. Evaluated
+  //                      per fetch (below), not here: this memo's deps are all
+  //                      stable after load, so a value captured here would
+  //                      freeze at mount and pin Absent at 0 for viewers who
+  //                      opened the dashboard before the event started.
+  // Deps are primitive event fields, not the event object — the 60s status
+  // poll replaces the object identity every tick and would otherwise reset
+  // the stats interval each time.
+  const allowedRolesKey = (event?.allowed_roles || []).join('|')
+  const statsInputs = useMemo(() => {
+    if (!event || !viewerCaps) return null
+    const rolesUnrestricted =
       allowedRolesForScope(event.scope_level).every((r) => (event.allowed_roles || []).includes(r))
-    // canManage is only ever true for an exact-event-scope admin / superAdmin,
-    // so it always implies displaySlice === the full event slice.
-    const fullEventView = !scopedMembers && (viewerCaps?.canManage || viewerCaps?.canViewFullEvent || !!user?.isSuperViewer)
-    const total = fullEventView && rolesUnrestricted && scopeMemberCount != null && scopeMemberCount > 0
-      ? scopeMemberCount
-      : sliceIds.size
-
-    // No one can be absent before the event is live — check-in window hasn't opened yet.
-    const notStarted = !!event?.starts_at && new Date(event.starts_at) > new Date()
-    const absent = notStarted ? 0 : Math.max(0, total - attended)
-    const pct = total > 0 ? Math.round((attended / total) * 100) : 0
-    return {
-      total,
-      attended,
-      stillIn,
-      left: leftCount,
-      absent,
-      pct,
+    // Same predicate that picked displaySlice — the RPC must count exactly
+    // the population the UI links to.
+    const fullEventView = !scopedMembers && canViewWholeEvent
+    const startsAt = event.starts_at ?? null
+    if (fullEventView && rolesUnrestricted && scopeMemberCount != null && scopeMemberCount > 0) {
+      return { memberIds: null as string[] | null, totalExpected: scopeMemberCount, startsAt }
     }
-  }, [records, displaySlice, scopedMembers, scopeMemberCount, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, user?.isSuperViewer, event?.starts_at, event?.scope_level, event?.allowed_roles])
+    return { memberIds: uniqueIds(displaySlice.map((m) => m.id)), totalExpected: null, startsAt }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, event?.scope_level, event?.starts_at, allowedRolesKey, viewerCaps, canViewWholeEvent, scopedMembers, scopeMemberCount, displaySlice])
 
-  // A member who has checked in — even if they later checked out — is still
-  // considered "checked in" for button / banner purposes.
-  const isCheckedIn = useMemo(() => {
-    if (!viewerCaps?.canCheckIn) return false
-    return records.some((r) => r.member_id === user.userId)
-  }, [records, viewerCaps?.canCheckIn, user.userId])
+  const fetchDashboardStats = useCallback(async () => {
+    if (!eventId || !statsInputs) return
+    const notStarted = !!statsInputs.startsAt && new Date(statsInputs.startsAt) > new Date()
+    // Empty slice — nobody to count. Don't call the RPC: an empty memberIds
+    // array means "no filter" in Postgres and would count the whole event.
+    if (statsInputs.memberIds && statsInputs.memberIds.length === 0) {
+      setDashboardStats({ attended: 0, absent: 0, viewer_checked_in: false, updated_at: new Date().toISOString() })
+      setDashboardStatsError(null)
+      return
+    }
+    try {
+      const stats = await getEventDashboardStats({
+        eventId,
+        memberIds: statsInputs.memberIds,
+        totalExpected: statsInputs.totalExpected,
+        notStarted,
+        viewerMemberIds: uniqueIds([user?.userId, user?.graphMemberId]),
+      })
+      setDashboardStats(stats)
+      setDashboardStatsError(null)
+    } catch {
+      // Keep showing the last good numbers; surface a quiet notice.
+      setDashboardStatsError('Live stats are temporarily unavailable.')
+    }
+  }, [eventId, statsInputs, user?.userId, user?.graphMemberId])
+
+  // Aggregate poll — the event creator watches closest, admins next, everyone
+  // else at monitor cadence; hidden tabs drop to the background rate.
+  const isCreator = !!user?.userId && event?.created_by_id === user.userId
+  const statsPollMs = !pageVisible
+    ? BACKGROUND_DASHBOARD_POLL_MS
+    : isCreator
+    ? CREATOR_DASHBOARD_POLL_MS
+    : viewerCaps?.canManage
+    ? ADMIN_DASHBOARD_POLL_MS
+    : MONITOR_DASHBOARD_POLL_MS
+
+  useEffect(() => {
+    fetchDashboardStats()
+    const id = setInterval(fetchDashboardStats, statsPollMs)
+    return () => clearInterval(id)
+  }, [fetchDashboardStats, statsPollMs, refreshKey])
+
+  // Present = has a check-in record for this event.
+  const isCheckedIn = !!viewerCaps?.canCheckIn && !!dashboardStats?.viewer_checked_in
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
   // Progressive shell instead of a blocking full-page spinner: the layout
@@ -347,7 +372,14 @@ export default function EventDashboard({ eventId }) {
           <div className='mb-2 flex items-center justify-between'>
             <p className='section-heading m-0 text-xs uppercase tracking-widest'>Live Check-Ins</p>
             <span className='text-[11px] text-muted-foreground'>
-              Updated {formatDistanceToNowStrict(lastUpdatedAt, { addSuffix: true })}
+              {dashboardStats
+                // Clamp the server timestamp to the past so client clock skew
+                // can never render "in 5 seconds".
+                ? `Updated ${formatDistanceToNowStrict(
+                    new Date(Math.min(Date.now(), new Date(dashboardStats.updated_at).getTime())),
+                    { addSuffix: true },
+                  )}`
+                : 'Updating…'}
             </span>
           </div>
           <div className='mb-3 flex items-center gap-1.5'>
@@ -355,40 +387,26 @@ export default function EventDashboard({ eventId }) {
               <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60' />
               <span className='relative inline-flex h-2 w-2 rounded-full bg-success' />
             </span>
-            <span className='text-[11px] font-semibold uppercase tracking-wider text-success'>Realtime</span>
+            <span className='text-[11px] font-semibold uppercase tracking-wider text-success'>Live</span>
           </div>
-          <div className='flex flex-col gap-3'>
-            <div className='overflow-hidden rounded-2xl border border-border bg-card'>
-              <LiveRow
-                icon='pct'
-                label='Attendance'
-                count={`${stats.pct}%`}
-                valueClass={stats.pct >= 80 ? 'text-success' : stats.pct >= 50 ? 'text-warning' : 'text-destructive'}
-              />
-            </div>
-            <div className='overflow-hidden rounded-2xl border border-border bg-card'>
-              <LiveRow
-                icon='present'
-                label='Leaders Checked In'
-                count={stats.attended}
-                to={`/events/${event.id}/members?status=present${scopeFilter ? `&${scopeFilter}` : ''}`}
-              />
-              <div className='h-px bg-border' />
-              <LiveRow
-                icon='absent'
-                label='Leaders Absent'
-                count={stats.absent}
-                to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
-              />
-              <div className='h-px bg-border' />
-              <LiveRow
-                icon='primary'
-                label='Total Expected'
-                count={stats.total}
-                to={`/events/${event.id}/members?status=all${scopeFilter ? `&${scopeFilter}` : ''}`}
-              />
-            </div>
+          <div className='overflow-hidden rounded-2xl border border-border bg-card'>
+            <LiveRow
+              icon='present'
+              label='Present'
+              count={dashboardStats?.attended ?? '—'}
+              to={`/events/${event.id}/members?status=present${scopeFilter ? `&${scopeFilter}` : ''}`}
+            />
+            <div className='h-px bg-border' />
+            <LiveRow
+              icon='absent'
+              label='Absent'
+              count={dashboardStats?.absent ?? '—'}
+              to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
+            />
           </div>
+          {dashboardStatsError && (
+            <p className='m-0 mt-2 text-[11px] text-muted-foreground'>{dashboardStatsError}</p>
+          )}
           {viewerCaps.canManage && riskyCount > 0 && (
             <Link to={`/events/${event.id}/members?status=present`} className='mt-3 block no-underline'>
               <Alert variant='destructive' className='flex items-center gap-2'>
@@ -447,17 +465,14 @@ function DashboardSkeleton() {
         </div>
         <div>
           <Skeleton className='mb-3 h-3 w-28' />
-          <div className='flex flex-col gap-3'>
-            <Skeleton className='h-[60px] rounded-2xl' />
-            <Skeleton className='h-[182px] rounded-2xl' />
-          </div>
+          <Skeleton className='h-[121px] rounded-2xl' />
         </div>
       </PageMain>
     </PageShell>
   )
 }
 
-type LiveTone = 'present' | 'absent' | 'primary' | 'pct'
+type LiveTone = 'present' | 'absent'
 
 const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
   present: (
@@ -472,43 +487,23 @@ const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
       <line x1='12' y1='17' x2='12.01' y2='17' />
     </svg>
   ),
-  primary: (
-    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
-      <path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' />
-      <circle cx='9' cy='7' r='4' />
-      <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
-      <path d='M16 3.13a4 4 0 0 1 0 7.75' />
-    </svg>
-  ),
-  pct: (
-    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
-      <line x1='19' y1='5' x2='5' y2='19' />
-      <circle cx='6.5' cy='6.5' r='2.5' />
-      <circle cx='17.5' cy='17.5' r='2.5' />
-    </svg>
-  ),
 }
 
 const LIVE_ICON_BG: Record<LiveTone, string> = {
   present: 'bg-success/15 text-success',
   absent:  'bg-destructive/15 text-destructive',
-  primary: 'bg-primary/15 text-primary',
-  pct:     'bg-muted/60 text-muted-foreground',
 }
 
 const LIVE_VALUE_COLOR: Record<LiveTone, string> = {
   present: 'text-success',
   absent:  'text-destructive',
-  primary: 'text-foreground',
-  pct:     'text-foreground',
 }
 
-function LiveRow({ icon, label, count, to, valueClass }: {
+function LiveRow({ icon, label, count, to }: {
   icon: LiveTone
   label: string
   count: number | string
   to?: string
-  valueClass?: string
 }) {
   const body = (
     <div className='flex items-center gap-3 px-4 py-3.5 transition-colors active:bg-muted/50'>
@@ -516,7 +511,7 @@ function LiveRow({ icon, label, count, to, valueClass }: {
         {LIVE_ICONS[icon]}
       </div>
       <span className='flex-1 text-sm font-semibold text-foreground'>{label}</span>
-      <span className={cn('tnum text-xl font-bold', valueClass ?? LIVE_VALUE_COLOR[icon])}>{count}</span>
+      <span className={cn('tnum text-xl font-bold', LIVE_VALUE_COLOR[icon])}>{count}</span>
       {to && (
         <svg viewBox='0 0 24 24' width='16' height='16' className='shrink-0 text-muted-foreground/40' fill='none' stroke='currentColor' strokeWidth='2'>
           <path d='M9 6l6 6-6 6' strokeLinecap='round' strokeLinejoin='round' />

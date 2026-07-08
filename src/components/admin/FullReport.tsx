@@ -26,10 +26,11 @@ import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 
+// Only two attendance statuses exist: Present (has a record) and Absent.
+// Tab ids stay stable so old ?tab= URLs keep working.
 const TABS = [
-  { id: 'checked-in', label: 'Checked In' },
-  { id: 'defaulted', label: 'Defaulted' },
-  { id: 'checked-out', label: 'Checked Out' },
+  { id: 'checked-in', label: 'Present' },
+  { id: 'defaulted', label: 'Absent' },
   { id: 'timeline', label: 'Timeline' },
 ] as const
 
@@ -168,20 +169,17 @@ export default function FullReport({ eventId }: { eventId: string }) {
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
     const checkedIn: { member: any; record: any }[] = []
     const defaulted: { member: any; record: null }[] = []
-    const checkedOut: { member: any; record: any }[] = []
     for (const m of eligible) {
       const r = recordByMember.get(m.id)
-      if (!r) defaulted.push({ member: m, record: null })
-      else if (r.checked_out_at) checkedOut.push({ member: m, record: r })
-      else checkedIn.push({ member: m, record: r })
+      if (r) checkedIn.push({ member: m, record: r })
+      else defaulted.push({ member: m, record: null })
     }
-    return { checkedIn, defaulted, checkedOut }
+    return { checkedIn, defaulted }
   }, [eligible, records])
 
   const counts: Record<TabId, number> = {
     'checked-in': buckets.checkedIn.length,
     defaulted: buckets.defaulted.length,
-    'checked-out': buckets.checkedOut.length,
     timeline: records.length,
   }
 
@@ -201,16 +199,10 @@ export default function FullReport({ eventId }: { eventId: string }) {
       .sort((a, b) => new Date(a.record.checked_in_at).getTime() - new Date(b.record.checked_in_at).getTime())
   }, [records, eligible])
 
-  const total = eligible.length
-  const pct = total > 0 ? Math.round((counts['checked-in'] / total) * 100) : 0
-  const rateTone = pct >= 80 ? 'success' : pct >= 50 ? 'warning' : 'destructive'
-
   const tabRows =
     activeTab === 'timeline'
       ? []
-      : (buckets[
-          activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
-        ] ?? [])
+      : (buckets[activeTab === 'checked-in' ? 'checkedIn' : 'defaulted'] ?? [])
 
   // Deferred so keystrokes commit instantly; the list re-filters at lower
   // priority (React 19 concurrent rendering — no debounce timer needed).
@@ -243,11 +235,8 @@ export default function FullReport({ eventId }: { eventId: string }) {
 
   function exportCsv() {
     if (!event || activeTab === 'timeline') return
-    const rows = buckets[
-      activeTab === 'checked-in' ? 'checkedIn' : activeTab === 'defaulted' ? 'defaulted' : 'checkedOut'
-    ]
-    const statusLabel =
-      activeTab === 'checked-in' ? 'Checked In' : activeTab === 'defaulted' ? 'Defaulted' : 'Checked Out'
+    const rows = buckets[activeTab === 'checked-in' ? 'checkedIn' : 'defaulted']
+    const statusLabel = activeTab === 'checked-in' ? 'Present' : 'Absent'
     const csv = Papa.unparse(rows.map((b) => csvRow(b, statusLabel)))
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -277,7 +266,6 @@ export default function FullReport({ eventId }: { eventId: string }) {
         <PageMain className='flex flex-col gap-5'>
           <Skeleton className='h-4 w-3/4' />
           <Skeleton className='h-[88px] rounded-2xl' />
-          <Skeleton className='h-[72px] rounded-2xl' />
           <Skeleton className='h-11 rounded-xl' />
           <SkeletonRows count={5} />
         </PageMain>
@@ -338,40 +326,9 @@ export default function FullReport({ eventId }: { eventId: string }) {
         )}
 
         <Card>
-          <CardContent className='metric-grid gap-2 p-4 text-center'>
-            <MetricStat value={total} label='Expected' />
-            <MetricStat value={counts['checked-in']} label='Checked In' tone='success' />
-            <MetricStat value={counts['checked-out']} label='Checked Out' tone='muted' />
-            <MetricStat value={counts.defaulted} label='Defaulted' tone='destructive' />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className='p-4'>
-            <div className='mb-2 flex items-center justify-between text-xs'>
-              <span className='text-muted-foreground'>Attendance</span>
-              <span
-                className={cn(
-                  'tnum font-semibold',
-                  rateTone === 'success' && 'text-success',
-                  rateTone === 'warning' && 'text-warning',
-                  rateTone === 'destructive' && 'text-destructive',
-                )}
-              >
-                {pct}%
-              </span>
-            </div>
-            <div className='h-2 overflow-hidden rounded-full bg-secondary'>
-              <div
-                className={cn(
-                  'h-full rounded-full transition-[width] duration-300 ease-out',
-                  rateTone === 'success' && 'bg-success',
-                  rateTone === 'warning' && 'bg-warning',
-                  rateTone === 'destructive' && 'bg-destructive',
-                )}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+          <CardContent className='metric-grid grid-cols-2 gap-2 p-4 text-center'>
+            <MetricStat value={counts['checked-in']} label='Present' tone='success' />
+            <MetricStat value={counts.defaulted} label='Absent' tone='destructive' />
           </CardContent>
         </Card>
 
@@ -582,10 +539,9 @@ const ListRow = memo(function ListRow({
         {/* Check-in time + method (non-defaulted) */}
         {tab !== 'defaulted' && record && (
           <div className='shrink-0 text-right'>
-            <p className='m-0 text-xs font-semibold text-foreground'>{format(new Date(record.checked_in_at), 'HH:mm')}</p>
+            <p className='m-0 text-sm font-bold text-foreground'>{format(new Date(record.checked_in_at), 'HH:mm')}</p>
             <div className='mt-0.5 flex justify-end gap-1'>
               <MethodTag>{record.method}</MethodTag>
-              {record.is_late && <Badge variant='warning'>Late</Badge>}
             </div>
           </div>
         )}
@@ -656,15 +612,11 @@ function TimelineEntry({
   const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
   const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
   const checkInTime = format(new Date(r.checked_in_at), 'HH:mm')
-  const checkOutTime = r.checked_out_at ? format(new Date(r.checked_out_at), 'HH:mm') : null
 
   return (
     <div className={cn('flex items-start gap-3 px-4 py-3', !isLast && 'border-b border-border')}>
       <div className='flex min-w-11 shrink-0 flex-col items-end'>
         <span className='tnum text-xs font-bold text-foreground'>{checkInTime}</span>
-        {checkOutTime && (
-          <span className='tnum mt-0.5 text-[10px] text-muted-foreground'>→ {checkOutTime}</span>
-        )}
       </div>
       <div className='min-w-0 flex-1'>
         <p className='m-0 truncate text-sm font-semibold text-foreground'>{name}</p>
@@ -672,7 +624,6 @@ function TimelineEntry({
       </div>
       <div className='flex shrink-0 flex-col items-end gap-1'>
         <MethodTag>{r.method}</MethodTag>
-        {r.is_late && <Badge variant='warning'>Late</Badge>}
       </div>
     </div>
   )
@@ -709,10 +660,7 @@ function csvRow(b: { member: any; record: any }, status: string) {
     Unit: m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
     Status: status,
     'Checked In At': r?.checked_in_at ? format(new Date(r.checked_in_at), 'yyyy-MM-dd HH:mm:ss') : '',
-    'Checked Out At': r?.checked_out_at ? format(new Date(r.checked_out_at), 'yyyy-MM-dd HH:mm:ss') : '',
-    'Auto Checked Out': r?.checked_out_at ? (r.auto_checked_out ? 'Yes' : 'No') : '',
     Method: r?.method || '',
-    'Is Late': r ? (r.is_late ? 'Yes' : 'No') : '',
     'Geo Verified': r ? (r.geo_verified ? 'Yes' : 'No') : '',
   }
 }

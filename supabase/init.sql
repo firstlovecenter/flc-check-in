@@ -15,7 +15,7 @@
 --    • Helpers: point_in_polygon, haversine_meters, point_in_event_geofence
 --    • RPCs:    create_checkin_event, reset_event_pin, record_pin_attempt,
 --              claim_device_for_event, claim_face_match,
---              report_member_location, auto_checkout_expired_events,
+--              auto_checkout_expired_events (event-status flip only),
 --              submit_checkin
 --    • Grants for the anon role used by the @supabase/supabase-js client
 --
@@ -150,11 +150,12 @@ create table if not exists public.checkin_records (
   member_role         text,
   member_unit_name    text,
   checked_in_at       timestamptz not null default now(),
+  -- Legacy columns (checkout + late tracking were removed — attendance is
+  -- binary: record exists = Present, no record = Absent). Kept so historical
+  -- rows survive; nothing reads them and only submit_checkin still writes
+  -- is_late.
   checked_out_at      timestamptz,
   auto_checked_out    boolean not null default false,
-  -- First time we observed the member outside the fence in this event. Cleared
-  -- when they come back inside. Used by report_member_location to enforce a
-  -- grace period before auto-checkout (see migration 010).
   outside_since       timestamptz,
   is_late             boolean not null default false,
   method              text not null check (method in ('QR','PIN','MANUAL','FACE_ID')),
@@ -577,91 +578,15 @@ end;
 $$;
 
 
--- ─── report_member_location: location heartbeat + auto-checkout ─────────────
--- Grace period: member must be continuously outside the fence for >= 20
--- minutes before being auto-checked-out (avoids checking out for a single
--- bad GPS reading or a short bathroom break). See migration 010.
-create or replace function public.report_member_location(
-  p_event_id  uuid,
-  p_member_id text,
-  p_lat       double precision,
-  p_lng       double precision
-) returns jsonb
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-  v_inside         boolean;
-  v_grace_minutes  int := 20;
-  v_outside_since  timestamptz;
-  v_was_checked_out boolean := false;
-  v_minutes_left   int;
-begin
-  v_inside := public.point_in_event_geofence(p_event_id, p_lat, p_lng);
-
-  if v_inside then
-    -- Back inside: clear any pending outside-timer.
-    update public.checkin_records
-       set outside_since = null
-     where event_id = p_event_id
-       and member_id = p_member_id
-       and checked_out_at is null
-       and outside_since is not null;
-    return jsonb_build_object('inside_fence', true, 'checked_out', false);
-  end if;
-
-  select outside_since into v_outside_since
-    from public.checkin_records
-   where event_id = p_event_id
-     and member_id = p_member_id
-     and checked_out_at is null
-   limit 1;
-
-  if v_outside_since is null then
-    update public.checkin_records
-       set outside_since = now()
-     where event_id = p_event_id
-       and member_id = p_member_id
-       and checked_out_at is null;
-    return jsonb_build_object(
-      'inside_fence', false,
-      'checked_out', false,
-      'outside_since', now(),
-      'minutes_left', v_grace_minutes
-    );
-  end if;
-
-  if now() - v_outside_since >= make_interval(mins => v_grace_minutes) then
-    update public.checkin_records
-       set checked_out_at  = now(),
-           auto_checked_out = true
-     where event_id = p_event_id
-       and member_id = p_member_id
-       and checked_out_at is null;
-    if found then v_was_checked_out := true; end if;
-    return jsonb_build_object('inside_fence', false, 'checked_out', v_was_checked_out);
-  end if;
-
-  v_minutes_left := greatest(
-    0,
-    v_grace_minutes - floor(extract(epoch from (now() - v_outside_since)) / 60)::int
-  );
-  return jsonb_build_object(
-    'inside_fence', false,
-    'checked_out', false,
-    'outside_since', v_outside_since,
-    'minutes_left', v_minutes_left
-  );
-end;
-$$;
+-- Checkout logic was removed (attendance is binary — Present/Absent). The
+-- location-heartbeat RPC no longer exists; drop it if present.
+drop function if exists public.report_member_location(uuid, text, double precision, double precision);
 
 
 -- ─── end_event_now: admin ends an event atomically ─────────────────────────
--- Flips status to ENDED, truncates ends_at to now() (if still in the future),
--- and closes every open record in one transaction. Used by endEvent() in the
--- app so admins don't have to wait for the every-minute cron tick to see
--- attendees move from "Checked In" to "Checked Out". See migration 011.
+-- Flips status to ENDED and truncates ends_at to now() (if still in the
+-- future). Used by endEvent() in the app so admins see the result immediately
+-- instead of waiting for the every-minute cron tick.
 create or replace function public.end_event_now(p_event_id uuid)
 returns jsonb
 language plpgsql
@@ -672,7 +597,6 @@ declare
   v_event       public.checkin_events%rowtype;
   v_now         timestamptz := now();
   v_new_ends_at timestamptz;
-  v_closed      int := 0;
 begin
   select * into v_event from public.checkin_events where id = p_event_id;
   if not found then
@@ -689,29 +613,19 @@ begin
          ends_at = v_new_ends_at
    where id = p_event_id;
 
-  with closed as (
-    update public.checkin_records
-       set checked_out_at  = v_now,
-           auto_checked_out = true
-     where event_id = p_event_id
-       and checked_out_at is null
-    returning id
-  )
-  select count(*) into v_closed from closed;
-
   return jsonb_build_object(
     'ok', true,
     'event_id', p_event_id,
-    'ends_at', v_new_ends_at,
-    'records_closed', v_closed
+    'ends_at', v_new_ends_at
   );
 end;
 $$;
 
 
--- ─── auto_checkout_expired_events: cron job for ended events ────────────────
--- Also catches ENDED events that still have open records, as a safety net
--- in case end_event_now() didn't get to close them.
+-- ─── auto_checkout_expired_events: cron job for expired events ──────────────
+-- Name kept for cron/edge-function compatibility, but it no longer touches
+-- checkin_records — it only flips expired ACTIVE events to ENDED. Returns the
+-- number of events ended.
 create or replace function public.auto_checkout_expired_events()
 returns int
 language plpgsql
@@ -721,22 +635,14 @@ as $$
 declare
   v_count int := 0;
 begin
-  with closed as (
-    update public.checkin_records cr
-       set checked_out_at  = now(),
-           auto_checked_out = true
-      from public.checkin_events ce
-     where cr.event_id = ce.id
-       and (ce.status = 'ENDED' or (ce.status = 'ACTIVE' and ce.ends_at <= now()))
-       and cr.checked_out_at is null
-    returning cr.id
+  with ended as (
+    update public.checkin_events
+       set status = 'ENDED'
+     where status = 'ACTIVE'
+       and ends_at <= now()
+    returning id
   )
-  select count(*) into v_count from closed;
-
-  update public.checkin_events
-     set status = 'ENDED'
-   where status = 'ACTIVE'
-     and ends_at <= now();
+  select count(*) into v_count from ended;
 
   return v_count;
 end;
@@ -1173,7 +1079,6 @@ grant execute on function
   public.record_pin_attempt(uuid, text, text),
   public.claim_device_for_event(uuid, text, text),
   public.claim_face_match(uuid, text),
-  public.report_member_location(uuid, text, double precision, double precision),
   public.auto_checkout_expired_events(),
   public.create_checkin_event(
     text, text, text, text, text, text,
@@ -1362,6 +1267,149 @@ as $$
     (select max(r.checked_in_at) from public.checkin_records r where r.member_id = p_member_id);
 $$;
 
+create or replace function public.get_event_dashboard_stats(
+  p_event_id uuid,
+  p_member_ids text[] default null,
+  p_total_expected int default null,
+  p_not_started boolean default false,
+  p_viewer_member_ids text[] default '{}'
+)
+returns table (
+  attended int,
+  absent int,
+  viewer_checked_in boolean,
+  updated_at timestamptz
+)
+language sql
+stable
+set search_path = public
+as $$
+  with counts as (
+    select
+      coalesce(p_total_expected, coalesce(array_length(p_member_ids, 1), 0))::int as total,
+      count(distinct r.member_id)::int as attended
+    from public.checkin_records r
+    where r.event_id = p_event_id
+      and (
+        case
+          when p_member_ids is not null and array_length(p_member_ids, 1) is not null
+            then r.member_id = any(p_member_ids)
+          -- Whole-event count: restrict to the event-scope snapshot so the
+          -- numerator matches the p_total_expected denominator (both come
+          -- from event_scope_members). Legacy events without a snapshot
+          -- count every record.
+          when exists (
+            select 1 from public.event_scope_members m
+            where m.event_id = p_event_id
+          )
+            then exists (
+              select 1 from public.event_scope_members m
+              where m.event_id = p_event_id and m.member_id = r.member_id
+            )
+          else true
+        end
+      )
+  )
+  select
+    counts.attended,
+    case
+      when p_not_started then 0
+      else greatest(0, counts.total - counts.attended)
+    end as absent,
+    exists (
+      select 1
+      from public.checkin_records r
+      where r.event_id = p_event_id
+        and r.member_id = any(coalesce(p_viewer_member_ids, '{}'))
+    ) as viewer_checked_in,
+    now() as updated_at
+  from counts;
+$$;
+
+create or replace function public.get_risky_checkin_count(p_event_id uuid)
+returns int
+language sql
+stable
+set search_path = public
+as $$
+  select count(distinct r.member_id)::int
+  from public.checkin_records r
+  where r.event_id = p_event_id
+    and r.method <> 'MANUAL'
+    and coalesce(r.device_fingerprint, '') <> ''
+    and r.device_fingerprint in (
+      select r2.device_fingerprint
+      from public.checkin_records r2
+      where r2.event_id = p_event_id
+        and r2.method <> 'MANUAL'
+        and coalesce(r2.device_fingerprint, '') <> ''
+      group by r2.device_fingerprint
+      having count(*) > 1
+    );
+$$;
+
+create or replace function public.get_event_scope_profiles(p_event_id uuid)
+returns table (
+  id text,
+  email text,
+  title text,
+  first_name text,
+  last_name text,
+  phone text,
+  picture_url text,
+  roles text[],
+  bacenta_id text,
+  bacenta_name text,
+  governorship_id text,
+  governorship_name text,
+  council_id text,
+  council_name text,
+  stream_id text,
+  stream_name text,
+  campus_id text,
+  campus_name text,
+  oversight_id text,
+  oversight_name text,
+  denomination_id text,
+  denomination_name text,
+  scope_ids jsonb,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    p.id,
+    p.email,
+    p.title,
+    p.first_name,
+    p.last_name,
+    p.phone,
+    p.picture_url,
+    p.roles,
+    p.bacenta_id,
+    p.bacenta_name,
+    p.governorship_id,
+    p.governorship_name,
+    p.council_id,
+    p.council_name,
+    p.stream_id,
+    p.stream_name,
+    p.campus_id,
+    p.campus_name,
+    p.oversight_id,
+    p.oversight_name,
+    p.denomination_id,
+    p.denomination_name,
+    p.scope_ids,
+    p.updated_at
+  from public.event_scope_members esm
+  join public.member_profiles p on p.id = esm.member_id
+  where esm.event_id = p_event_id
+  order by p.first_name nulls last, p.last_name nulls last, p.email nulls last;
+$$;
+
 create or replace view public.special_groups_with_counts
 with (security_invoker = true) as
 select
@@ -1380,5 +1428,8 @@ grant execute on function
   public.get_ancestor_scopes(text, text),
   public.get_defaulted_profiles(uuid, text[]),
   public.get_risky_checkin_member_ids(uuid),
-  public.get_member_attendance_stats(text)
-  to anon;
+  public.get_member_attendance_stats(text),
+  public.get_event_scope_profiles(uuid),
+  public.get_event_dashboard_stats(uuid, text[], int, boolean, text[]),
+  public.get_risky_checkin_count(uuid)
+  to anon, authenticated;

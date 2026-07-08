@@ -12,11 +12,20 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseAccessToken } from './supabaseTokenExchange'
+import { createBoundedFetch } from './network'
 
 const useTokenExchange = import.meta.env.VITE_USE_SUPABASE_TOKEN_EXCHANGE === '1'
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-  useTokenExchange ? { accessToken: getSupabaseAccessToken } : undefined,
+  {
+    ...(useTokenExchange ? { accessToken: getSupabaseAccessToken } : {}),
+    global: {
+      fetch: createBoundedFetch({ timeoutMs: 12_000, retries: 1 }),
+    },
+    realtime: {
+      timeout: 10_000,
+    },
+  },
 )

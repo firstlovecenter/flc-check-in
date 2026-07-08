@@ -152,7 +152,7 @@ async function main() {
     step('claim device A for OTHER member → false', !e3 && c === false, e3?.message || `→ ${c}`)
   }
 
-  // ─── 9. insert a checkin_record + heartbeat checkout ──────────────────
+  // ─── 9. insert a checkin_record (Present = record exists; no checkout) ──
   {
     const { error: e1 } = await supabase.from('checkin_records').insert({
       event_id: createdEventId, member_id: memberId, member_name: 'Smoke Tester',
@@ -160,24 +160,12 @@ async function main() {
       check_in_lat: 5.6037, check_in_lng: -0.1870,
     })
     step('insert checkin_record', !e1, e1?.message || '')
-
-    const { data: inFence, error: e2 } = await supabase.rpc('report_member_location', {
-      p_event_id: createdEventId, p_member_id: memberId, p_lat: 5.6037, p_lng: -0.1870,
-    })
-    step('heartbeat inside fence → no checkout', !e2 && inFence?.inside_fence === true && inFence?.checked_out === false,
-         e2?.message || JSON.stringify(inFence))
-
-    const { data: outFence, error: e3 } = await supabase.rpc('report_member_location', {
-      p_event_id: createdEventId, p_member_id: memberId, p_lat: 5.7000, p_lng: -0.1870,
-    })
-    step('heartbeat outside fence → checkout fires', !e3 && outFence?.inside_fence === false && outFence?.checked_out === true,
-         e3?.message || JSON.stringify(outFence))
   }
 
-  // ─── 10. auto_checkout_expired_events (call but expect 0 since event is in future) ─
+  // ─── 10. auto_checkout_expired_events (ends expired events; expect 0 since event is in future) ─
   {
     const { data, error } = await supabase.rpc('auto_checkout_expired_events')
-    step('auto_checkout_expired_events callable', !error, error?.message || `→ closed=${data}`)
+    step('auto_checkout_expired_events callable', !error, error?.message || `→ ended=${data}`)
   }
 
   // ─── cleanup ──────────────────────────────────────────────────────────

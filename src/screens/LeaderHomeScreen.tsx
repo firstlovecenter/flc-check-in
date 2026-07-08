@@ -17,6 +17,7 @@ import {
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
 import { useChurchFocus } from '../contexts/ChurchFocusContext'
+import { friendlyErrorMessage } from '../utils/network'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
 type Greeting = { line1: string; line2: string }
@@ -398,7 +399,7 @@ export default function LeaderHomeScreen() {
           })
         }
       } catch (err: any) {
-        if (!cancelled) setState({ status: 'error', error: err.message })
+        if (!cancelled) setState({ status: 'error', error: friendlyErrorMessage(err) })
       }
     })()
     return () => { cancelled = true }

@@ -8,7 +8,7 @@
 |--------|---------|
 | `ACTIVE` | Check-in allowed within time window (server `now()`) |
 | `PAUSED` | Temporarily blocked — admin Resume |
-| `ENDED` | Closed — no new check-ins; cron may auto-checkout |
+| `ENDED` | Closed — no new check-ins (cron flips expired ACTIVE events) |
 
 Admin actions (pause, resume, extend, end, reset PIN) → `CheckInAdminControls` + audit log.
 
@@ -41,14 +41,19 @@ Computed in `src/hooks/useEventEligibility.ts` — cached per event/user.
 
 ## Dashboard stats (contract)
 
-- **Still in** — checked in, not checked out
-- **Left** — checked out
-- **Absent** — eligible, no record
-- **Total expected** — eligible in viewer slice
+Attendance is **binary** — exactly two metrics, nothing else (product rule):
 
-Attendance % uses attended vs total; status colors use success / warning / destructive tokens.
+- **Present** — the member has a `checkin_records` row for the event
+- **Absent** — expected (in scope + role-eligible) but no record
 
-## Realtime
+No still-in / left / checked-out / late / total-expected / percentage metrics.
+Checkout and late tracking were removed entirely (migration 028): no location
+heartbeat, and ending an event no longer closes records. Check-in **times**
+are still shown prominently on member rows, reports, and CSV exports.
+Present uses the success token; Absent uses destructive.
 
-`EventDashboard` subscribes to Supabase `postgres_changes` on `checkin_records` for live updates;
-60s poll refreshes event status.
+## Live updates
+
+`EventDashboard` polls the `get_event_dashboard_stats` RPC (Postgres does the
+counting; migration 027): creator 8s, admin 15s, monitor 30s, hidden tab 60s.
+A separate 60s poll refreshes event status. There is no Realtime subscription.

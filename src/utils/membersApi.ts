@@ -26,6 +26,7 @@ import {
   SEARCH_CHURCHES,
   SEARCH_MEMBERS_BY_NAME,
 } from './membersApi.queries.js'
+import { createBoundedFetch } from './network'
 
 function graphqlEndpoint() {
   // Always use the same-origin /flc-graphql path.
@@ -51,6 +52,7 @@ function client(): GraphQLClient {
   if (!_client || _clientToken !== token) {
     _client = new GraphQLClient(graphqlEndpoint(), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
+      fetch: createBoundedFetch({ timeoutMs: 10_000, retries: 1, retryUnsafe: true }),
     })
     _clientToken = token
   }

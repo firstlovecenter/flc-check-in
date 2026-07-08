@@ -1,7 +1,9 @@
 // Supabase Edge Function — auto-checkout
 //
 // Free-tier replacement for pg_cron. Calls the auto_checkout_expired_events()
-// RPC on every invocation. Invoke via the Supabase Cron schedule (Dashboard →
+// RPC on every invocation, which (despite the legacy name) only flips expired
+// ACTIVE events to ENDED — checkout tracking was removed; attendance is
+// binary (Present/Absent). Invoke via the Supabase Cron schedule (Dashboard →
 // Edge Functions → Schedules) every minute.
 //
 // Deploy:
