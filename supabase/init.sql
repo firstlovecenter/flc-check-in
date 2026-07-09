@@ -1267,10 +1267,19 @@ as $$
     (select max(r.checked_in_at) from public.checkin_records r where r.member_id = p_member_id);
 $$;
 
+-- Both metrics are computed over ONE population so the dashboard headline
+-- always matches the drill-down lists:
+--   • p_member_ids set   → exactly those members (drill-down / viewer slice).
+--   • p_member_ids null  → the event-scope snapshot, filtered by
+--     p_allowed_roles against member_profiles.roles — the same definition
+--     the client uses to build its "eligible" list.
+-- p_total_expected is legacy (older deployed clients still pass it) and is
+-- ignored: the denominator is always the population size.
 create or replace function public.get_event_dashboard_stats(
   p_event_id uuid,
   p_member_ids text[] default null,
   p_total_expected int default null,
+  p_allowed_roles text[] default null,
   p_not_started boolean default false,
   p_viewer_member_ids text[] default '{}'
 )
@@ -1284,31 +1293,33 @@ language sql
 stable
 set search_path = public
 as $$
-  with counts as (
-    select
-      coalesce(p_total_expected, coalesce(array_length(p_member_ids, 1), 0))::int as total,
-      count(distinct r.member_id)::int as attended
-    from public.checkin_records r
-    where r.event_id = p_event_id
+  with population as (
+    select distinct u.member_id
+    from unnest(coalesce(p_member_ids, '{}')) as u(member_id)
+    where p_member_ids is not null and array_length(p_member_ids, 1) is not null
+    union all
+    select m.member_id
+    from public.event_scope_members m
+    where (p_member_ids is null or array_length(p_member_ids, 1) is null)
+      and m.event_id = p_event_id
       and (
-        case
-          when p_member_ids is not null and array_length(p_member_ids, 1) is not null
-            then r.member_id = any(p_member_ids)
-          -- Whole-event count: restrict to the event-scope snapshot so the
-          -- numerator matches the p_total_expected denominator (both come
-          -- from event_scope_members). Legacy events without a snapshot
-          -- count every record.
-          when exists (
-            select 1 from public.event_scope_members m
-            where m.event_id = p_event_id
-          )
-            then exists (
-              select 1 from public.event_scope_members m
-              where m.event_id = p_event_id and m.member_id = r.member_id
-            )
-          else true
-        end
+        p_allowed_roles is null
+        or exists (
+          select 1 from public.member_profiles p
+          where p.id = m.member_id
+            and p.roles && p_allowed_roles
+        )
       )
+  ),
+  counts as (
+    select
+      count(*)::int as total,
+      count(*) filter (where exists (
+        select 1 from public.checkin_records r
+        where r.event_id = p_event_id
+          and r.member_id = pop.member_id
+      ))::int as attended
+    from population pop
   )
   select
     counts.attended,
@@ -1430,6 +1441,6 @@ grant execute on function
   public.get_risky_checkin_member_ids(uuid),
   public.get_member_attendance_stats(text),
   public.get_event_scope_profiles(uuid),
-  public.get_event_dashboard_stats(uuid, text[], int, boolean, text[]),
+  public.get_event_dashboard_stats(uuid, text[], int, text[], boolean, text[]),
   public.get_risky_checkin_count(uuid)
   to anon, authenticated;

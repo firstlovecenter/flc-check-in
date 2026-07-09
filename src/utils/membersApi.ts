@@ -22,6 +22,7 @@ import {
   ANCESTOR_QUERIES,
   CHILD_COUNT_QUERIES,
   CHILD_LIST_QUERIES,
+  CHILD_LEADER_QUERIES,
   GET_ALL_MEMBERS_PAGE,
   SEARCH_CHURCHES,
   SEARCH_MEMBERS_BY_NAME,
@@ -802,6 +803,54 @@ export async function getChildChurches({ level, id }: { level: string; id: strin
   // children_synced_at marker so get_descendant_scopes can trust the subtree.
   cacheHierarchyChildren({ level, id }, childScopeLevel(level), children)
   return children
+}
+
+// ─── getChildScopeLeaders({ level, id }) ─────────────────────────────────────
+// Authoritative childChurchId → leader mapping for a parent scope, straight
+// from the graph's leads* edges. Profile rows only carry generic role strings
+// ("leaderBacenta") and can't say WHICH bacenta someone leads, so deriving
+// the leader (and their photo) from profiles picks the wrong person.
+// Cached + in-flight-deduped like the other graph reads.
+export interface ChildScopeLeader {
+  id: string
+  name: string
+  pictureUrl: string | null
+}
+
+const childLeadersCache   = new Map<string, { data: Map<string, ChildScopeLeader>; ts: number }>()
+const childLeadersPending = new Map<string, Promise<Map<string, ChildScopeLeader>>>()
+
+export async function getChildScopeLeaders(
+  { level, id }: { level: string; id: string },
+): Promise<Map<string, ChildScopeLeader>> {
+  const entry = CHILD_LEADER_QUERIES[level as keyof typeof CHILD_LEADER_QUERIES]
+  if (!entry || !id) return new Map()
+  const key = `${level}:${id}`
+  const hit = childLeadersCache.get(key)
+  if (hit && Date.now() - hit.ts < SCOPE_MEMBERS_TTL) return hit.data
+  if (childLeadersPending.has(key)) return childLeadersPending.get(key)!
+
+  const p = client().request<{ members: any[] }>(entry.query, { id })
+    .then((data) => {
+      const map = new Map<string, ChildScopeLeader>()
+      for (const m of data?.members || []) {
+        const name = [m.firstName, m.lastName].filter(Boolean).join(' ')
+        for (const led of m[entry.ledField] || []) {
+          if (led?.id && !map.has(led.id)) {
+            map.set(led.id, { id: m.id, name, pictureUrl: m.pictureUrl || null })
+          }
+        }
+      }
+      childLeadersCache.set(key, { data: map, ts: Date.now() })
+      childLeadersPending.delete(key)
+      return map
+    })
+    .catch((err) => {
+      childLeadersPending.delete(key)
+      throw err
+    })
+  childLeadersPending.set(key, p)
+  return p
 }
 
 // ─── searchChurches(q, limit?) ───────────────────────────────────────────

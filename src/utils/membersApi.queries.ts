@@ -478,6 +478,79 @@ export const CHILD_LIST_QUERIES = {
   denomination: LIST_OVERSIGHTS_IN_DENOMINATION,
 }
 
+// ─── Child-scope leaders ─────────────────────────────────────────────────────
+// For a parent scope, fetch every member who LEADS one of its direct child
+// churches, along with which child church(es) they lead. This is the
+// authoritative leader ↔ church mapping — profile rows only carry generic
+// role strings (e.g. "leaderBacenta") and cannot say WHICH bacenta someone
+// leads, so deriving the leader from profiles shows the wrong person.
+// One query per drill view; uses the same nested-_SOME filters as the
+// GET_MEMBERS_FOR_* queries above.
+
+export const LEADERS_OF_BACENTAS_IN_GOVERNORSHIP = gql`
+  query LeadersOfBacentasInGovernorship($id: ID!) {
+    members(where: { leadsBacenta_SOME: { governorship: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsBacenta { id }
+    }
+  }
+`
+
+export const LEADERS_OF_GOVERNORSHIPS_IN_COUNCIL = gql`
+  query LeadersOfGovernorshipsInCouncil($id: ID!) {
+    members(where: { leadsGovernorship_SOME: { council: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsGovernorship { id }
+    }
+  }
+`
+
+export const LEADERS_OF_COUNCILS_IN_STREAM = gql`
+  query LeadersOfCouncilsInStream($id: ID!) {
+    members(where: { leadsCouncil_SOME: { stream: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsCouncil { id }
+    }
+  }
+`
+
+export const LEADERS_OF_STREAMS_IN_CAMPUS = gql`
+  query LeadersOfStreamsInCampus($id: ID!) {
+    members(where: { leadsStream_SOME: { campus: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsStream { id }
+    }
+  }
+`
+
+export const LEADERS_OF_CAMPUSES_IN_OVERSIGHT = gql`
+  query LeadersOfCampusesInOversight($id: ID!) {
+    members(where: { leadsCampus_SOME: { oversight: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsCampus { id }
+    }
+  }
+`
+
+export const LEADERS_OF_OVERSIGHTS_IN_DENOMINATION = gql`
+  query LeadersOfOversightsInDenomination($id: ID!) {
+    members(where: { leadsOversight_SOME: { denomination: { id_EQ: $id } } }) {
+      id firstName lastName pictureUrl
+      leadsOversight { id }
+    }
+  }
+`
+
+// Map parent-level → { query, field naming the led-churches array }.
+export const CHILD_LEADER_QUERIES = {
+  governorship: { query: LEADERS_OF_BACENTAS_IN_GOVERNORSHIP,     ledField: 'leadsBacenta' },
+  council:      { query: LEADERS_OF_GOVERNORSHIPS_IN_COUNCIL,     ledField: 'leadsGovernorship' },
+  stream:       { query: LEADERS_OF_COUNCILS_IN_STREAM,           ledField: 'leadsCouncil' },
+  campus:       { query: LEADERS_OF_STREAMS_IN_CAMPUS,            ledField: 'leadsStream' },
+  oversight:    { query: LEADERS_OF_CAMPUSES_IN_OVERSIGHT,        ledField: 'leadsCampus' },
+  denomination: { query: LEADERS_OF_OVERSIGHTS_IN_DENOMINATION,   ledField: 'leadsOversight' },
+}
+
 
 // ─── SEARCH_CHURCHES ─────────────────────────────────────────────────────
 // Used by the superadmin's "create event for any church" picker. Runs one

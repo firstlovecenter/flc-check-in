@@ -7,17 +7,16 @@ import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
 import { cn } from '../../lib/utils'
 import {
-  getEvent, listCheckedIn, bulkUpsertMemberProfiles,
-  listEventScopeMembersWithProfiles,
-  listSpecialGroupMembers,
-} from '../../utils/supabaseCheckins'
-import {
-  getMembersInScope, memberToProfileRow,
-  resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
-  childScopeLevel, getChildChurches,
+  childScopeLevel, getChildChurches, getChildScopeLeaders,
+  type ChildScopeLeader,
 } from '../../utils/membersApi'
 import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
+import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+
+function membersWithId(list: any[] | null | undefined): any[] {
+  return (list || []).filter((m) => m != null && m.id != null && m.id !== '')
+}
 
 export default function ScopeBreakdown({ eventId }) {
   const user = getCurrentUser()
@@ -28,108 +27,26 @@ export default function ScopeBreakdown({ eventId }) {
   const drillChurchId = searchParams.get('churchId')   || null
   const drillChurchName = searchParams.get('churchName') || null
 
-  const [event, setEvent]           = useState<any>(null)
-  const [allEligible, setAllEligible] = useState<any[]>([])
-  const [childChurches, setChildChurches] = useState<{ id: string; name: string }[] | null>(null)
-  const [records, setRecords]       = useState<any[]>([])
-  const [error, setError]           = useState<string | null>(null)
-  const [viewerCaps, setViewerCaps] = useState<any>(null)
   const [refreshKey, setRefreshKey] = useState(0)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const evt = await getEvent(eventId)
-        if (cancelled) return
-        setEvent(evt)
+  // Same hook, same cache as EventDashboard/EventMembers/FullReport — this is
+  // what keeps "who's eligible" and "who's checked in" identical across every
+  // screen. A screen with its own bespoke fetch WILL drift from the others.
+  const {
+    event, eligible, viewerCaps, records,
+    error: eligibilityError, initialLoading,
+  } = useEventEligibility(eventId, user, { refreshKey })
 
-        const [viewer, ancestors, snapshotProfiles, recs] = await Promise.all([
-          resolveCurrentMember(user).catch(() => null),
-          getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
-          listEventScopeMembersWithProfiles(eventId),
-          listCheckedIn(eventId),
-        ])
-        if (cancelled) return
+  const allEligible = useMemo(() => membersWithId(eligible), [eligible])
+  const error = eligibilityError
 
-        // Snapshot-first: Supabase has the full scope member list regardless of
-        // the viewer's JWT scope. Fall back to the graph only when no snapshot
-        // exists yet (newly created event / creation race).
-        let allRows: any[]
-        if (snapshotProfiles.length > 0) {
-          allRows = snapshotProfiles
-        } else if (evt.scope_level === 'special_group') {
-          // Special groups are not modeled in the church hierarchy graph.
-          const members = await listSpecialGroupMembers(evt.scope_church_id)
-          if (cancelled) return
-          allRows = members.map((m) => ({
-            id: m.member_id,
-            first_name: m.member_name?.split(' ')[0] ?? '',
-            last_name: m.member_name?.split(' ').slice(1).join(' ') ?? '',
-            roles: [],
-            picture_url: (m as any).picture_url ?? null,
-          }))
-        } else {
-          const graphMembers = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
-          if (cancelled) return
-          allRows = graphMembers.map(memberToProfileRow)
-          bulkUpsertMemberProfiles(allRows).catch(() => {})
-        }
-        const allowed = new Set(evt.allowed_roles || [])
-        const isSpecialGroup = evt.scope_level === 'special_group'
-        const eligibleRows = (isSpecialGroup
-          ? allRows
-          : allRows.filter((r) => (r.roles || []).some((rr) => allowed.has(rr)))
-        ).filter((r) => r != null && r.id != null)
-        const eligibleIdSet = new Set(eligibleRows.map((r) => r.id))
-        const allMemberIdSet = new Set(allRows.map((r) => r.id))
-        const rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, allMemberIdSet)
-        const eventScope = {
-          level: evt.scope_level, id: evt.scope_church_id, name: evt.scope_church_name,
-        }
-        const scopeFallback = rawCaps.canViewFullEvent ? eventScope : (rawCaps.viewerScope ?? eventScope)
-        const caps = user?.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: true, canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
-          : user?.isSuperViewer
-          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
-          : rawCaps.canViewFullEvent
-          ? { ...rawCaps, viewerScope: scopeFallback }
-          : rawCaps
-        if (cancelled) return
-        setViewerCaps(caps)
-        setAllEligible(eligibleRows)
-        setRecords(recs)
-
-        // Background: if snapshot profiles are stale (scope_ids not yet populated),
-        // re-fetch from the graph so sub-scope filtering and leader lookup work.
-        // One-shot: once scope_ids is populated, the staleCount drops to 0.
-        const usedSnapshot = snapshotProfiles.length > 0
-        const staleCount = usedSnapshot ? allRows.filter((r) => r.scope_ids == null).length : 0
-        if (usedSnapshot && evt.scope_level !== 'special_group' && staleCount > allRows.length * 0.05) {
-          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
-            .then((graphMembers) => {
-              if (cancelled) return
-              const freshRows = graphMembers.map(memberToProfileRow)
-              bulkUpsertMemberProfiles(freshRows).catch(() => {})
-              const freshAllowed = new Set(evt.allowed_roles || [])
-              const freshEligible = freshRows
-                .filter((r: any) => (r.roles || []).some((rr: string) => freshAllowed.has(rr)))
-                .filter((r: any) => r != null && r.id != null)
-              if (!cancelled) setAllEligible(freshEligible)
-            })
-            .catch(() => {})
-        }
-      } catch (err: any) {
-        if (!cancelled) setError(err.message)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [eventId, user.userId, refreshKey]) // eslint-disable-line
+  const [childChurches, setChildChurches] = useState<{ id: string; name: string }[] | null>(null)
+  const [childLeaders, setChildLeaders] = useState<Map<string, ChildScopeLeader>>(new Map())
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const viewerScopeIdx  = viewerCaps?.viewerScope ? SCOPE_LEVELS.indexOf(viewerCaps.viewerScope.level) : -1
-  const requestedLevel  = drillLevel || event?.scope_level
+  const requestedLevel  = (drillLevel || event?.scope_level) as any
   const requestedIdx    = requestedLevel ? SCOPE_LEVELS.indexOf(requestedLevel) : -1
   const canDrillFullEvent = viewerCaps?.canManage || viewerCaps?.canViewFullEvent
   const shouldClamp     = !canDrillFullEvent && viewerScopeIdx >= 0 && requestedIdx > viewerScopeIdx
@@ -144,6 +61,12 @@ export default function ScopeBreakdown({ eventId }) {
     getChildChurches({ level: currentLevel, id: currentChurchId })
       .then((list) => { if (!cancelled) setChildChurches(list) })
       .catch(() => { if (!cancelled) setChildChurches([]) })
+    // Leader photos/names come from the graph's leads* edges (authoritative) —
+    // never guessed from profile rows. On failure, cards show no leader
+    // rather than the wrong one.
+    getChildScopeLeaders({ level: currentLevel, id: currentChurchId })
+      .then((map) => { if (!cancelled) setChildLeaders(map) })
+      .catch(() => { if (!cancelled) setChildLeaders(new Map()) })
     return () => { cancelled = true }
   }, [currentLevel, currentChurchId])
 
@@ -235,7 +158,7 @@ export default function ScopeBreakdown({ eventId }) {
   const isMemberList = currentLevel === 'governorship' || childLevel === null || childLevel === 'bacenta'
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
-  if (!event || !viewerCaps) return <Spinner fullPage />
+  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
   }
@@ -275,8 +198,7 @@ export default function ScopeBreakdown({ eventId }) {
                 eventId={eventId}
                 isExpanded={expandedId === g.id}
                 onToggle={() => setExpandedId(expandedId === g.id ? null : g.id)}
-                sliceRows={sliceRows}
-                allEligible={allEligible}
+                leader={childLeaders.get(g.id) ?? null}
               />
             ))}
           </div>
@@ -312,43 +234,21 @@ export default function ScopeBreakdown({ eventId }) {
   )
 }
 
-// ─── Leader lookup ────────────────────────────────────────────────────────────
-// Searches allEligible (not sliceRows) for the leader role because the actual
-// leader may have a different primary campus_id in their profile — e.g. a
-// stream leader who also leads a different campus will have campus_id pointing
-// to that other campus, so they'd be absent from a campus-filtered sliceRows
-// even though their stream_id is correct. Stats stay on sliceRows.
-function getLeaderForScope(allEligible: any[], sliceRows: any[], childLevel: string, scopeId: string) {
-  const idCol = `${childLevel}_id`
-  const roleKey = `leader${childLevel.charAt(0).toUpperCase()}${childLevel.slice(1)}`
-  const matchesScope = (m: any) => {
-    const scopeIds: string[] | undefined = (m.scope_ids as any)?.[childLevel]
-    if (scopeIds?.length) return scopeIds.includes(scopeId)
-    return m[idCol] === scopeId
-  }
-  const inAll = allEligible.filter(matchesScope)
-  return inAll.find((m) => (m.roles || []).includes(roleKey))
-    || sliceRows.filter(matchesScope)[0]
-    || null
-}
-
 // ─── ScopeCard (accordion item) ──────────────────────────────────────────────
+// The leader avatar/name comes from the graph's leads* edges via
+// getChildScopeLeaders — accurate or absent, never guessed from profiles.
 
 function ScopeCard({
-  group, childLevel, eventId, isExpanded, onToggle, sliceRows, allEligible,
+  group, childLevel, eventId, isExpanded, onToggle, leader,
 }: {
   group: { id: string; name: string; total: number; attended: number; absent: number }
   childLevel: string
   eventId: string
   isExpanded: boolean
   onToggle: () => void
-  sliceRows: any[]
-  allEligible: any[]
+  leader: { id: string; name: string; pictureUrl: string | null } | null
 }) {
-  const leader = getLeaderForScope(allEligible, sliceRows, childLevel, group.id)
-  const leaderName = leader
-    ? [leader.first_name, leader.last_name].filter(Boolean).join(' ')
-    : ''
+  const leaderName = leader?.name ?? ''
   const initials = leaderName
     ? leaderName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
     : group.name.charAt(0).toUpperCase()
@@ -367,8 +267,8 @@ function ScopeCard({
         onClick={onToggle}
         className='flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-muted/40'
       >
-        {leader?.picture_url ? (
-          <img src={leader.picture_url} alt={leaderName} className='h-12 w-12 shrink-0 rounded-full object-cover' />
+        {leader?.pictureUrl ? (
+          <img src={leader.pictureUrl} alt={leaderName} className='h-12 w-12 shrink-0 rounded-full object-cover' />
         ) : (
           <div className='flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>
             {initials}

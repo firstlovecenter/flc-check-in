@@ -51,7 +51,7 @@ interface CachedEligibility {
   viewerSlice: any[]
   adminScopes: any[]
   childCount: number | null
-  /** Fixed event-scope snapshot size — the stable "Total Expected" count. */
+  /** event_scope_members row count for this event; 0 = no snapshot yet. */
   scopeMemberCount: number | null
   event?: CheckinEventRow | null
   records?: any[]
@@ -235,8 +235,8 @@ export interface EventEligibilityResult {
   viewerSlice: any[]      // eligible members scoped to the viewer's unit
   adminScopes: any[]
   childCount: number | null
-  /** Fixed event-scope snapshot size — the stable "Total Expected" count.
-   *  null until the snapshot has been resolved. */
+  /** event_scope_members row count for this event (0 = no snapshot yet);
+   *  null until resolved. */
   scopeMemberCount: number | null
   records: any[]
   error: string | null
@@ -580,15 +580,11 @@ export function useEventEligibility(
           }
         }
 
-        // "Total Expected" denominator: prefer the authoritative snapshot count
-        // (the full in-scope leader/admin population, fixed at creation). When
-        // no snapshot exists yet (legacy events / the graph-fallback path that
-        // snapshots below), fall back to the role-eligible count so the number
-        // stays consistent with the role-filtered attendance it's measured
-        // against. The consumer (EventDashboard) only uses this as the
-        // denominator when allowed_roles is unrestricted, where the snapshot and
-        // eligible populations coincide.
-        const resolvedScopeCount = scopeCountFetched > 0 ? scopeCountFetched : eligibleIdSet.size
+        // Raw event_scope_members row count. 0 means "no snapshot yet"
+        // (legacy events / creation race) — EventDashboard uses that signal to
+        // decide whether the stats RPC can derive its population server-side
+        // from the snapshot, or must be sent explicit member ids.
+        const resolvedScopeCount = scopeCountFetched
 
         if (!cancelled) {
           setEligible(eligibleRows)

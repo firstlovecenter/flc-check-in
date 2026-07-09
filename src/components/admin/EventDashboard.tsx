@@ -6,7 +6,7 @@ import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
 import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
-import { countChildScopes, childScopeLabel, allowedRolesForScope } from '../../utils/membersApi'
+import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
 import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
@@ -164,37 +164,41 @@ export default function EventDashboard({ eventId }) {
     [scopedMembers, canViewWholeEvent, eligible, viewerSlice],
   )
 
-  // Only two attendance metrics exist: Present and Absent. Postgres does
-  // the counting (get_event_dashboard_stats); the client just decides the scope:
-  //   • memberIds      — restrict counting to the viewer's slice (role-filtered
-  //                      or child-scope drill-down). null = whole event.
-  //   • totalExpected  — "expected" denominator for the absent count. Anchored
-  //                      to the event-scope snapshot size (stable, written once
-  //                      at creation) but ONLY when the whole event is visible
-  //                      and allowed_roles is unrestricted — otherwise the
-  //                      snapshot is a superset of the role-eligible population
-  //                      and would inflate "absent". null = memberIds length.
-  //   • notStarted     — no one can be absent before check-in opens. Evaluated
-  //                      per fetch (below), not here: this memo's deps are all
-  //                      stable after load, so a value captured here would
-  //                      freeze at mount and pin Absent at 0 for viewers who
-  //                      opened the dashboard before the event started.
+  // Only two attendance metrics exist: Present and Absent, and both are
+  // counted over ONE population so the headline always matches the drill-down
+  // lists. Postgres does the counting (get_event_dashboard_stats):
+  //   • memberIds     — explicit population (viewer slice / drill-down).
+  //   • allowedRoles  — whole-event view: the RPC derives the population from
+  //                     the event-scope snapshot filtered by these roles
+  //                     against member_profiles.roles — the same rule the
+  //                     client uses to build `eligible`, so the numbers agree
+  //                     with ScopeBreakdown / member lists by construction.
+  //   • notStarted    — no one can be absent before check-in opens. Evaluated
+  //                     per fetch (below), not here: this memo's deps are all
+  //                     stable after load, so a value captured here would
+  //                     freeze at mount and pin Absent at 0 for viewers who
+  //                     opened the dashboard before the event started.
   // Deps are primitive event fields, not the event object — the 60s status
   // poll replaces the object identity every tick and would otherwise reset
   // the stats interval each time.
   const allowedRolesKey = (event?.allowed_roles || []).join('|')
   const statsInputs = useMemo(() => {
     if (!event || !viewerCaps) return null
-    const rolesUnrestricted =
-      allowedRolesForScope(event.scope_level).every((r) => (event.allowed_roles || []).includes(r))
     // Same predicate that picked displaySlice — the RPC must count exactly
     // the population the UI links to.
     const fullEventView = !scopedMembers && canViewWholeEvent
     const startsAt = event.starts_at ?? null
-    if (fullEventView && rolesUnrestricted && scopeMemberCount != null && scopeMemberCount > 0) {
-      return { memberIds: null as string[] | null, totalExpected: scopeMemberCount, startsAt }
+    // scopeMemberCount > 0 ⇒ a scope snapshot exists, so the RPC can derive
+    // the population server-side. Special-group membership IS eligibility —
+    // no role filter. Legacy snapshot-less events fall through to memberIds.
+    if (fullEventView && scopeMemberCount != null && scopeMemberCount > 0) {
+      return {
+        memberIds: null as string[] | null,
+        allowedRoles: event.scope_level === 'special_group' ? null : (event.allowed_roles || []),
+        startsAt,
+      }
     }
-    return { memberIds: uniqueIds(displaySlice.map((m) => m.id)), totalExpected: null, startsAt }
+    return { memberIds: uniqueIds(displaySlice.map((m) => m.id)), allowedRoles: null, startsAt }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id, event?.scope_level, event?.starts_at, allowedRolesKey, viewerCaps, canViewWholeEvent, scopedMembers, scopeMemberCount, displaySlice])
 
@@ -212,7 +216,7 @@ export default function EventDashboard({ eventId }) {
       const stats = await getEventDashboardStats({
         eventId,
         memberIds: statsInputs.memberIds,
-        totalExpected: statsInputs.totalExpected,
+        allowedRoles: statsInputs.allowedRoles,
         notStarted,
         viewerMemberIds: uniqueIds([user?.userId, user?.graphMemberId]),
       })

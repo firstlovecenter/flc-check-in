@@ -1303,17 +1303,21 @@ export interface DashboardStats {
   updated_at: string
 }
 
+/** Present/Absent are counted over ONE population so the dashboard headline
+ *  always matches the drill-down lists: pass memberIds for an explicit slice,
+ *  or allowedRoles to have Postgres derive the population from the event
+ *  scope snapshot ∩ member_profiles.roles (the client's "eligible" rule). */
 export async function getEventDashboardStats(input: {
   eventId: string
   memberIds?: string[] | null
-  totalExpected?: number | null
+  allowedRoles?: string[] | null
   notStarted?: boolean
   viewerMemberIds?: string[]
 }): Promise<DashboardStats> {
   const { data, error } = await supabase.rpc('get_event_dashboard_stats', {
     p_event_id: input.eventId,
     p_member_ids: input.memberIds ?? null,
-    p_total_expected: input.totalExpected ?? null,
+    p_allowed_roles: input.allowedRoles ?? null,
     p_not_started: !!input.notStarted,
     p_viewer_member_ids: input.viewerMemberIds ?? [],
   })
