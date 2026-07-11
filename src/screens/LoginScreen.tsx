@@ -1,13 +1,49 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { AuthLayout } from '../components/layout/AuthLayout'
-import { Alert } from '../components/ui/alert'
 import { Label } from '../components/ui/label'
 import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { loginWithCredentials, logout } from '../utils/auth'
 import { verifyLoginEligibility } from '../utils/loginEligibility'
 import { friendlyErrorMessage } from '../utils/network'
+import { cn } from '../lib/utils'
+
+function EyeIcon({ open }: { open: boolean }) {
+  if (open) {
+    return (
+      <svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
+        <path d='M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94' />
+        <path d='M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19' />
+        <path d='M14.12 14.12a3 3 0 1 1-4.24-4.24' />
+        <line x1='1' y1='1' x2='23' y2='23' />
+      </svg>
+    )
+  }
+  return (
+    <svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
+      <path d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' />
+      <circle cx='12' cy='12' r='3' />
+    </svg>
+  )
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden className='transition-transform group-hover:translate-x-0.5'>
+      <path d='M5 12h14' />
+      <path d='m13 6 6 6-6 6' />
+    </svg>
+  )
+}
+
+function SpinnerIcon() {
+  return (
+    <svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor' strokeWidth='2' className='animate-spin' aria-hidden>
+      <path d='M21 12a9 9 0 1 1-6.219-8.56' />
+    </svg>
+  )
+}
 
 export default function LoginScreen() {
   const navigate = useNavigate()
@@ -16,8 +52,11 @@ export default function LoginScreen() {
   const notLeader = params.get('notLeader') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(
+    notLeader ? 'This app is for leaders and admins only.' : '',
+  )
 
   async function handleSubmit(e: { preventDefault: () => void }) {
     e.preventDefault()
@@ -34,8 +73,6 @@ export default function LoginScreen() {
 
       navigate('/home')
     } catch (err: any) {
-      // loginWithCredentials stores tokens before the post-auth eligibility
-      // check. Never leave a usable session behind when that check fails.
       logout()
       setError(friendlyErrorMessage(err) || 'Login failed. Check your credentials.')
     } finally {
@@ -44,57 +81,110 @@ export default function LoginScreen() {
   }
 
   return (
-    <AuthLayout title='Hineni' subtitle='Right here, right now'>
-      {resetSuccess && (
-        <Alert variant='success' className='text-center'>
-          Password updated — sign in with your new password.
-        </Alert>
-      )}
-      {notLeader && (
-        <Alert variant='destructive' className='text-center'>
-          This app is for leaders and admins only.
-        </Alert>
-      )}
-      <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
-        <p className='m-0 text-center text-xs text-muted-foreground'>
-          Use the same credentials as the{' '}
-          <strong className='font-medium text-foreground'>Synago App</strong>.
+    <AuthLayout>
+      <div className='mb-5'>
+        <h2 className='text-lg font-semibold tracking-tight text-foreground'>Sign in</h2>
+        <p className='mt-0.5 text-sm text-muted-foreground'>
+          Use the same credentials as the Synago App.
         </p>
-        <div className='flex flex-col gap-1.5'>
-          <Label htmlFor='login-email'>Email</Label>
+      </div>
+
+      {resetSuccess && (
+        <div
+          role='status'
+          className='mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success'
+        >
+          Password updated — sign in with your new password.
+        </div>
+      )}
+
+      {error && (
+        <div
+          role='alert'
+          className='mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-sm text-destructive'
+        >
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className='space-y-4' noValidate>
+        <div className='space-y-1.5'>
+          <Label htmlFor='login-email'>Email address</Label>
           <Input
             id='login-email'
             type='email'
             autoComplete='email'
-            placeholder='your@email.com'
+            inputMode='email'
+            placeholder='you@example.com'
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={loading}
           />
         </div>
-        <div className='flex flex-col gap-1.5'>
+
+        <div className='space-y-1.5'>
           <Label htmlFor='login-password'>Password</Label>
-          <Input
-            id='login-password'
-            type='password'
-            autoComplete='current-password'
-            placeholder='••••••••'
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Link to='/forgot-password' className='self-end text-xs font-medium text-primary no-underline hover:underline'>
+          <div className='relative'>
+            <Input
+              id='login-password'
+              type={showPassword ? 'text' : 'password'}
+              autoComplete='current-password'
+              placeholder='Enter your password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={loading}
+              className='pr-11'
+            />
+            <button
+              type='button'
+              onClick={() => setShowPassword((v) => !v)}
+              className='absolute right-0 top-0 flex size-11 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              tabIndex={-1}
+            >
+              <EyeIcon open={showPassword} />
+            </button>
+          </div>
+        </div>
+
+        <div className='flex justify-end'>
+          <Link
+            to='/forgot-password'
+            className='min-h-11 rounded px-1 text-sm text-primary no-underline hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+          >
             Forgot password?
           </Link>
         </div>
-        {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
-        <Button type='submit' disabled={loading} className='w-full' size='lg'>
-          {loading ? 'Signing in…' : 'Sign in'}
+
+        <Button
+          type='submit'
+          disabled={loading}
+          className={cn(
+            'group w-full min-h-11',
+            'active:scale-[0.98] active:translate-y-px transition-transform',
+          )}
+        >
+          {loading ? (
+            <>
+              <SpinnerIcon />
+              Signing in…
+            </>
+          ) : (
+            <>
+              Sign in
+              <ArrowRightIcon />
+            </>
+          )}
         </Button>
-        <Link to='/events' className='text-center text-sm text-muted-foreground no-underline hover:text-primary'>
+      </form>
+
+      <p className='mt-5 text-center text-xs text-muted-foreground'>
+        <Link to='/events' className='text-muted-foreground no-underline hover:text-primary'>
           View meetings at this location
         </Link>
-      </form>
+      </p>
     </AuthLayout>
   )
 }

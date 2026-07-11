@@ -46,7 +46,7 @@ Prefer **Button** + Tailwind over new inline `style={{}}`.
 
 - `PageShell` — gray page background
 - `PageMain` — content width
-- `AuthLayout` — login card + pink top stripe
+- `AuthLayout` — portal-aligned auth shell (ambient brand glow, grain, logo tile, glass card)
 - `NavDrawer` — mobile nav (not portal sidebar)
 
 ## Status colors (attendance only)
