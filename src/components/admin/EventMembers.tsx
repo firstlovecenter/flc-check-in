@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import VirtualList from '../VirtualList'
 import { Skeleton, SkeletonRows } from '../ui/skeleton'
 import { toast } from '../Toast'
 import { format } from 'date-fns'
@@ -22,8 +21,10 @@ import { childScopeLevel } from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { PaginationControls, useClientPagination } from '../PaginationControls'
 
 type Status = 'present' | 'absent' | 'all'
+const NAMES_PAGE_SIZE = 50
 
 const STATUS_TITLES: Record<Status, string> = {
   present: 'Present',
@@ -130,6 +131,14 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     )
   }, [rows, deferredSearch])
 
+  const {
+    page, setPage, totalPages, pageItems, total,
+  } = useClientPagination(
+    filteredRows,
+    NAMES_PAGE_SIZE,
+    `${status}|${filterChurchId || ''}|${deferredSearch}`,
+  )
+
   async function refresh() {
     try { setRecords(await listCheckedIn(eventId)) }
     catch (err: any) { setError(err.message) }
@@ -230,19 +239,26 @@ export default function EventMembers({ eventId }: { eventId: string }) {
               {rows.length === 0 ? 'Nobody here yet.' : 'No matches.'}
             </p>
           )}
-          <VirtualList
-            items={filteredRows}
-            getKey={(b) => b.member.id}
-            estimateSize={70}
-            renderRow={(b) => (
+          <div className='flex flex-col gap-2'>
+            {pageItems.map((b) => (
               <MemberCard
+                key={b.member.id}
                 entry={b}
                 status={status}
                 canManuallyCheckIn={viewerCaps.canManuallyCheckIn && !eventEnded}
                 isRisky={riskyIds.has(b.member.id)}
                 onManual={setModalMember}
               />
-            )}
+            ))}
+          </div>
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={NAMES_PAGE_SIZE}
+            onPageChange={setPage}
+            noun='names'
+            className='mt-3'
           />
         </div>
       </PageMain>

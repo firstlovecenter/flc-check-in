@@ -13,8 +13,10 @@ import { CenterCard } from '../layout/CenterCard'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
+import { PaginationControls, useClientPagination } from '../PaginationControls'
 
 const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED'] as const
+const EVENTS_PAGE_SIZE = 5
 
 export default function EventHistoryList() {
   const user = getCurrentUser()
@@ -63,6 +65,12 @@ export default function EventHistoryList() {
       return haystack.includes(q)
     })
   }, [events, filter, search])
+
+  const { page, setPage, totalPages, pageItems, total } = useClientPagination(
+    filtered,
+    EVENTS_PAGE_SIZE,
+    `${filter}|${search}`,
+  )
 
   if (error) {
     return (
@@ -121,7 +129,7 @@ export default function EventHistoryList() {
         )}
 
         <div className='flex flex-col gap-2'>
-          {filtered.map((evt) => {
+          {pageItems.map((evt) => {
             const stripeClass =
               evt.status === 'ACTIVE'
                 ? 'bg-success'
@@ -161,6 +169,15 @@ export default function EventHistoryList() {
             )
           })}
         </div>
+
+        <PaginationControls
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={EVENTS_PAGE_SIZE}
+          onPageChange={setPage}
+          noun='events'
+        />
       </PageMain>
     </PageShell>
   )

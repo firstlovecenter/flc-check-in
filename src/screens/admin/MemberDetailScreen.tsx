@@ -5,12 +5,15 @@ import ScreenHeader from '../../components/ScreenHeader'
 import Spinner from '../../components/Spinner'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
 import { Badge } from '../../components/ui/badge'
+import { PaginationControls, useClientPagination } from '../../components/PaginationControls'
 import { cn } from '../../lib/utils'
 import {
   getMemberProfile, listEventsAttendedByMember,
 } from '../../utils/supabaseCheckins'
 
 type Status = 'loading' | 'ok' | 'error'
+
+const EVENTS_PAGE_SIZE = 5
 
 const HIERARCHY: Array<{ key: string; label: string }> = [
   { key: 'denomination', label: 'Denomination' },
@@ -28,6 +31,7 @@ export default function MemberDetailScreen() {
   const [profile, setProfile] = useState<any | null>(null)
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
+  const eventsPage = useClientPagination(events, EVENTS_PAGE_SIZE, events.length)
   async function load() {
     setStatus('loading')
     setError(null)
@@ -130,7 +134,7 @@ export default function MemberDetailScreen() {
                 <p className='text-sm text-muted-foreground'>No event check-ins yet.</p>
               )}
               <div className='flex flex-col gap-1.5'>
-                {events.slice(0, 20).map((evt) => (
+                {eventsPage.pageItems.map((evt) => (
                   <Link
                     key={evt.id}
                     to={`/events/${evt.id}`}
@@ -147,11 +151,14 @@ export default function MemberDetailScreen() {
                     </Badge>
                   </Link>
                 ))}
-                {events.length > 20 && (
-                  <p className='text-xs text-center mt-1 text-muted-foreground'>
-                    Showing 20 most recent of {events.length}
-                  </p>
-                )}
+                <PaginationControls
+                  page={eventsPage.page}
+                  totalPages={eventsPage.totalPages}
+                  total={eventsPage.total}
+                  pageSize={EVENTS_PAGE_SIZE}
+                  onPageChange={eventsPage.setPage}
+                  noun='events'
+                />
               </div>
             </Section>
           </>

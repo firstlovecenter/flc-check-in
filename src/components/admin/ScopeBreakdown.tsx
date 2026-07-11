@@ -13,6 +13,9 @@ import {
 import { getCurrentUser, SCOPE_LEVELS } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { PaginationControls, useClientPagination } from '../PaginationControls'
+
+const NAMES_PAGE_SIZE = 50
 
 function membersWithId(list: any[] | null | undefined): any[] {
   return (list || []).filter((m) => m != null && m.id != null && m.id !== '')
@@ -154,6 +157,12 @@ export default function ScopeBreakdown({ eventId }) {
     })
   }, [sliceRows, currentLevel, childLevel, records])
 
+  const memberPage = useClientPagination(
+    memberRows,
+    NAMES_PAGE_SIZE,
+    `${currentLevel}|${currentChurchId}|${memberRows.length}`,
+  )
+
   const backTo = drillLevel ? null : `/events/${eventId}`
   const isMemberList = currentLevel === 'governorship' || childLevel === null || childLevel === 'bacenta'
 
@@ -224,9 +233,18 @@ export default function ScopeBreakdown({ eventId }) {
         )}
         {isMemberList && memberRows.length > 0 && (
           <div className='flex flex-col gap-2'>
-            {memberRows.map(({ member: m, record: r, status }) => (
+            {memberPage.pageItems.map(({ member: m, record: r, status }) => (
               <MemberRow key={m.id} member={m} record={r} status={status} />
             ))}
+            <PaginationControls
+              page={memberPage.page}
+              totalPages={memberPage.totalPages}
+              total={memberPage.total}
+              pageSize={NAMES_PAGE_SIZE}
+              onPageChange={memberPage.setPage}
+              noun='names'
+              className='mt-2'
+            />
           </div>
         )}
       </PageMain>

@@ -13,7 +13,7 @@ import {
   type SpecialGroup,
 } from '../../utils/supabaseCheckins'
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 50
 
 export default function MemberSearchScreen() {
   return (

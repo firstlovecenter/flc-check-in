@@ -9,6 +9,7 @@ import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
 import { PageShell } from '../components/layout/PageShell'
 import { Alert } from '../components/ui/alert'
+import { PaginationControls, useClientPagination } from '../components/PaginationControls'
 import { listActiveEvents, listActiveSpecialGroupEventsForUser } from '../utils/supabaseCheckins'
 import Spinner from '../components/Spinner'
 import { generateQrToken, currentBucket } from '../utils/checkinsCrypto'
@@ -17,6 +18,8 @@ import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
 import { getCurrentUser } from '../utils/auth'
 import { useTheme } from '../hooks/useTheme'
+
+const EVENTS_PAGE_SIZE = 5
 type QRState =
   | { status: 'loading' }
   | { status: 'error'; error: string }
@@ -83,6 +86,8 @@ export default function QRDisplayScreen() {
       return haystack.includes(q)
     })
   }, [state, search])
+
+  const eventsPage = useClientPagination(filteredEvents, EVENTS_PAGE_SIZE, search)
 
   const header = signedIn ? (
     <ScreenHeader title='Active Events' back={{ to: '/home', label: 'Home' }} />
@@ -177,7 +182,7 @@ export default function QRDisplayScreen() {
               <p className='mb-3 text-sm text-muted-foreground'>No matching events.</p>
             )}
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'>
-              {filteredEvents.map((evt) => (
+              {eventsPage.pageItems.map((evt) => (
                 <button
                   key={evt.id}
                   type='button'
@@ -191,6 +196,17 @@ export default function QRDisplayScreen() {
                 </button>
               ))}
             </div>
+            {filteredEvents.length > 0 && (
+              <PaginationControls
+                page={eventsPage.page}
+                totalPages={eventsPage.totalPages}
+                total={eventsPage.total}
+                pageSize={EVENTS_PAGE_SIZE}
+                onPageChange={eventsPage.setPage}
+                noun='events'
+                className='mt-3'
+              />
+            )}
           </>
         )}
       </main>

@@ -18,6 +18,7 @@ import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
 import { useChurchFocus } from '../contexts/ChurchFocusContext'
 import { friendlyErrorMessage } from '../utils/network'
+import { PaginationControls, useClientPagination } from '../components/PaginationControls'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
 type Greeting = { line1: string; line2: string }
@@ -255,8 +256,12 @@ export default function LeaderHomeScreen() {
     const upcoming = state.events.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
     const past     = state.events.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
       .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
-    return { live, upcoming, past, pastSlice: past.slice(0, 5) }
+    return { live, upcoming, past }
   }, [state])
+
+  const livePage = useClientPagination(eventGroups?.live ?? [], 5, eventGroups?.live.length)
+  const upcomingPage = useClientPagination(eventGroups?.upcoming ?? [], 5, eventGroups?.upcoming.length)
+  const pastPage = useClientPagination(eventGroups?.past ?? [], 5, eventGroups?.past.length)
 
   // Cleanup legacy storage from the removed v1 Church-in-Focus key.
   useEffect(() => {
@@ -425,7 +430,7 @@ export default function LeaderHomeScreen() {
         {state.status === 'error' && <Alert variant='destructive'>{state.error}</Alert>}
 
         {state.status === 'ok' && eventGroups && (() => {
-          const { live, upcoming, past, pastSlice } = eventGroups
+          const { live, upcoming, past } = eventGroups
 
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
@@ -460,8 +465,17 @@ export default function LeaderHomeScreen() {
                 <section>
                   <p className='section-heading mb-3 text-success'>Live now</p>
                   <div className='flex flex-col gap-2.5'>
-                    {live.map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
+                    {livePage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
                   </div>
+                  <PaginationControls
+                    page={livePage.page}
+                    totalPages={livePage.totalPages}
+                    total={livePage.total}
+                    pageSize={5}
+                    onPageChange={livePage.setPage}
+                    noun='events'
+                    className='mt-3'
+                  />
                 </section>
               )}
 
@@ -470,36 +484,44 @@ export default function LeaderHomeScreen() {
                 <section>
                   <p className='section-heading mb-3'>Upcoming</p>
                   <div className='flex flex-col gap-2.5'>
-                    {upcoming.map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
+                    {upcomingPage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
                   </div>
+                  <PaginationControls
+                    page={upcomingPage.page}
+                    totalPages={upcomingPage.totalPages}
+                    total={upcomingPage.total}
+                    pageSize={5}
+                    onPageChange={upcomingPage.setPage}
+                    noun='events'
+                    className='mt-3'
+                  />
                 </section>
               )}
 
-              {/* ── Past (max 5) ── */}
-              {pastSlice.length > 0 && (
+              {/* ── Past ── */}
+              {past.length > 0 && (
                 <section>
                   <div className='flex items-center justify-between mb-3'>
                     <p className='section-heading m-0'>Recent</p>
-                    {past.length > 5 && (
-                      <Link
-                        to='/history'
-                        className='text-xs font-semibold text-primary no-underline hover:underline'
-                      >
-                        View all history →
-                      </Link>
-                    )}
-                  </div>
-                  <div className='flex flex-col gap-2.5'>
-                    {pastSlice.map(evt => <EventCard key={evt.id} evt={evt} variant='past' />)}
-                  </div>
-                  {past.length > 5 && (
                     <Link
                       to='/history'
-                      className='mt-3 flex items-center justify-center rounded-lg bg-primary/5 py-2.5 text-xs font-semibold tracking-tight text-primary no-underline hover:bg-primary/10'
+                      className='text-xs font-semibold text-primary no-underline hover:underline'
                     >
-                      + {past.length - 5} more in history
+                      View all history →
                     </Link>
-                  )}
+                  </div>
+                  <div className='flex flex-col gap-2.5'>
+                    {pastPage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='past' />)}
+                  </div>
+                  <PaginationControls
+                    page={pastPage.page}
+                    totalPages={pastPage.totalPages}
+                    total={pastPage.total}
+                    pageSize={5}
+                    onPageChange={pastPage.setPage}
+                    noun='events'
+                    className='mt-3'
+                  />
                 </section>
               )}
 

@@ -60,6 +60,18 @@ describe('resolveEventEntryRoute', () => {
     expect(route).toBe('dashboard')
   })
 
+  it('keeps a council leader on the dashboard so scope drill-downs remain available', () => {
+    const route = resolveEventEntryRoute(
+      makeUser({ level: 'council', roles: ['leaderCouncil'] }),
+      makeEntry({
+        scopeLevel: 'council',
+        eligibleForCheckin: true,
+        alreadyCheckedIn: false,
+      }),
+    )
+    expect(route).toBe('dashboard')
+  })
+
   it('routes ended special-group attendees home instead of dashboard', () => {
     const route = resolveEventEntryRoute(
       makeUser({ level: 'bacenta', roles: ['leaderBacenta'] }),
@@ -76,6 +88,15 @@ describe('resolveEventEntryRoute', () => {
     const route = resolveEventEntryRoute(
       makeUser({ isSuperAdmin: true, roles: ['superAdmin'] }),
       makeEntry({ eligibleForCheckin: true }),
+    )
+    expect(route).toBe('dashboard')
+  })
+
+  it('keeps scope drill-downs on the dashboard even when check-in is still due', () => {
+    const route = resolveEventEntryRoute(
+      makeUser({ level: 'bacenta', roles: ['leaderBacenta'] }),
+      makeEntry({ eligibleForCheckin: true, alreadyCheckedIn: false }),
+      { hasScopeDrilldown: true },
     )
     expect(route).toBe('dashboard')
   })

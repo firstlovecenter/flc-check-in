@@ -79,11 +79,23 @@ function isLowestAllowedRole(user: AppUser, allowedRoles: string[]): boolean {
   return scopeLevelIndex(user.level) === lowestIdx
 }
 
+export interface EventEntryRouteOptions {
+  /**
+   * ScopeBreakdown drills into `/events/:id?scopeLevel=&scopeChurchId=`.
+   * That is an explicit dashboard view — never redirect those to check-in.
+   */
+  hasScopeDrilldown?: boolean
+}
+
 export function resolveEventEntryRoute(
   user: AppUser,
   entry: EventEntryState,
+  opts: EventEntryRouteOptions = {},
 ): EventEntryRoute {
   if (!entry.found) return 'dashboard'
+
+  // Drill-down URLs are dashboard destinations, not event-open entry points.
+  if (opts.hasScopeDrilldown) return 'dashboard'
 
   const management = isManagementViewer(user, entry.scopeLevel)
   const attendeeOnly =
@@ -101,6 +113,9 @@ export function resolveEventEntryRoute(
     && entry.eventStatus === 'ACTIVE'
     && entry.checkinOpen
     && !management
+    // Overseeing leaders keep the dashboard (IdentityRow / scope drill-downs).
+    // Only leaf attendees are forced to check in before any dashboard load.
+    && attendeeOnly
 
   if (needsCheckIn) return 'checkin'
   return 'dashboard'

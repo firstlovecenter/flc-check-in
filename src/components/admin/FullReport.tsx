@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, useDeferredValue, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import VirtualList from '../VirtualList'
 import { Skeleton, SkeletonRows } from '../ui/skeleton'
 import { toast } from '../Toast'
 import { format } from 'date-fns'
@@ -25,6 +24,7 @@ import { childScopeLevel } from '../../utils/membersApi'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { PaginationControls, useClientPagination } from '../PaginationControls'
 
 // Only two attendance statuses exist: Present (has a record) and Absent.
 // Tab ids stay stable so old ?tab= URLs keep working.
@@ -33,6 +33,9 @@ const TABS = [
   { id: 'defaulted', label: 'Absent' },
   { id: 'timeline', label: 'Timeline' },
 ] as const
+
+const NAMES_PAGE_SIZE = 50
+const TIMELINE_PAGE_SIZE = 50
 
 type TabId = (typeof TABS)[number]['id']
 
@@ -220,6 +223,17 @@ export default function FullReport({ eventId }: { eventId: string }) {
     })
   }, [timelineRows, deferredSearch])
 
+  const namesPage = useClientPagination(
+    filteredRows,
+    NAMES_PAGE_SIZE,
+    `${activeTab}|${filterChurchId || ''}|${deferredSearch}`,
+  )
+  const timelinePage = useClientPagination(
+    filteredTimeline,
+    TIMELINE_PAGE_SIZE,
+    `timeline|${deferredSearch}`,
+  )
+
   const handleAddNote = useCallback((m: any) => {
     setAbsenceTarget(m)
     setAbsenceInput(absenceNotes.get(m.id) || '')
@@ -360,15 +374,25 @@ export default function FullReport({ eventId }: { eventId: string }) {
               {filteredTimeline.length === 0 ? (
                 <p className='py-8 text-center text-sm text-muted-foreground'>No check-ins yet.</p>
               ) : (
-                <VirtualList
-                  items={filteredTimeline}
-                  getKey={(b) => b.record.id}
-                  estimateSize={64}
-                  gap={0}
-                  renderRow={(b, i) => (
-                    <TimelineEntry entry={b} isLast={i === filteredTimeline.length - 1} />
-                  )}
-                />
+                <>
+                  {timelinePage.pageItems.map((b, i) => (
+                    <TimelineEntry
+                      key={b.record.id}
+                      entry={b}
+                      isLast={i === timelinePage.pageItems.length - 1}
+                    />
+                  ))}
+                  <div className='border-t border-border px-3 py-3'>
+                    <PaginationControls
+                      page={timelinePage.page}
+                      totalPages={timelinePage.totalPages}
+                      total={timelinePage.total}
+                      pageSize={TIMELINE_PAGE_SIZE}
+                      onPageChange={timelinePage.setPage}
+                      noun='check-ins'
+                    />
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -379,7 +403,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
                 {tabRows.length === 0 ? 'Nothing here yet.' : 'No matches.'}
               </p>
             )}
-            {filteredRows.map((b) => (
+            {namesPage.pageItems.map((b) => (
               <ListRow
                 key={b.member.id}
                 entry={b}
@@ -391,6 +415,18 @@ export default function FullReport({ eventId }: { eventId: string }) {
                 onAddNote={activeTab === 'defaulted' && viewerCaps.canManage ? handleAddNote : undefined}
               />
             ))}
+            {filteredRows.length > 0 && (
+              <div className='md:col-span-2'>
+                <PaginationControls
+                  page={namesPage.page}
+                  totalPages={namesPage.totalPages}
+                  total={namesPage.total}
+                  pageSize={NAMES_PAGE_SIZE}
+                  onPageChange={namesPage.setPage}
+                  noun='names'
+                />
+              </div>
+            )}
           </div>
         )}
       </PageMain>
