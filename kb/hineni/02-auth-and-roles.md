@@ -10,8 +10,10 @@ This file describes **how Hineni applies** those roles in this app.
 2. FLC auth Lambda (proxied as `/api/flc-auth`) returns JWT + optional church refs.
 3. Token stored in `sessionStorage`; `getCurrentUser()` decodes JWT and merges `churchContext`
    from `localStorage` when graph hydration is stale.
-4. **Login gate:** `resolveCurrentMember()` + `isLeaderOrAdmin(member)` in `membersApi.ts`.
-   Non-leaders are logged out and redirected with `?notLeader=1`.
+4. **Login gate:** `verifyLoginEligibility()` calls
+   `resolveCurrentMember()` + `isLeaderOrAdmin(member)`. Auth ID and email are
+   checked in one combined GraphQL query because the auth and graph ID systems
+   may differ. Non-leaders are logged out.
 5. **Superadmin:** `user.isSuperAdmin` when JWT has `superAdmin` **or** email is in Supabase
    `superadmins` (`is_super_admin` RPC at login). Superadmins:
    - Skip the login leader/admin graph gate (`LoginScreen`).

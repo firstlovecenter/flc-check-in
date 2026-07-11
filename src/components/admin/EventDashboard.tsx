@@ -7,7 +7,6 @@ import RefreshButton from '../RefreshButton'
 import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
-import { SCOPE_LEVELS } from '../../types/app'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import {
@@ -74,29 +73,8 @@ export default function EventDashboard({ eventId }) {
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
-  // If the viewer is at the LOWEST level allowed for this event, there are no
-  // sub-scopes for them to oversee — send them straight to check-in instead of
-  // the (empty) dashboard. Applies even to admins whose admin scope happens to
-  // be the lowest level in the event's allowed_roles cascade.
-  useEffect(() => {
-    if (!event || !user?.level || user?.isSuperAdmin || user?.isSuperViewer || viewerCaps?.canManage || viewerCaps?.canViewFullEvent) return
-    const allowed: string[] = event.allowed_roles || []
-    if (!allowed.length) return
-    // Extract the level suffix from each role (leaderBacenta -> bacenta,
-    // adminCouncil -> council), then pick the lowest by SCOPE_LEVELS index.
-    let lowestIdx = Infinity
-    for (const r of allowed) {
-      const lvl = r.replace(/^(leader|admin)/, '').toLowerCase()
-      const idx = SCOPE_LEVELS.indexOf(lvl as any)
-      if (idx >= 0 && idx < lowestIdx) lowestIdx = idx
-    }
-    if (lowestIdx === Infinity) return
-    const viewerIdx = SCOPE_LEVELS.indexOf(user.level as any)
-    if (viewerIdx === lowestIdx) {
-      navigate(`/checkin/${eventId}`, { replace: true })
-    }
-  }, [event, eventId, user?.level, user?.isSuperAdmin, user?.isSuperViewer, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, navigate])
-
+  // Dashboard stats and child-scope queries run only after the entry gate
+  // has decided this viewer should see the dashboard (not self check-in).
   // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
   const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)
   // Child count for non-admin leaders viewing their own scope (no URL params).
@@ -133,18 +111,8 @@ export default function EventDashboard({ eventId }) {
     return () => { cancelled = true }
   }, [viewerCaps?.viewerScope?.id, viewerCaps?.canManage, scopeLevel]) // eslint-disable-line
 
-  // Bacenta leaders and special-group members have no sub-scope to manage —
-  // skip the dashboard entirely.
-  // Active event → go straight to check-in. Ended event → go home.
-  useEffect(() => {
-    if (!viewerCaps || !event) return
-    const isBacentaLeader = viewerCaps.viewerScope?.level === 'bacenta' && !viewerCaps.canManage && !viewerCaps.canViewFullEvent
-    const isSpecialGroupMember = event.scope_level === 'special_group' && !user?.isSuperAdmin && !user?.isSuperViewer
-    if (isBacentaLeader || isSpecialGroupMember) {
-      navigate(event.status === 'ACTIVE' ? `/checkin/${eventId}` : '/home', { replace: true })
-    }
-  }, [viewerCaps?.canManage, viewerCaps?.viewerScope?.level, event?.status, event?.scope_level]) // eslint-disable-line
-
+  // Bacenta leaders and special-group members: entry gate routes to check-in or
+  // home before this screen mounts for self-service attendees.
   // Members that belong to the active child-scope filter (null = no filter).
   const scopedMembers = useMemo(() => {
     if (!scopeLevel || !scopeChurchId) return null

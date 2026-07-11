@@ -581,11 +581,9 @@ export async function loginWithCredentials(email, password) {
   const mergedRoles = mergeRoleLists(payload?.roles, userFields?.roles)
   const user = enrichUser({ ...payload, ...userFields, roles: mergedRoles, userId: payload.userId ?? id });
 
-  // Every login: fresh graph probe → member_profiles + churchContext (see graphProfileSync.ts).
-  import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {
-    syncGraphProfileForUserBackground(user, { force: true })
-  })
-
+  // LoginScreen performs the graph-backed eligibility check. Keeping that
+  // work in one place avoids a duplicate background graph probe racing the
+  // authoritative login gate on every login.
   return user;
 }
 

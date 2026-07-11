@@ -18,6 +18,7 @@ import {
 import {
   GET_MEMBER_BY_ID,
   GET_MEMBER_BY_EMAIL,
+  GET_MEMBER_BY_ID_OR_EMAIL,
   SCOPE_QUERIES,
   ANCESTOR_QUERIES,
   CHILD_COUNT_QUERIES,
@@ -221,10 +222,21 @@ export async function getMemberByEmail(email) {
   return data?.members?.[0] || null
 }
 
+export async function getMemberByIdOrEmail(id: string, email: string) {
+  const data = await client().request<{ members: any[] }>(
+    GET_MEMBER_BY_ID_OR_EMAIL,
+    { id, email },
+  )
+  const members = data?.members || []
+  return members.find((member) => member?.id === id)
+    || members.find((member) => member?.email?.toLowerCase() === email.toLowerCase())
+    || null
+}
+
 // ─── resolveCurrentMember(user) ────────────────────────────────────────────
-// Best-effort lookup of the logged-in user in the FLC member graph. ID and
-// email lookups run IN PARALLEL so auth-system IDs that don't match graph IDs
-// don't add a second serial round-trip.
+// Best-effort lookup of the logged-in user in the FLC member graph. When both
+// identifiers are available, one OR query checks auth ID + email in a single
+// round trip (the auth and graph systems do not always share IDs).
 //
 // Caching:
 //   • Positive hits are cached permanently for the session.
@@ -246,15 +258,12 @@ export async function resolveCurrentMember(user) {
   if (memberByUserPending.has(cacheKey)) return memberByUserPending.get(cacheKey)
 
   const p = (async () => {
-    // Run ID and email lookups in parallel — saves ~500ms when the auth-system
-    // userId doesn't exist in the graph (each query is ~400-600ms independently).
-    const [byId, byEmail] = await Promise.allSettled([
-      user.userId ? getMemberById(user.userId) : Promise.resolve(null),
-      user.email  ? getMemberByEmail(user.email) : Promise.resolve(null),
-    ])
-    return (byId.status === 'fulfilled' ? byId.value : null)
-        || (byEmail.status === 'fulfilled' ? byEmail.value : null)
-        || null
+    if (user.userId && user.email) {
+      return getMemberByIdOrEmail(user.userId, user.email)
+    }
+    if (user.userId) return getMemberById(user.userId)
+    if (user.email) return getMemberByEmail(user.email)
+    return null
   })().then((member) => {
     memberByUserPending.delete(cacheKey)
     if (member) {

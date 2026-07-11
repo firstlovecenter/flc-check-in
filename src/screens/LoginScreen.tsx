@@ -6,12 +6,8 @@ import { Label } from '../components/ui/label'
 import { Input } from '../components/ui/input'
 import { Button } from '../components/ui/button'
 import { loginWithCredentials, logout } from '../utils/auth'
-import { resolveCurrentMember, isLeaderOrAdmin } from '../utils/membersApi'
+import { verifyLoginEligibility } from '../utils/loginEligibility'
 import { friendlyErrorMessage } from '../utils/network'
-
-function hasLeaderOrAdminRole(roles: string[] | undefined): boolean {
-  return (roles || []).some((role) => /^(leader|admin)(Bacenta|Governorship|Council|Stream|Campus|Oversight|Denomination)$/.test(role))
-}
 
 export default function LoginScreen() {
   const navigate = useNavigate()
@@ -29,26 +25,18 @@ export default function LoginScreen() {
     setLoading(true)
     try {
       const user = await loginWithCredentials(email, password)
-
-      if (!user.isSuperAdmin) {
-        try {
-          const member = await resolveCurrentMember(user)
-          if (!member || !isLeaderOrAdmin(member)) {
-            logout()
-            setError('This app is for leaders and admins only.')
-            return
-          }
-        } catch (err) {
-          if (!hasLeaderOrAdminRole(user.roles)) {
-            logout()
-            setError(friendlyErrorMessage(err))
-            return
-          }
-        }
+      const eligibility = await verifyLoginEligibility(user)
+      if (!eligibility.eligible) {
+        logout()
+        setError('This app is for leaders and admins only.')
+        return
       }
 
       navigate('/home')
     } catch (err: any) {
+      // loginWithCredentials stores tokens before the post-auth eligibility
+      // check. Never leave a usable session behind when that check fails.
+      logout()
       setError(friendlyErrorMessage(err) || 'Login failed. Check your credentials.')
     } finally {
       setLoading(false)

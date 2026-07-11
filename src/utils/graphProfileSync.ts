@@ -90,7 +90,15 @@ export async function syncGraphProfileForUser(
 
   clearResolveCurrentMemberCache(user)
   const member = await resolveCurrentMember(user)
+  return persistResolvedGraphProfileForUser(user, member)
+}
 
+/** Persist a member already resolved by the login gate without querying the
+ * graph a second time. Persistence is enrichment, not authorization. */
+export async function persistResolvedGraphProfileForUser(
+  user: AppUser,
+  member: any | null,
+): Promise<GraphProfileSyncResult> {
   if (member?.pictureUrl) localStorage.setItem('pictureUrl', member.pictureUrl)
   const memberTitle = Array.isArray(member?.title) ? member.title[0]?.name : member?.title
   if (memberTitle) localStorage.setItem('memberTitle', memberTitle)

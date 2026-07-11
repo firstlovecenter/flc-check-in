@@ -492,6 +492,21 @@ export async function getEvent(eventId) {
   return mapEventRow(data)
 }
 
+/** Snapshot-based entry gate — one RPC before dashboard or check-in routing. */
+export async function getEventEntryState(input: {
+  eventId: string
+  memberIds: string[]
+  email?: string
+}): Promise<any> {
+  const { data, error } = await supabase.rpc('get_event_entry_state', {
+    p_event_id: input.eventId,
+    p_member_ids: input.memberIds,
+    p_email: input.email ?? null,
+  })
+  if (error) throw error
+  return data
+}
+
 /** Active events (status=ACTIVE, within time window), filtered to the events
  *  whose scope church appears in the calling user's church hierarchy.
  *  SuperAdmins bypass the filter and see all events.

@@ -92,6 +92,26 @@ export const GET_MEMBER_BY_EMAIL = gql`
   }
 `
 
+// Login lookup when both auth-system ID and email are available. The two
+// identifiers may belong to different ID systems, so query both in one graph
+// round trip instead of issuing two concurrent requests per login.
+export const GET_MEMBER_BY_ID_OR_EMAIL = gql`
+  ${MEMBER_FIELDS}
+  query GetMemberByIdOrEmail($id: ID!, $email: String!) {
+    members(
+      where: {
+        OR: [
+          { id_EQ: $id },
+          { email_EQ: $email }
+        ]
+      }
+      limit: 2
+    ) {
+      ...MemberFields
+    }
+  }
+`
+
 // ─── GET_MEMBERS_IN_SCOPE ───────────────────────────────────────────────────
 // Returns every leader/admin whose leads* or isAdminFor* relationship targets
 // a node within the given scope.
