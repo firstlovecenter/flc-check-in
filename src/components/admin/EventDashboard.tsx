@@ -498,7 +498,11 @@ function LiveRow({ icon, label, count, to }: {
 function IdentityRow({ childLabel, displayChildCount, childCountLink }: {
   childLabel: string | null; displayChildCount: number | null; childCountLink: string
 }) {
-  if (!childLabel || displayChildCount == null) return null
+  // Keep the drill chip visible while the child-count RPC is in flight.
+  // Hiding until count arrives made drills look "gone" after entry-gate work
+  // (slow/failed count ⇒ blank IdentityRow).
+  if (!childLabel) return null
+  const countLabel = displayChildCount == null ? '…' : String(displayChildCount)
   return (
     <div className='mt-4 flex items-center gap-2'>
       <Link
@@ -506,7 +510,7 @@ function IdentityRow({ childLabel, displayChildCount, childCountLink }: {
         className='flex items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 pr-4 no-underline hover:bg-accent'
       >
         <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-foreground'>
-          {displayChildCount}
+          {countLabel}
         </div>
         <div className='flex flex-col'>
           <span className='text-sm font-semibold text-foreground'>{childLabel}</span>

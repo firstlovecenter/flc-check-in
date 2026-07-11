@@ -17,7 +17,7 @@ export interface EventEntryState {
   alreadyCheckedIn: boolean
 }
 
-const ROLE_SUFFIX = /^(leader|admin)(Bacenta|Governorship|Council|Stream|Campus|Oversight|Denomination)$/
+const ROLE_SUFFIX = /^(leader|admin)(Bacenta|Governorship|Council|Stream|Campus|Oversight|Denomination)$/i
 
 function roleLevelIndex(role: string): number {
   const m = ROLE_SUFFIX.exec(role)
@@ -28,6 +28,68 @@ function roleLevelIndex(role: string): number {
 function scopeLevelIndex(level: string | null | undefined): number {
   if (!level) return -1
   return SCOPE_LEVELS.indexOf(level as ScopeLevel)
+}
+
+/**
+ * Highest church level the viewer oversees, from JWT roles, churchScopes,
+ * top-level lead/admin edge arrays, and user.level.
+ *
+ * The entry gate must not trust `user.level` alone — it can lag behind
+ * churchScopes / role arrays and wrongly classify a governorship/council
+ * leader as bacenta (which hid IdentityRow / scope drills).
+ */
+export function viewerOversightLevelIndex(user: AppUser): number {
+  let highest = -1
+
+  const bump = (level: string | null | undefined) => {
+    const idx = scopeLevelIndex(level)
+    if (idx > highest) highest = idx
+  }
+
+  for (const role of user.roles || []) {
+    if (typeof role !== 'string') continue
+    const idx = roleLevelIndex(role)
+    if (idx > highest) highest = idx
+  }
+
+  bump(user.level)
+
+  const scopes = user.churchScopes
+  if (scopes) {
+    if (scopes.leadsBacentaOf?.id) bump('bacenta')
+    if (scopes.leadsGovernorshipOf?.id || scopes.isAdminForGovernorshipOf?.id) bump('governorship')
+    if (scopes.leadsCouncilOf?.id || scopes.isAdminForCouncilOf?.id) bump('council')
+    if (scopes.leadsStreamOf?.id || scopes.isAdminForStreamOf?.id) bump('stream')
+    if (scopes.leadsCampusOf?.id || scopes.isAdminForCampusOf?.id) bump('campus')
+    if (scopes.leadsOversightOf?.id || scopes.isAdminForOversightOf?.id) bump('oversight')
+    if (scopes.leadsDenominationOf?.id || scopes.isAdminForDenominationOf?.id) bump('denomination')
+  }
+
+  const edgePairs: Array<[ScopeLevel, Array<{ id: string }> | undefined]> = [
+    ['bacenta', user.leadsBacenta],
+    ['governorship', user.leadsGovernorship],
+    ['governorship', user.isAdminForGovernorship],
+    ['council', user.leadsCouncil],
+    ['council', user.isAdminForCouncil],
+    ['stream', user.leadsStream],
+    ['stream', user.isAdminForStream],
+    ['campus', user.leadsCampus],
+    ['campus', user.isAdminForCampus],
+    ['oversight', user.leadsOversight],
+    ['oversight', user.isAdminForOversight],
+    ['denomination', user.leadsDenomination],
+    ['denomination', user.isAdminForDenomination],
+  ]
+  for (const [level, list] of edgePairs) {
+    if (list?.length) bump(level)
+  }
+
+  for (const ctx of user.churchContexts || []) {
+    bump(ctx.level)
+  }
+  bump(user.activeChurch?.level)
+
+  return highest
 }
 
 /** Overseeing admins / ancestor-scope viewers load the dashboard first. */
@@ -44,9 +106,13 @@ export function isManagementViewer(
     if (typeof role !== 'string') continue
     const roleIdx = roleLevelIndex(role)
     if (roleIdx < 0) continue
-    if (role.startsWith('admin') && roleIdx === eventIdx) return true
+    if (/^admin/i.test(role) && roleIdx === eventIdx) return true
     if (roleIdx > eventIdx) return true
   }
+
+  // churchScopes / edge arrays can show ancestor oversight when roles[] is thin.
+  const oversightIdx = viewerOversightLevelIndex(user)
+  if (oversightIdx > eventIdx) return true
 
   return false
 }
@@ -66,17 +132,27 @@ export function normalizeEventEntryState(raw: any): EventEntryState {
   }
 }
 
-function isLowestAllowedRole(user: AppUser, allowedRoles: string[]): boolean {
-  if (!allowedRoles.length || !user.level) return false
+/**
+ * True only for leaf attendees who have no child-scope drills to oversee.
+ * Mid-level leaders (governorship+) always keep the dashboard — matching the
+ * pre-gate EventDashboard redirects that keyed off viewerCaps.viewerScope.
+ */
+export function isAttendeeOnlyViewer(
+  user: AppUser,
+  entry: Pick<EventEntryState, 'scopeLevel' | 'allowedRoles'>,
+): boolean {
+  if (user.isSuperAdmin || user.isSuperViewer) return false
+  if (isManagementViewer(user, entry.scopeLevel)) return false
+  if (entry.scopeLevel === 'special_group') return true
 
-  let lowestIdx = Infinity
-  for (const role of allowedRoles) {
-    const idx = roleLevelIndex(role)
-    if (idx >= 0 && idx < lowestIdx) lowestIdx = idx
-  }
-  if (lowestIdx === Infinity) return false
+  const oversightIdx = viewerOversightLevelIndex(user)
+  // Unknown / bacenta-only → no IdentityRow child drills.
+  if (oversightIdx <= scopeLevelIndex('bacenta')) return true
 
-  return scopeLevelIndex(user.level) === lowestIdx
+  // Anyone who oversees above bacenta keeps the dashboard (scope breakdown).
+  // Do NOT use "lowest allowed role == user.level" — that mis-fired when JWT
+  // level lagged behind real oversight and hid drills for mid-level leaders.
+  return false
 }
 
 export interface EventEntryRouteOptions {
@@ -98,10 +174,7 @@ export function resolveEventEntryRoute(
   if (opts.hasScopeDrilldown) return 'dashboard'
 
   const management = isManagementViewer(user, entry.scopeLevel)
-  const attendeeOnly =
-    entry.scopeLevel === 'special_group'
-    || (user.level === 'bacenta' && !management)
-    || isLowestAllowedRole(user, entry.allowedRoles)
+  const attendeeOnly = isAttendeeOnlyViewer(user, entry)
 
   if (entry.eventStatus === 'ENDED' && attendeeOnly && !management) {
     return 'home'
@@ -113,8 +186,6 @@ export function resolveEventEntryRoute(
     && entry.eventStatus === 'ACTIVE'
     && entry.checkinOpen
     && !management
-    // Overseeing leaders keep the dashboard (IdentityRow / scope drill-downs).
-    // Only leaf attendees are forced to check in before any dashboard load.
     && attendeeOnly
 
   if (needsCheckIn) return 'checkin'

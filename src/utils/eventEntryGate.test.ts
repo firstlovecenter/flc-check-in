@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AppUser } from '../types/app'
 import {
+  isAttendeeOnlyViewer,
   isManagementViewer,
   normalizeEventEntryState,
   resolveEventEntryRoute,
+  viewerOversightLevelIndex,
   type EventEntryState,
 } from './eventEntryGate'
 
@@ -72,6 +74,32 @@ describe('resolveEventEntryRoute', () => {
     expect(route).toBe('dashboard')
   })
 
+  it('keeps a governorship leader on the dashboard even when eligible to check in', () => {
+    const route = resolveEventEntryRoute(
+      makeUser({ level: 'governorship', roles: ['leaderGovernorship'] }),
+      makeEntry({
+        scopeLevel: 'council',
+        eligibleForCheckin: true,
+        alreadyCheckedIn: false,
+      }),
+    )
+    expect(route).toBe('dashboard')
+  })
+
+  it('keeps mid-level leaders on the dashboard when JWT level lags behind churchScopes', () => {
+    const route = resolveEventEntryRoute(
+      makeUser({
+        level: 'bacenta',
+        roles: ['leaderBacenta'],
+        churchScopes: {
+          leadsGovernorshipOf: { id: 'gov-1', name: 'Gov One' },
+        },
+      }),
+      makeEntry({ eligibleForCheckin: true, alreadyCheckedIn: false }),
+    )
+    expect(route).toBe('dashboard')
+  })
+
   it('routes ended special-group attendees home instead of dashboard', () => {
     const route = resolveEventEntryRoute(
       makeUser({ level: 'bacenta', roles: ['leaderBacenta'] }),
@@ -99,6 +127,32 @@ describe('resolveEventEntryRoute', () => {
       { hasScopeDrilldown: true },
     )
     expect(route).toBe('dashboard')
+  })
+})
+
+describe('viewerOversightLevelIndex', () => {
+  it('prefers churchScopes over a stale bacenta level', () => {
+    expect(viewerOversightLevelIndex(makeUser({
+      level: 'bacenta',
+      roles: ['leaderBacenta'],
+      churchScopes: { leadsCouncilOf: { id: 'c1', name: 'Council' } },
+    }))).toBeGreaterThan(0)
+  })
+})
+
+describe('isAttendeeOnlyViewer', () => {
+  it('treats bacenta-only leaders as attendees', () => {
+    expect(isAttendeeOnlyViewer(
+      makeUser({ level: 'bacenta', roles: ['leaderBacenta'] }),
+      makeEntry(),
+    )).toBe(true)
+  })
+
+  it('does not treat governorship leaders as attendees', () => {
+    expect(isAttendeeOnlyViewer(
+      makeUser({ level: 'governorship', roles: ['leaderGovernorship'] }),
+      makeEntry(),
+    )).toBe(false)
   })
 })
 

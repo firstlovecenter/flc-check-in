@@ -55,14 +55,16 @@ export function PaginationControls({
 
   const from = page * pageSize + 1
   const to = Math.min(total, (page + 1) * pageSize)
+  const showPager = total > pageSize
 
   return (
-    <div className={cn('flex flex-col items-center gap-2 pt-1', className)}>
-      <p className='m-0 text-xs text-muted-foreground'>
-        {from}–{to} of {total} {noun}
+    <div className={cn('flex flex-col items-center gap-2 border-t border-border pt-3', className)}>
+      <p className='m-0 text-xs font-medium text-muted-foreground'>
+        Showing {from}–{to} of {total} {noun}
+        {showPager ? ` · ${pageSize}/page` : ''}
       </p>
-      {totalPages > 1 && (
-        <div className='flex w-full items-center justify-between gap-3'>
+      {showPager && (
+        <div className='flex w-full max-w-sm items-center justify-between gap-3'>
           <button
             type='button'
             disabled={page === 0}
@@ -71,8 +73,8 @@ export function PaginationControls({
           >
             ← Prev
           </button>
-          <span className='text-xs text-muted-foreground'>
-            {page + 1} / {totalPages}
+          <span className='text-xs font-semibold text-foreground'>
+            Page {page + 1} / {totalPages}
           </span>
           <button
             type='button'
