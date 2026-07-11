@@ -22,7 +22,9 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'prompt',
+        // Installed PWAs were sticking on old bundles (prompt mode waited for
+        // a tap that never came). Auto-update activates the new SW and reloads.
+        registerType: 'autoUpdate',
         includeAssets: ['android-chrome-192x192.png', 'android-chrome-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
         manifest: {
           name: 'FLC Hineni',

@@ -91,6 +91,11 @@ export default function ScopeBreakdown({ eventId }) {
 
   const { groups, unassignedRows } = useMemo(() => {
     if (!childLevel) return { groups: [], unassignedRows: [] }
+    // Still waiting on the graph child list — don't dump every eligible
+    // member into a flat "unassigned" list (that is what installed PWAs were
+    // showing when getChildChurches was slow/failed vs the browser).
+    if (childChurches === null) return { groups: [], unassignedRows: [] }
+
     const idCol   = `${childLevel}_id`
     const nameCol = `${childLevel}_name`
     const recordByMember = new Map(records.map((r) => [r.member_id, r]))
@@ -104,8 +109,21 @@ export default function ScopeBreakdown({ eventId }) {
     const blank = (id: string, name: string): GroupStats => ({ id, name, total: 0, attended: 0, absent: 0 })
 
     const map = new Map<string, GroupStats>()
-    if (childChurches) {
-      for (const c of childChurches) map.set(c.id, blank(c.id, c.name))
+    for (const c of childChurches) map.set(c.id, blank(c.id, c.name))
+
+    // Graph child list empty/failed — seed groups from eligible member
+    // hierarchy columns so drills still appear (PWA / offline / graph blip).
+    if (map.size === 0) {
+      for (const m of sliceRows) {
+        const scopeChildIds: string[] | undefined = (m.scope_ids as any)?.[childLevel]
+        const candidates = scopeChildIds?.length
+          ? scopeChildIds
+          : (m[idCol] ? [m[idCol] as string] : [])
+        for (const id of candidates) {
+          if (!id || map.has(id)) continue
+          map.set(id, blank(id, (m[nameCol] as string) || id))
+        }
+      }
     }
 
     const unassigned: { member: any; record: any; status: string }[] = []
@@ -167,7 +185,9 @@ export default function ScopeBreakdown({ eventId }) {
   const isMemberList = currentLevel === 'governorship' || childLevel === null || childLevel === 'bacenta'
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
-  if (initialLoading || !event || !viewerCaps) return <Spinner fullPage />
+  if (initialLoading || !event || !viewerCaps) {
+    return <Spinner fullPage message='Loading event details.' />
+  }
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
   }
@@ -197,7 +217,10 @@ export default function ScopeBreakdown({ eventId }) {
         </div>
 
         {/* ── Scope accordion list ── */}
-        {!isMemberList && (
+        {!isMemberList && childChurches === null && (
+          <p className='py-8 text-center text-sm text-muted-foreground'>Loading scopes…</p>
+        )}
+        {!isMemberList && childChurches !== null && (
           <div className='flex flex-col gap-3'>
             {groups.map((g) => (
               <ScopeCard
@@ -210,11 +233,14 @@ export default function ScopeBreakdown({ eventId }) {
                 leader={childLeaders.get(g.id) ?? null}
               />
             ))}
+            {groups.length === 0 && unassignedRows.length === 0 && (
+              <p className='py-6 text-center text-sm text-muted-foreground'>No child scopes in this view.</p>
+            )}
           </div>
         )}
 
         {/* ── Unassigned members (scope-level leaders with no child scope) ── */}
-        {!isMemberList && unassignedRows.length > 0 && (
+        {!isMemberList && childChurches !== null && unassignedRows.length > 0 && (
           <>
             <p className='mt-1 text-xs font-semibold text-muted-foreground'>
               {cap(currentLevel!)} level · {unassignedRows.length} member{unassignedRows.length !== 1 ? 's' : ''}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Skeleton } from '../ui/skeleton'
+import Spinner from '../Spinner'
 import { formatDistanceToNowStrict } from 'date-fns'
 import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
@@ -217,10 +217,9 @@ export default function EventDashboard({ eventId }) {
   const isCheckedIn = !!viewerCaps?.canCheckIn && !!dashboardStats?.viewer_checked_in
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
-  // Progressive shell instead of a blocking full-page spinner: the layout
-  // (nav row, event card, stat rows) appears immediately, so the eventual
-  // data paint causes no layout shift.
-  if (initialLoading || !event || !viewerCaps) return <DashboardSkeleton />
+  if (initialLoading || !event || !viewerCaps) {
+    return <Spinner fullPage message='Loading event details.' />
+  }
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
@@ -421,28 +420,7 @@ export default function EventDashboard({ eventId }) {
   )
 }
 
-// Mirrors the loaded dashboard's layout so the data paint causes no shift.
-function DashboardSkeleton() {
-  return (
-    <PageShell>
-      <PageMain className='flex flex-col gap-4'>
-        <div className='flex items-center justify-between'>
-          <Skeleton className='h-5 w-16' />
-          <Skeleton className='h-9 w-24 rounded-full' />
-        </div>
-        <div className='rounded-2xl border border-border bg-card px-4 py-6 text-center'>
-          <Skeleton className='mx-auto h-6 w-2/3' />
-          <Skeleton className='mx-auto mt-3 h-4 w-1/2' />
-          <Skeleton className='mx-auto mt-2 h-3 w-1/3' />
-        </div>
-        <div>
-          <Skeleton className='mb-3 h-3 w-28' />
-          <Skeleton className='h-[121px] rounded-2xl' />
-        </div>
-      </PageMain>
-    </PageShell>
-  )
-}
+// ─── Live check-in rows ──────────────────────────────────────────────────────
 
 type LiveTone = 'present' | 'absent'
 

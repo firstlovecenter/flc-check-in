@@ -62,7 +62,9 @@ export default function EventEntryScreen() {
   if (!user) return null
   if (!eventId) return <Alert variant='destructive'>Missing event.</Alert>
 
-  if (state.status === 'loading') return <Spinner fullPage />
+  if (state.status === 'loading') {
+    return <Spinner fullPage message='Loading event details.' />
+  }
 
   if (state.status === 'error') {
     return (
