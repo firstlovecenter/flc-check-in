@@ -8,11 +8,11 @@ import {
   getEvent,
   bulkUpsertMemberProfiles,
   listEventScopeMembersWithProfiles,
+  listEventScopeMemberIds,
   listSpecialGroupMembers,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
-import { supabase } from '../../utils/supabase'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
@@ -151,15 +151,10 @@ export default function ReportsList() {
       setIsExporting(true)
       const evt = await getEvent(eventId)
       let rows: any[] = []
-      const [snapRes, snapshotRows] = await Promise.all([
-        supabase
-          .from('event_scope_members')
-          .select('member_id')
-          .eq('event_id', eventId),
+      const [snapIds, snapshotRows] = await Promise.all([
+        listEventScopeMemberIds(eventId),
         listEventScopeMembersWithProfiles(eventId),
       ])
-      if (snapRes.error) throw snapRes.error
-      const snapIds = (snapRes.data || []).map((r: any) => r.member_id)
 
       if (evt.scope_level === 'special_group') {
         // Snapshot is authoritative for historical exports.
@@ -226,6 +221,13 @@ export default function ReportsList() {
           const members = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
           rows = members.map(memberToProfileRow)
         }
+
+        // Same population rule as get_event_dashboard_stats: the snapshot is
+        // filtered by allowed_roles so the export's Present/Absent counts
+        // match the dashboard. Special-group membership IS eligibility — no
+        // role filter (handled in the branch above).
+        const allowedRoles = new Set(evt.allowed_roles || [])
+        rows = rows.filter((m) => (m.roles || []).some((role: string) => allowedRoles.has(role)))
       }
 
       const realProfileRows = rows.filter((r) => {

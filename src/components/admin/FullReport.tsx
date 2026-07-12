@@ -164,8 +164,17 @@ export default function FullReport({ eventId }: { eventId: string }) {
     const vs = viewerCaps?.viewerScope
     if (!filterLevel || !filterChurchId || filterChurchId === '__all__') return base
     if (!canViewWholeEvent && vs?.level === filterLevel && vs?.id === filterChurchId) return base
+    // Mirror EventDashboard's scopedMembers filter: multi-scope members carry
+    // a scope_ids map and must match on that before falling back to the
+    // single ${level}_id column, or they'd show on the dashboard drill-down
+    // but silently drop out of the filtered report/export.
     const idCol = `${filterLevel}_id`
-    return base.filter((m) => m[idCol] === filterChurchId)
+    return base.filter((m) => {
+      if (m == null || m.id == null) return false
+      const scopeIds: string[] | undefined = (m.scope_ids as any)?.[filterLevel]
+      if (scopeIds?.length) return scopeIds.includes(filterChurchId)
+      return (m as any)[idCol] === filterChurchId
+    })
   }, [safeAllEligible, safeViewerSlice, viewerCaps?.canManage, viewerCaps?.canViewFullEvent, viewerCaps?.viewerScope, filterLevel, filterChurchId])
 
   const buckets = useMemo(() => {
