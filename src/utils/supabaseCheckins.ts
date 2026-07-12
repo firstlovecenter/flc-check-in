@@ -37,6 +37,28 @@ async function mapWithConcurrency<T, R>(
 
 const BATCH_CONCURRENCY = 5
 
+/** PostgREST caps unpaginated selects/RPCs at db-max-rows (1000 by default).
+ *  Page through with .range() until a page comes back short of the cap, so
+ *  callers get the full result set for events larger than that cap instead
+ *  of a silently truncated one. */
+const REST_PAGE_SIZE = 1000
+async function fetchAllPages<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  for (;;) {
+    const to = from + REST_PAGE_SIZE - 1
+    const { data, error } = await build(from, to)
+    if (error) throw error
+    const page = data || []
+    all.push(...page)
+    if (page.length < REST_PAGE_SIZE) break
+    from += REST_PAGE_SIZE
+  }
+  return all
+}
+
 export function filterEventsByFocusedScope<T extends { scope_level?: string; scope_church_id?: string }>(
   events: T[],
   focusedScope?: FocusedScope | null,
@@ -891,13 +913,11 @@ export async function addMemberToEventScope(
 export async function listEventScopeMembersWithProfiles(eventId: string): Promise<any[]> {
   if (!eventId) return []
   try {
-    const { data, error } = await supabase.rpc('get_event_scope_profiles', {
-      p_event_id: eventId,
-    })
-    if (!error) return data || []
-    if (!/function .*get_event_scope_profiles|could not find/i.test(error.message || '')) {
-      throw error
-    }
+    // .range() pages past PostgREST's default 1000-row cap — without it,
+    // events with larger scopes silently lose members off the end.
+    return await fetchAllPages<any>((from, to) =>
+      supabase.rpc('get_event_scope_profiles', { p_event_id: eventId }).range(from, to),
+    )
   } catch (err: any) {
     if (!/function .*get_event_scope_profiles|could not find/i.test(err?.message || '')) {
       throw err
@@ -905,12 +925,7 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
     // Older deployments without migration 026 fall back to the batched path.
   }
 
-  const { data: snap, error: se } = await supabase
-    .from('event_scope_members')
-    .select('member_id')
-    .eq('event_id', eventId)
-  if (se) throw se
-  const ids = (snap || []).map((r: any) => r.member_id)
+  const ids = await listEventScopeMemberIds(eventId)
   if (!ids.length) return []
 
   // Batch into groups of 50 to stay well under Supabase's URL length limit.
@@ -928,6 +943,27 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
   )
   for (const { error } of results) if (error) throw error
   return results.flatMap((r) => r.data || [])
+}
+
+/** Every graph member ID in an event's scope snapshot, paginated past
+ *  PostgREST's default row cap. Used where callers need the raw ID list —
+ *  e.g. exports, which must include members without a member_profiles row. */
+export async function listEventScopeMemberIds(eventId: string): Promise<string[]> {
+  if (!eventId) return []
+  // Explicit order is required: Postgres gives no row-order guarantee across
+  // separate paginated queries without one, and large scopes (the case this
+  // pagination exists for) are exactly where the planner is most likely to
+  // switch plans between page requests — silently skipping or duplicating
+  // member_ids across the page boundary.
+  const rows = await fetchAllPages<{ member_id: string }>((from, to) =>
+    supabase
+      .from('event_scope_members')
+      .select('member_id')
+      .eq('event_id', eventId)
+      .order('member_id', { ascending: true })
+      .range(from, to),
+  )
+  return rows.map((r) => r.member_id)
 }
 
 /** Count of members in an event's scope snapshot — the stable "Total Expected"
@@ -1171,13 +1207,14 @@ export async function submitManualCheckIn({
 // ─── Dashboard reads ────────────────────────────────────────────────────────
 
 export async function listCheckedIn(eventId): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('checkin_records')
-    .select(CHECKIN_RECORD_COLUMNS)
-    .eq('event_id', eventId)
-    .order('checked_in_at', { ascending: false })
-  if (error) throw error
-  return data || []
+  return fetchAllPages<any>((from, to) =>
+    supabase
+      .from('checkin_records')
+      .select(CHECKIN_RECORD_COLUMNS)
+      .eq('event_id', eventId)
+      .order('checked_in_at', { ascending: false })
+      .range(from, to),
+  )
 }
 
 /** Fetch the current user's check-in record for a specific event (null if none). */
