@@ -221,15 +221,11 @@ export default function ReportsList() {
           const members = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
           rows = members.map(memberToProfileRow)
         }
-
-        // Same population rule as get_event_dashboard_stats: the snapshot is
-        // filtered by allowed_roles so the export's Present/Absent counts
-        // match the dashboard. Special-group membership IS eligibility — no
-        // role filter (handled in the branch above).
-        const allowedRoles = new Set(evt.allowed_roles || [])
-        rows = rows.filter((m) => (m.roles || []).some((role: string) => allowedRoles.has(role)))
       }
 
+      // Backfill profiles from the full resolved snapshot, before the role
+      // filter below narrows `rows` — members outside allowed_roles still
+      // get their member_profiles row kept fresh, matching prior behavior.
       const realProfileRows = rows.filter((r) => {
         const fn = (r.first_name || '').trim()
         return fn !== '' && fn !== r.id
@@ -237,6 +233,16 @@ export default function ReportsList() {
       if (realProfileRows.length > 0) {
         await bulkUpsertMemberProfiles(realProfileRows)
       }
+
+      // Same population rule as get_event_dashboard_stats: the snapshot is
+      // filtered by allowed_roles so the export's Present/Absent counts
+      // match the dashboard. Special-group membership IS eligibility — no
+      // role filter.
+      if (evt.scope_level !== 'special_group') {
+        const allowedRoles = new Set(evt.allowed_roles || [])
+        rows = rows.filter((m) => (m.roles || []).some((role: string) => allowedRoles.has(role)))
+      }
+
       const recs = await listCheckedIn(eventId)
       const recordByMember = new Map(recs.map((r) => [r.member_id, r]))
 

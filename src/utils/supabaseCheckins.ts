@@ -950,8 +950,18 @@ export async function listEventScopeMembersWithProfiles(eventId: string): Promis
  *  e.g. exports, which must include members without a member_profiles row. */
 export async function listEventScopeMemberIds(eventId: string): Promise<string[]> {
   if (!eventId) return []
+  // Explicit order is required: Postgres gives no row-order guarantee across
+  // separate paginated queries without one, and large scopes (the case this
+  // pagination exists for) are exactly where the planner is most likely to
+  // switch plans between page requests — silently skipping or duplicating
+  // member_ids across the page boundary.
   const rows = await fetchAllPages<{ member_id: string }>((from, to) =>
-    supabase.from('event_scope_members').select('member_id').eq('event_id', eventId).range(from, to),
+    supabase
+      .from('event_scope_members')
+      .select('member_id')
+      .eq('event_id', eventId)
+      .order('member_id', { ascending: true })
+      .range(from, to),
   )
   return rows.map((r) => r.member_id)
 }
