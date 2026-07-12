@@ -1,14 +1,13 @@
--- 014_delete_event.sql
+-- 030_fix_delete_event_row_count.sql
 --
--- Superadmin-only "hard delete an event" RPC. Removes the event and every
--- dependent row by relying on ON DELETE CASCADE / SET NULL FKs already
--- defined on checkin_records, checkin_attempts, checkin_devices,
--- face_match_claims, event_scope_members, absence_notes, and audit_log.
+-- Fix "operator does not exist: boolean > integer" when deleting an event.
 --
--- Authorisation is checked inside the function (caller must be in the
--- superadmins table) so the broad anon RLS policy on checkin_events isn't
--- enough to delete by itself — even an anon-keyed client can only delete
--- if they pass through this RPC and prove super-admin status by email.
+-- Migration 014 declared v_existed as BOOLEAN but assigned it from
+-- GET DIAGNOSTICS ... ROW_COUNT (an integer) and then compared it with
+-- `v_existed > 0`. Postgres has no boolean > integer operator, so every
+-- delete_event call blew up after the auth checks. init.sql already carries
+-- the corrected INTEGER declaration; this migration brings databases that
+-- ran 014 in line with it.
 
 create or replace function public.delete_event(
   p_event_id uuid,
@@ -19,13 +18,10 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_is_super  boolean;
-  v_existed   integer;
+  v_is_super   boolean;
+  v_existed    integer;
   v_event_name text;
 begin
-  -- 1. Auth check: caller must be a super-admin. We accept email rather
-  --    than relying on auth.uid() because this app uses an external JWT
-  --    that isn't issued by Supabase Auth.
   if p_admin_email is null or length(trim(p_admin_email)) = 0 then
     return jsonb_build_object('ok', false, 'reason', 'admin_email_required');
   end if;
@@ -39,7 +35,6 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
-  -- 2. Capture identity before delete so the response is useful.
   select name into v_event_name
     from public.checkin_events
    where id = p_event_id;
@@ -48,7 +43,6 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'event_not_found');
   end if;
 
-  -- 3. Delete. Cascades take care of every dependent row.
   delete from public.checkin_events where id = p_event_id;
   get diagnostics v_existed = row_count;
 
@@ -60,6 +54,4 @@ begin
 end;
 $$;
 
--- Allow the public RLS-bypassing RPC to be invoked. Authorisation is
--- enforced inside the function body via the superadmins lookup.
 grant execute on function public.delete_event(uuid, text) to anon, authenticated;
