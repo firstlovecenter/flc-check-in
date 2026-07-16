@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useTheme } from '../hooks/useTheme'
 import { cn } from '../lib/utils'
 import { logout } from '../utils/auth'
 import type { AppUser } from '../types/app'
@@ -12,6 +14,10 @@ const ICONS = {
   report: 'M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z',
   profile: 'M12 12a4.8 4.8 0 1 0 0-9.6 4.8 4.8 0 0 0 0 9.6zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z',
   signout: 'M17 7l-1.4 1.4 2.6 2.6H10v2h8.2l-2.6 2.6L17 17l5-5-5-5zM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5z',
+  more: 'M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+  groups: 'M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+  theme: 'M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z',
+  search: 'M9.5 3a6.5 6.5 0 1 0 4.23 11.43l5 4.99 1.41-1.41-4.99-5A6.5 6.5 0 0 0 9.5 3zm0 2a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9z',
 }
 
 type NavItem = {
@@ -32,7 +38,6 @@ function itemsFor(user?: AppUser | null): NavItem[] {
       history,
       { label: 'Create', to: '/admin/events/new', icon: ICONS.plus, accent: true },
       { label: 'Members', to: '/admin/members', icon: ICONS.members },
-      { label: 'Reports', to: '/admin/reports', icon: ICONS.report },
     ]
   }
 
@@ -40,7 +45,6 @@ function itemsFor(user?: AppUser | null): NavItem[] {
     home,
     { label: 'Events', to: '/events', icon: ICONS.events, matches: (path) => path.startsWith('/events') || path.startsWith('/checkin') },
     history,
-    { label: 'Profile', to: '/profile', icon: ICONS.profile },
   ]
 }
 
@@ -61,10 +65,37 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const items = itemsFor(user)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const { label: themeLabel, toggle: toggleTheme } = useTheme()
+  const secondaryActive = pathname === '/profile' || pathname === '/admin/reports' || pathname.startsWith('/admin/groups')
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    const focusTimer = window.setTimeout(() => searchRef.current?.focus(), 0)
+    return () => {
+      window.clearTimeout(focusTimer)
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [moreOpen])
 
   function signOut() {
+    setMoreOpen(false)
     logout()
     navigate('/', { replace: true })
+  }
+
+  function searchMembers(value: string) {
+    const query = value.trim()
+    setMoreOpen(false)
+    navigate(query ? `/admin/members?q=${encodeURIComponent(query)}` : '/admin/members')
   }
 
   return (
@@ -100,6 +131,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               </Link>
             )
           })}
+          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={() => setMoreOpen(true)} />
         </nav>
 
         <button
@@ -150,8 +182,106 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               </Link>
             )
           })}
+          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={() => setMoreOpen(true)} mobile />
         </div>
       </nav>
+
+      {moreOpen && (
+        <>
+          <button
+            type='button'
+            aria-label='Close more menu'
+            onClick={() => setMoreOpen(false)}
+            className='fixed inset-0 z-[1060] cursor-default bg-black/40 backdrop-blur-[2px]'
+          />
+          <section
+            role='dialog'
+            aria-modal='true'
+            aria-labelledby='more-menu-title'
+            className='fixed inset-x-3 bottom-3 z-[1070] mx-auto max-h-[calc(100dvh-1.5rem)] max-w-md overflow-y-auto rounded-[28px] border border-border bg-card p-3 shadow-2xl lg:inset-y-4 lg:right-auto lg:left-[96px] lg:m-0 lg:w-80 lg:max-w-none lg:rounded-3xl'
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <div className='flex items-center gap-3 px-2 py-2'>
+              <UserAvatar user={user} />
+              <div className='min-w-0 flex-1'>
+                <h2 id='more-menu-title' className='m-0 truncate text-sm font-semibold text-foreground'>
+                  {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || 'Signed in'}
+                </h2>
+                <p className='m-0 truncate text-xs text-muted-foreground'>{user?.unitName || 'Hineni'}</p>
+              </div>
+              <button type='button' onClick={() => setMoreOpen(false)} aria-label='Close menu' className='flex size-10 items-center justify-center rounded-full text-xl text-muted-foreground hover:bg-secondary active:scale-[0.97]'>×</button>
+            </div>
+
+            {user?.isAdmin && (
+              <form
+                className='my-2 flex items-center gap-2 rounded-2xl bg-secondary px-3'
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  searchMembers(searchRef.current?.value || '')
+                }}
+              >
+                <NavIcon path={ICONS.search} className='shrink-0 text-muted-foreground' />
+                <input ref={searchRef} type='search' placeholder='Search members…' aria-label='Search members' className='h-12 min-w-0 flex-1 border-0 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground' />
+              </form>
+            )}
+
+            <div className='grid gap-1'>
+              {user?.isAdmin && <MenuLink to='/events' icon={ICONS.events} label='Live Events' onClick={() => setMoreOpen(false)} />}
+              {user?.isAdmin && <MenuLink to='/admin/reports' icon={ICONS.report} label='Reports' onClick={() => setMoreOpen(false)} />}
+              {user?.isSuperAdmin && <MenuLink to='/admin/groups' icon={ICONS.groups} label='Special Groups' onClick={() => setMoreOpen(false)} />}
+              <MenuLink to='/profile' icon={ICONS.profile} label='My profile' onClick={() => setMoreOpen(false)} />
+              <button type='button' onClick={toggleTheme} className='flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 text-left text-sm font-medium text-foreground hover:bg-secondary active:scale-[0.97]'>
+                <NavIcon path={ICONS.theme} className='text-muted-foreground' />
+                Theme
+                <span className='ml-auto text-xs text-muted-foreground'>{themeLabel}</span>
+              </button>
+              <button type='button' onClick={signOut} className='flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 text-left text-sm font-medium text-destructive hover:bg-destructive/10 active:scale-[0.97]'>
+                <NavIcon path={ICONS.signout} />
+                Log out
+              </button>
+            </div>
+          </section>
+        </>
+      )}
     </>
+  )
+}
+
+function MoreButton({ active, expanded, onClick, mobile = false }: { active: boolean; expanded: boolean; onClick: () => void; mobile?: boolean }) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      aria-label='More navigation options'
+      aria-expanded={expanded}
+      className={cn(
+        mobile
+          ? 'flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-full text-[10px] font-medium transition-colors active:scale-[0.97]'
+          : 'flex w-16 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[10px] font-medium transition-colors active:scale-[0.97]',
+        active ? 'text-primary lg:bg-primary/12' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+      )}
+    >
+      <NavIcon path={ICONS.more} />
+      <span className='leading-none'>More</span>
+    </button>
+  )
+}
+
+function MenuLink({ to, icon, label, onClick }: { to: string; icon: string; label: string; onClick: () => void }) {
+  return (
+    <Link to={to} onClick={onClick} className='flex min-h-12 items-center gap-3 rounded-2xl px-3 text-sm font-medium text-foreground no-underline hover:bg-secondary active:scale-[0.97]'>
+      <NavIcon path={icon} className='text-muted-foreground' />
+      {label}
+    </Link>
+  )
+}
+
+function UserAvatar({ user }: { user?: AppUser | null }) {
+  const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
+  const initials = (user?.firstName?.[0] || user?.email?.[0] || '?').toUpperCase()
+  return pictureUrl ? (
+    <img src={pictureUrl} alt='' width={40} height={40} className='size-10 rounded-full object-cover' />
+  ) : (
+    <span className='flex size-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground'>{initials}</span>
   )
 }
