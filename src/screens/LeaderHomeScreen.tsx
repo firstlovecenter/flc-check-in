@@ -18,7 +18,6 @@ import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
 import { useChurchFocus } from '../contexts/ChurchFocusContext'
 import { friendlyErrorMessage } from '../utils/network'
-import { PaginationControls, useClientPagination } from '../components/PaginationControls'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
 type Greeting = { line1: string; line2: string }
@@ -259,9 +258,6 @@ export default function LeaderHomeScreen() {
     return { live, upcoming, past }
   }, [state])
 
-  const livePage = useClientPagination(eventGroups?.live ?? [], 5, eventGroups?.live.length)
-  const upcomingPage = useClientPagination(eventGroups?.upcoming ?? [], 5, eventGroups?.upcoming.length)
-  const pastPage = useClientPagination(eventGroups?.past ?? [], 5, eventGroups?.past.length)
 
   // Cleanup legacy storage from the removed v1 Church-in-Focus key.
   useEffect(() => {
@@ -460,22 +456,14 @@ export default function LeaderHomeScreen() {
           return (
             <div className='flex flex-col gap-8'>
 
-              {/* ── Live ── */}
+              {/* Home is an action surface: emphasize what needs attention now. */}
               {live.length > 0 && (
                 <section>
                   <p className='section-heading mb-3 text-success'>Live now</p>
                   <div className='flex flex-col gap-2.5'>
-                    {livePage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
+                    <LiveEventHero evt={live[0]} />
+                    {live.slice(1, 3).map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
                   </div>
-                  <PaginationControls
-                    page={livePage.page}
-                    totalPages={livePage.totalPages}
-                    total={livePage.total}
-                    pageSize={5}
-                    onPageChange={livePage.setPage}
-                    noun='events'
-                    className='mt-3'
-                  />
                 </section>
               )}
 
@@ -484,17 +472,8 @@ export default function LeaderHomeScreen() {
                 <section>
                   <p className='section-heading mb-3'>Upcoming</p>
                   <div className='flex flex-col gap-2.5'>
-                    {upcomingPage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
+                    {upcoming.slice(0, 1).map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
                   </div>
-                  <PaginationControls
-                    page={upcomingPage.page}
-                    totalPages={upcomingPage.totalPages}
-                    total={upcomingPage.total}
-                    pageSize={5}
-                    onPageChange={upcomingPage.setPage}
-                    noun='events'
-                    className='mt-3'
-                  />
                 </section>
               )}
 
@@ -504,24 +483,15 @@ export default function LeaderHomeScreen() {
                   <div className='flex items-center justify-between mb-3'>
                     <p className='section-heading m-0'>Recent</p>
                     <Link
-                      to='/history'
+                      to='/app/events?view=past'
                       className='text-xs font-semibold text-primary no-underline hover:underline'
                     >
-                      View all history →
+                      View past events →
                     </Link>
                   </div>
                   <div className='flex flex-col gap-2.5'>
-                    {pastPage.pageItems.map(evt => <EventCard key={evt.id} evt={evt} variant='past' />)}
+                    {past.slice(0, 2).map(evt => <EventCard key={evt.id} evt={evt} variant='past' />)}
                   </div>
-                  <PaginationControls
-                    page={pastPage.page}
-                    totalPages={pastPage.totalPages}
-                    total={pastPage.total}
-                    pageSize={5}
-                    onPageChange={pastPage.setPage}
-                    noun='events'
-                    className='mt-3'
-                  />
                 </section>
               )}
 
@@ -530,6 +500,26 @@ export default function LeaderHomeScreen() {
         })()}
       </PageMain>
     </PageShell>
+  )
+}
+
+function LiveEventHero({ evt }: { evt: CheckinEventRow }) {
+  return (
+    <div className='overflow-hidden rounded-2xl border border-success/25 bg-card shadow-sm'>
+      <div className='flex items-center gap-2 border-b border-border px-4 py-2.5 text-xs font-semibold text-success'>
+        <span className='size-2 rounded-full bg-success' aria-hidden />
+        Check-in is open now
+      </div>
+      <div className='p-4 sm:p-5'>
+        <h2 className='m-0 text-lg font-semibold tracking-tight text-foreground'>{evt.name}</h2>
+        <p className='m-0 mt-1 text-sm text-muted-foreground'>{evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}</p>
+        <p className='m-0 mt-2 text-xs text-muted-foreground'>Closes {formatEventDate(evt.ends_at)}</p>
+        <div className='mt-4 flex gap-2'>
+          <Link to={`/checkin/${evt.id}`} className='btn-pill btn-primary flex min-h-11 flex-1 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>Check in now</Link>
+          <Link to={`/events/${evt.id}`} className='btn-pill btn-secondary flex min-h-11 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>Details</Link>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -546,10 +536,7 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
     >
       {/* Leading status dot — replaces the colored side stripe */}
       {variant === 'live' ? (
-        <span className='relative flex h-2.5 w-2.5 shrink-0'>
-          <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75' />
-          <span className='relative inline-flex h-2.5 w-2.5 rounded-full bg-success' />
-        </span>
+        <span className='h-2.5 w-2.5 shrink-0 rounded-full bg-success' />
       ) : (
         <span
           className='size-2 shrink-0 rounded-full'
@@ -568,7 +555,7 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
           {formatEventDate(evt.starts_at)}
         </p>
         <span
-          className='text-[10px] font-semibold uppercase tracking-wider'
+          className='text-[11px] font-semibold uppercase tracking-wider'
           style={{ color: statusColor }}
         >
           {statusLabel}

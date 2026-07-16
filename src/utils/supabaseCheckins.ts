@@ -863,6 +863,8 @@ export async function listEventsAttendedByMember(memberId: string) {
     .from('checkin_records')
     .select('event_id')
     .eq('member_id', memberId)
+    .order('checked_in_at', { ascending: false })
+    .limit(200)
   if (re) throw re
   const ids = [...new Set((recs || []).map((r) => r.event_id))]
   if (!ids.length) return []
@@ -871,6 +873,7 @@ export async function listEventsAttendedByMember(memberId: string) {
     .select(CHECKIN_EVENT_LIST_COLUMNS)
     .in('id', ids)
     .order('starts_at', { ascending: false })
+    .limit(200)
   if (error) throw error
   return (data || []).map(mapEventRow)
 }

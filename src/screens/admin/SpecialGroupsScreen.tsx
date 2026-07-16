@@ -91,7 +91,7 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
             key={g.id}
             type='button'
             onClick={() => onSelect(g.id)}
-            className='surface-card w-full cursor-pointer px-4 py-3.5 text-left transition-all hover:border-primary/30 active:scale-[0.99]'
+            className='surface-card w-full cursor-pointer px-4 py-3.5 text-left transition-[border-color,transform] hover:border-primary/30 active:scale-[0.99]'
           >
             <div className='flex items-center justify-between gap-3'>
               <div className='min-w-0'>

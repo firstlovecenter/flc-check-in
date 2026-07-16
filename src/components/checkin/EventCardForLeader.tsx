@@ -34,7 +34,7 @@ export default function EventCardForLeader({ event }) {
           </div>
 
           <div className='flex shrink-0 flex-col items-end gap-0.5'>
-            <span className='text-[10px] font-bold uppercase tracking-widest text-muted-foreground'>
+            <span className='text-[11px] font-bold uppercase tracking-widest text-muted-foreground'>
               Ends in
             </span>
             <span className='text-sm font-bold tracking-tight text-primary'>{endsIn}</span>
@@ -43,7 +43,7 @@ export default function EventCardForLeader({ event }) {
 
         <div className='mt-3.5 flex flex-wrap items-center gap-1.5'>
           {event.allowed_check_in_methods.map((m) => (
-            <Badge key={m} variant='outline' className='text-[10px] uppercase tracking-wide'>
+            <Badge key={m} variant='outline' className='text-[11px] uppercase tracking-wide'>
               {m}
             </Badge>
           ))}

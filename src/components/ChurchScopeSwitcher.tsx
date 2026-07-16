@@ -52,7 +52,7 @@ export default function ChurchScopeSwitcher({ fallback }: Props) {
         )}
         <span className='max-w-[160px] truncate'>{label}</span>
         {levelLabel && (
-          <span className='rounded-full bg-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground'>
+          <span className='rounded-full bg-border px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
             {levelLabel}
           </span>
         )}

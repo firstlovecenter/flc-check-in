@@ -315,7 +315,7 @@ function Section({ title, lockedHint, children }: { title: string; lockedHint?: 
     <section className='flex flex-col gap-3'>
       <div className='flex items-baseline justify-between gap-2'>
         <p className='eyebrow m-0'>{title}</p>
-        {lockedHint && <p className='text-[10px] m-0 text-warning'>{lockedHint}</p>}
+        {lockedHint && <p className='text-[11px] m-0 text-warning'>{lockedHint}</p>}
       </div>
       {children}
     </section>
@@ -336,7 +336,7 @@ function Pill({ active, onClick, children, disabled }: { active: boolean; onClic
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
+        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-[color,background-color,transform] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50',
         active
           ? 'bg-primary text-primary-foreground active:brightness-90'
           : 'hover:bg-primary/12 active:bg-primary/18',

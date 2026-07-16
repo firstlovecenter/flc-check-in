@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import {
@@ -15,14 +15,17 @@ import { Button } from '../ui/button'
 import { cn } from '../../lib/utils'
 import { PaginationControls, useClientPagination } from '../PaginationControls'
 
-const FILTERS = ['ALL', 'ACTIVE', 'PAUSED', 'ENDED'] as const
+const VIEWS = ['LIVE', 'UPCOMING', 'PAST'] as const
+type EventView = (typeof VIEWS)[number]
 const EVENTS_PAGE_SIZE = 5
 
 export default function EventHistoryList() {
   const user = getCurrentUser()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>('ALL')
+  const requestedView = searchParams.get('view')?.toUpperCase()
+  const view: EventView = VIEWS.includes(requestedView as EventView) ? requestedView as EventView : 'LIVE'
   const [search, setSearch] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
@@ -54,7 +57,14 @@ export default function EventHistoryList() {
   }, [user?.userId, refreshKey])
 
   const filtered = useMemo(() => {
-    const base = filter === 'ALL' ? events : events.filter((e) => e.status === filter)
+    const now = Date.now()
+    const base = events.filter((event) => {
+      const startsAt = new Date(event.starts_at).getTime()
+      const endsAt = new Date(event.ends_at).getTime()
+      if (view === 'LIVE') return event.status !== 'ENDED' && startsAt <= now && endsAt > now
+      if (view === 'UPCOMING') return event.status !== 'ENDED' && startsAt > now
+      return event.status === 'ENDED' || endsAt <= now
+    })
     const q = search.trim().toLowerCase()
     if (!q) return base
     return base.filter((e) => {
@@ -64,12 +74,12 @@ export default function EventHistoryList() {
         .toLowerCase()
       return haystack.includes(q)
     })
-  }, [events, filter, search])
+  }, [events, view, search])
 
   const { page, setPage, totalPages, pageItems, total } = useClientPagination(
     filtered,
     EVENTS_PAGE_SIZE,
-    `${filter}|${search}`,
+    `${view}|${search}`,
   )
 
   if (error) {
@@ -83,7 +93,7 @@ export default function EventHistoryList() {
   return (
     <PageShell>
       <ScreenHeader
-        title='History'
+        title='Events'
         right={
           user?.isAdmin ? (
             <Link to='/admin/reports' className='text-xs text-primary no-underline hover:underline'>
@@ -93,15 +103,16 @@ export default function EventHistoryList() {
         }
       />
       <PageMain className='flex flex-col gap-3'>
-        <div className='tab-bar self-start'>
-          {FILTERS.map((f) => (
+        <div className='tab-bar w-full sm:w-auto' aria-label='Event timeframe'>
+          {VIEWS.map((item) => (
             <button
-              key={f}
+              key={item}
               type='button'
-              onClick={() => setFilter(f)}
-              className={cn('tab-item', filter === f && 'tab-item--active')}
+              onClick={() => setSearchParams({ view: item.toLowerCase() }, { replace: true })}
+              className={cn('tab-item flex-1 sm:flex-none', view === item && 'tab-item--active')}
+              aria-pressed={view === item}
             >
-              {f}
+              {item.charAt(0) + item.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
@@ -113,7 +124,7 @@ export default function EventHistoryList() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search events, venue, church...'
+            placeholder={`Search ${view.toLowerCase()} events…`}
             className='w-full border-0 bg-transparent text-sm text-foreground outline-none'
             aria-label='Search events'
           />
@@ -125,7 +136,10 @@ export default function EventHistoryList() {
         </div>
 
         {filtered.length === 0 && (
-          <p className='mt-6 text-center text-sm text-muted-foreground'>No events.</p>
+          <div className='mt-8 text-center'>
+            <p className='m-0 text-sm font-semibold text-foreground'>No {view.toLowerCase()} events</p>
+            <p className='m-0 mt-1 text-sm text-muted-foreground'>Events will appear here when they match this timeframe.</p>
+          </div>
         )}
 
         <div className='flex flex-col gap-2'>
@@ -141,7 +155,7 @@ export default function EventHistoryList() {
               evt.status === 'ACTIVE' ? 'success' : evt.status === 'PAUSED' ? 'warning' : 'muted'
 
             return (
-              <Link key={evt.id} to={`/events/${evt.id}`} className='event-row flex overflow-hidden no-underline transition-all hover:brightness-105 active:scale-[0.99]'>
+              <Link key={evt.id} to={`/events/${evt.id}`} className='event-row flex overflow-hidden no-underline transition-[filter,transform] hover:brightness-105 active:scale-[0.99]'>
                 <div className={cn('w-1 shrink-0', stripeClass)} />
                 <div className='flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3.5'>
                   <div className='min-w-0 flex-1'>
@@ -149,7 +163,7 @@ export default function EventHistoryList() {
                     <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>
                       {evt.scope_church_name}
                       {' · '}
-                      <span className='text-[10px] font-bold uppercase tracking-wide text-primary'>
+                      <span className='text-[11px] font-bold uppercase tracking-wide text-primary'>
                         {evt.scope_level}
                       </span>
                       {evt.venue_name ? ` · ${evt.venue_name}` : ''}
@@ -157,12 +171,12 @@ export default function EventHistoryList() {
                   </div>
                   <div className='min-w-[72px] shrink-0 text-right'>
                     <Badge variant={badgeVariant as 'success' | 'warning' | 'muted'}>{evt.status}</Badge>
-                    <p className='m-0 mt-1.5 text-[11px] text-muted-foreground'>
+                    <p className='m-0 mt-1.5 text-xs text-muted-foreground'>
                       {isLive
                         ? formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: false })
                         : format(new Date(evt.starts_at), 'd MMM yy')}
                     </p>
-                    {isLive && <p className='m-0 text-[10px] opacity-60 text-muted-foreground'>remaining</p>}
+                    {isLive && <p className='m-0 text-[11px] opacity-70 text-muted-foreground'>remaining</p>}
                   </div>
                 </div>
               </Link>

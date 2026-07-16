@@ -630,7 +630,8 @@ export function useEventEligibility(
   useEffect(() => {
     if (!eventId || !pollMs) return
     let cancelled = false
-    const id = setInterval(async () => {
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
       try {
         const [recs, evt] = await Promise.all([
           loadRecords ? listCheckedIn(eventId) : Promise.resolve(null),
@@ -641,8 +642,14 @@ export function useEventEligibility(
           setEvent(evt)
         }
       } catch { /* swallow transient poll errors */ }
-    }, pollMs)
-    return () => { cancelled = true; clearInterval(id) }
+      if (!cancelled) {
+        const backgroundMultiplier = document.visibilityState === 'visible' ? 1 : 4
+        const jitter = 0.85 + Math.random() * 0.3
+        timer = setTimeout(poll, Math.round(pollMs * backgroundMultiplier * jitter))
+      }
+    }
+    timer = setTimeout(poll, Math.round(pollMs * (0.85 + Math.random() * 0.3)))
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [eventId, pollMs, loadRecords]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return {

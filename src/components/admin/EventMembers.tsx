@@ -323,7 +323,7 @@ const MemberCard = memo(function MemberCard({
         </div>
         <div className='shrink-0 text-right'>
           {status === 'all' && (
-            <Badge variant={isAbsent ? 'destructive' : 'success'} className='text-[10px]'>
+            <Badge variant={isAbsent ? 'destructive' : 'success'} className='text-[11px]'>
               {isAbsent ? 'Absent' : 'Present'}
             </Badge>
           )}
@@ -331,7 +331,7 @@ const MemberCard = memo(function MemberCard({
             <p className='m-0 mt-0.5 text-xs font-semibold text-foreground'>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
           )}
           {!isAbsent && r?.method && (
-            <Badge variant='outline' className='mt-0.5 text-[10px] uppercase tracking-wide'>{r.method}</Badge>
+            <Badge variant='outline' className='mt-0.5 text-[11px] uppercase tracking-wide'>{r.method}</Badge>
           )}
         </div>
       </div>

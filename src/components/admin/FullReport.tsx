@@ -364,7 +364,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
               className={cn('tab-item flex items-center justify-center gap-1.5', activeTab === t.id && 'tab-item--active')}
             >
               {t.label}
-              <span className='chip tnum text-[10px]'>{counts[t.id]}</span>
+              <span className='chip tnum text-[11px]'>{counts[t.id]}</span>
             </button>
           ))}
         </div>
@@ -510,7 +510,7 @@ function MetricStat({
       >
         {value}
       </p>
-      <p className='m-0 mt-0.5 text-[10px] uppercase tracking-widest text-muted-foreground'>{label}</p>
+      <p className='m-0 mt-0.5 text-[11px] uppercase tracking-widest text-muted-foreground'>{label}</p>
     </div>
   )
 }
@@ -591,7 +591,7 @@ const ListRow = memo(function ListRow({
           </div>
         )}
         {tab === 'defaulted' && absenceNote && (
-          <span className='max-w-[90px] truncate text-[10px] text-muted-foreground' title={absenceNote}>
+          <span className='max-w-[90px] truncate text-[11px] text-muted-foreground' title={absenceNote}>
             {absenceNote}
           </span>
         )}
@@ -643,7 +643,7 @@ const ListRow = memo(function ListRow({
 })
 
 function MethodTag({ children }: { children: ReactNode }) {
-  return <Badge variant='outline' className='text-[10px] uppercase tracking-wide'>{children}</Badge>
+  return <Badge variant='outline' className='text-[11px] uppercase tracking-wide'>{children}</Badge>
 }
 
 function TimelineEntry({
@@ -678,7 +678,7 @@ function StatusBadge({ status }: { status: string }) {
   const variant =
     status === 'ACTIVE' ? 'success' : status === 'PAUSED' ? 'warning' : status === 'ENDED' ? 'muted' : 'outline'
   return (
-    <Badge variant={variant as 'success' | 'warning' | 'muted' | 'outline'} className='text-[10px]'>
+    <Badge variant={variant as 'success' | 'warning' | 'muted' | 'outline'} className='text-[11px]'>
       {status}
     </Badge>
   )

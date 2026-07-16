@@ -17,7 +17,7 @@ export default function SelectField({ field, value, onChange, error }) {
               key={opt}
               type='button'
               onClick={() => onChange(opt)}
-              className={cn('choice-option cursor-pointer transition-all', selected && 'choice-option--selected')}
+              className={cn('choice-option cursor-pointer transition-[color,background-color,border-color,transform]', selected && 'choice-option--selected')}
             >
               {selected && <span className='mr-2'>✓</span>}
               {opt}

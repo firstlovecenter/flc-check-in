@@ -80,6 +80,7 @@ export default function CreateEventForm() {
   const [submitting, setSubmitting] = useState(false)
   const [submitProgress, setSubmitProgress] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState(0)
 
   // Fetch the admin's eligible scopes from FLC member graph.
   // Superadmins skip this — they pick any church via the search picker below.
@@ -254,6 +255,26 @@ export default function CreateEventForm() {
     setSuperScopes((prev) => prev.filter((s) => `${s.level}:${s.id}` !== key))
   }
 
+  function nextStep() {
+    setError(null)
+    if (step === 0) {
+      if (!name.trim()) { setError('Give the event a name.'); return }
+      if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) { setError('Add at least one church scope.'); return }
+      if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) { setError('Select at least one group.'); return }
+      if (!isSuperAdmin && !selectedTargetScope) { setError('Choose a creation scope.'); return }
+    }
+    if (step === 1 && (!startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt))) {
+      setError('Choose a valid start time and duration.'); return
+    }
+    if (step === 2) {
+      if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
+      if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError('Pick at least one allowed role.'); return }
+      if (geofence.type === 'polygon' && (geofence.polygon || []).length < 3) { setError('Polygon needs at least 3 vertices.'); return }
+    }
+    setStep((current) => Math.min(3, current + 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
@@ -373,6 +394,22 @@ export default function CreateEventForm() {
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
+      <div className='grid grid-cols-4 gap-1' aria-label={`Step ${step + 1} of 4`}>
+        {['Basics', 'Schedule', 'Rules', 'Review'].map((label, index) => (
+          <div key={label} className='min-w-0'>
+            <div className={cn('h-1 rounded-full', index <= step ? 'bg-primary' : 'bg-border')} />
+            <p className={cn('m-0 mt-1 truncate text-center text-[11px] font-medium', index === step ? 'text-foreground' : 'text-muted-foreground')}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <div className='rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-center text-sm text-destructive' role='alert'>
+          {error}
+        </div>
+      )}
+
+      <fieldset disabled={step !== 0} className={cn('contents', step !== 0 && 'hidden')}>
       <Section title='Event'>
         <Field label='Name'>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
@@ -410,7 +447,7 @@ export default function CreateEventForm() {
                         key={`${s.level}:${s.id}`}
                         className='chip flex items-center gap-1.5 border-primary/30 bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground'
                       >
-                        <span className='text-[9px] uppercase tracking-wide opacity-70'>{s.level}</span>
+                        <span className='text-[11px] uppercase tracking-wide opacity-70'>{s.level}</span>
                         {s.name}
                         <button
                           type='button'
@@ -552,7 +589,9 @@ export default function CreateEventForm() {
           </Field>
         )}
       </Section>
+      </fieldset>
 
+      <fieldset disabled={step !== 1} className={cn('contents', step !== 1 && 'hidden')}>
       <Section title='Time window'>
         <Field label='Starts'>
           <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
@@ -598,7 +637,9 @@ export default function CreateEventForm() {
           </Field>
         </div>
       </Section>
+      </fieldset>
 
+      <fieldset disabled={step !== 2} className={cn('contents', step !== 2 && 'hidden')}>
       <Section title='Check-in methods'>
         <div className='flex flex-wrap gap-2'>
           {ALL_METHODS.map((m) => (
@@ -645,7 +686,9 @@ export default function CreateEventForm() {
       <Section title='Geofence'>
         <GeoFencePicker value={geofence} onChange={setGeofence} />
       </Section>
+      </fieldset>
 
+      <fieldset disabled={step !== 3} className={cn('contents', step !== 3 && 'hidden')}>
       <Section title='Recurrence'>
         <div className='flex flex-wrap gap-2'>
           {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((p) => (
@@ -706,13 +749,24 @@ export default function CreateEventForm() {
         </Section>
       )}
 
-      {error && (
-        <div
-          className='p-3 text-sm text-center rounded-lg border border-destructive/20 bg-destructive/10 text-destructive'
-        >
-          {error}
+      <Section title='Review'>
+        <div className='rounded-2xl border border-border bg-secondary p-4'>
+          <h3 className='m-0 text-base font-semibold text-foreground'>{name || 'Untitled event'}</h3>
+          <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
+            {recurrencePattern === 'none' ? 'One event' : `${Math.max(2, Number(recurrenceCount))} ${recurrencePattern} events`}
+            {' · '}{new Date(startsAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {' · '}{durationPreset === 'custom' ? customMinutes : durationPreset} minutes
+            {venueName.trim() ? ` · ${venueName.trim()}` : ''}
+          </p>
+          <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
+            {methods.join(' or ')} check-in · {geofence.type === 'circle' ? `${geofence.radiusM}m geofence` : 'custom geofence'}
+            {roles.length ? ` · ${roles.map((role) => role.replace('leader', '')).join(', ')} leaders` : ''}
+          </p>
+          <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
+            Scope: {isSuperAdmin && superMode === 'churches' ? superScopes.map((scope) => scope.name).join(', ') : selectedTargetScope?.name || 'Selected special group'}
+          </p>
         </div>
-      )}
+      </Section>
 
       <button
         type='submit'
@@ -731,6 +785,16 @@ export default function CreateEventForm() {
             ? `Create ${Math.max(2, Number(recurrenceCount))} events`
             : 'Create event'}
       </button>
+      </fieldset>
+
+      <div className='sticky bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-20 flex gap-2 rounded-2xl border border-border bg-card/95 p-2 shadow-lg backdrop-blur-xl lg:bottom-4'>
+        {step > 0 && (
+          <button type='button' onClick={() => { setError(null); setStep((current) => current - 1) }} className='btn-pill btn-secondary min-h-11 flex-1 px-4 font-semibold'>Back</button>
+        )}
+        {step < 3 && (
+          <button type='button' onClick={nextStep} className='btn-pill btn-primary min-h-11 flex-1 px-4 font-semibold'>Continue</button>
+        )}
+      </div>
     </form>
   )
 }
@@ -777,7 +841,7 @@ function Pill({ active, onClick, children }) {
       type='button'
       onClick={onClick}
       className={cn(
-        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-all active:scale-95',
+        'chip cursor-pointer px-3 py-1.5 text-xs font-semibold transition-[color,background-color,transform] active:scale-95',
         active
           ? 'bg-primary text-primary-foreground active:brightness-90'
           : 'hover:bg-primary/12 active:bg-primary/18',
@@ -847,7 +911,7 @@ function RecurrencePreview({ startsAt, endsAt, pattern, count }: {
             key={i}
             className='flex items-center gap-2 border-b border-border px-3 py-2 text-xs last:border-b-0'
           >
-            <span className='flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground'>
+            <span className='flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground'>
               {i + 1}
             </span>
             <span className='text-foreground'>{fmt(o.startsAt)}</span>

@@ -158,7 +158,7 @@ Admins access a richer set of screens:
 | **Full Report** | Present, Absent, and Timeline tabs. Absent tab supports recording an absence reason. Risky check-ins (device shared across members) show a ⚠ badge. |
 | **Scope Breakdown** | Attendance counts broken down by Bacenta / Governorship / Council |
 | **CSV Reports** | Download full event data as a CSV |
-| **Event History** | Every event you administered or attended, with check-in status |
+| **Events** | Unified Live, Upcoming, and Past events you can access |
 | **Audit Log** | Immutable, append-only trail of every admin action for an event |
 | **Member Biometrics** | View or clear a member's stored face descriptor |
 
@@ -382,7 +382,8 @@ supabase/
 | `/events/:eventId/audit` | Admin | Audit log |
 | `/admin/events/new` | Admin | Create event |
 | `/admin/reports` | Admin | CSV export |
-| `/admin/history` | Auth | Event history |
+| `/app/events` | Auth | Unified Live / Upcoming / Past event browser |
+| `/history`, `/admin/history` | Auth | Redirect to the Past events view |
 | `/profile` | Auth | FLC member profile + attendance stats |
 
 ---

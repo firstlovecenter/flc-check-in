@@ -1,6 +1,6 @@
 // QR display — public AND in-app.
 // Anonymous viewers (device mounted at the venue) see a chromeless display.
-// Authenticated viewers (coming from the hamburger menu) get a ScreenHeader
+// Authenticated viewers (coming from app navigation) get a ScreenHeader
 // with the menu and a back link so they don't feel trapped.
 
 import { useEffect, useMemo, useState } from 'react'
@@ -68,8 +68,21 @@ export default function QRDisplayScreen() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), REFRESH_INTERVAL_MS)
-    return () => clearInterval(id)
+    let id: ReturnType<typeof setInterval> | undefined
+    const syncTimer = () => {
+      if (id) clearInterval(id)
+      id = undefined
+      if (document.visibilityState === 'visible') {
+        setTick((t) => t + 1)
+        id = setInterval(() => setTick((t) => t + 1), REFRESH_INTERVAL_MS)
+      }
+    }
+    syncTimer()
+    document.addEventListener('visibilitychange', syncTimer)
+    return () => {
+      if (id) clearInterval(id)
+      document.removeEventListener('visibilitychange', syncTimer)
+    }
   }, [])
 
   const signedIn = isSignedIn()
@@ -187,7 +200,7 @@ export default function QRDisplayScreen() {
                   key={evt.id}
                   type='button'
                   onClick={() => setSelected(evt)}
-                  className='surface-card w-full cursor-pointer px-4 py-4 text-left transition-all hover:border-primary/35 active:scale-[0.99]'
+                  className='surface-card w-full cursor-pointer px-4 py-4 text-left transition-[border-color,transform] hover:border-primary/35 active:scale-[0.99]'
                 >
                   <p className='m-0 text-sm font-semibold tracking-tight text-foreground sm:text-base'>{evt.name}</p>
                   <p className='m-0 mt-1 text-xs text-muted-foreground sm:text-sm'>

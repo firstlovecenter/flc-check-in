@@ -17,6 +17,7 @@ Source: `src/App.tsx`. Lazy-loaded chunks except Login and Home.
 |------|--------|-------|
 | `/home` | `LeaderHomeScreen` | Event list; Create Event if admin |
 | `/checkin/:eventId` | `CheckInFormScreen` | QR / PIN / Face tabs + geofence |
+| `/app/events` | `EventHistoryScreen` | Unified Live / Upcoming / Past event browser |
 | `/events/:eventId` | `EventDashboardScreen` | Live stats; role-adaptive |
 | `/events/:eventId/edit` | `EventEditScreen` | Admin manage |
 | `/events/:eventId/report` | `FullReportScreen` | Tabs: checked-in / defaulted / checked-out |
@@ -30,7 +31,7 @@ Source: `src/App.tsx`. Lazy-loaded chunks except Login and Home.
 |------|--------|-------|
 | `/admin/events/new` | `CreateEventScreen` | Auth; form uses `getAdminScopes` |
 | `/admin/reports` | `ReportsScreen` | `RequireAdmin` |
-| `/admin/history` | `EventHistoryScreen` | Auth |
+| `/history`, `/admin/history` | Redirect | `/app/events?view=past` |
 | `/admin/biometrics` | `MemberBiometricsScreen` | Auth |
 | `/admin/members` | `MemberSearchScreen` | Auth |
 | `/admin/members/:memberId` | `MemberDetailScreen` | Auth |

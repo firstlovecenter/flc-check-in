@@ -30,12 +30,17 @@ type NavItem = {
 
 function itemsFor(user?: AppUser | null): NavItem[] {
   const home: NavItem = { label: 'Home', to: '/home', icon: ICONS.home }
-  const history: NavItem = { label: 'History', to: '/history', icon: ICONS.history }
+  const events: NavItem = {
+    label: 'Events',
+    to: '/app/events',
+    icon: ICONS.events,
+    matches: (path) => path.startsWith('/app/events') || /^\/events\/.+/.test(path) || path.startsWith('/checkin'),
+  }
 
   if (user?.isAdmin) {
     return [
       home,
-      history,
+      events,
       { label: 'Create', to: '/admin/events/new', icon: ICONS.plus, accent: true },
       { label: 'Members', to: '/admin/members', icon: ICONS.members },
     ]
@@ -43,8 +48,8 @@ function itemsFor(user?: AppUser | null): NavItem[] {
 
   return [
     home,
-    { label: 'Events', to: '/events', icon: ICONS.events, matches: (path) => path.startsWith('/events') || path.startsWith('/checkin') },
-    history,
+    events,
+    { label: 'Profile', to: '/profile', icon: ICONS.profile },
   ]
 }
 
@@ -67,6 +72,8 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   const items = itemsFor(user)
   const [moreOpen, setMoreOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const morePanelRef = useRef<HTMLElement>(null)
+  const moreTriggerRef = useRef<HTMLButtonElement | null>(null)
   const { label: themeLabel, toggle: toggleTheme } = useTheme()
   const secondaryActive = pathname === '/profile' || pathname === '/admin/reports' || pathname.startsWith('/admin/groups')
 
@@ -76,6 +83,18 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMoreOpen(false)
+      if (event.key !== 'Tab' || !morePanelRef.current) return
+      const focusable = [...morePanelRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])')]
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     const focusTimer = window.setTimeout(() => searchRef.current?.focus(), 0)
@@ -83,6 +102,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
       window.clearTimeout(focusTimer)
       window.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previousOverflow
+      moreTriggerRef.current?.focus()
     }
   }, [moreOpen])
 
@@ -98,17 +118,26 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
     navigate(query ? `/admin/members?q=${encodeURIComponent(query)}` : '/admin/members')
   }
 
+  function openMore(trigger: HTMLButtonElement) {
+    moreTriggerRef.current = trigger
+    setMoreOpen(true)
+  }
+
   return (
     <>
       <aside
         aria-label='Primary navigation'
-        className='fixed inset-y-0 left-0 z-40 hidden w-[84px] flex-col items-center border-r border-border bg-card py-5 lg:flex'
+        className='fixed inset-y-0 left-0 z-40 hidden w-[84px] flex-col items-center border-r border-border bg-card px-2 py-5 lg:flex xl:w-60 xl:items-stretch xl:px-4'
       >
-        <Link to='/home' aria-label='Hineni home' className='mb-8 rounded-xl transition-transform active:scale-[0.97]'>
+        <Link to='/home' aria-label='Hineni home' className='mb-8 flex items-center justify-center gap-3 rounded-xl no-underline transition-transform active:scale-[0.97] xl:justify-start'>
           <img src='/app-icon.svg' alt='' width={36} height={36} className='rounded-xl' />
+          <span className='hidden xl:block'>
+            <span className='block text-sm font-bold text-foreground'>Hineni</span>
+            <span className='block text-[11px] font-semibold uppercase tracking-wider text-primary'>FLC Check-In</span>
+          </span>
         </Link>
 
-        <nav className='flex flex-col items-center gap-1.5'>
+        <nav className='flex flex-col items-center gap-1.5 xl:items-stretch'>
           {items.map((item) => {
             const active = isItemActive(item, pathname)
             return (
@@ -117,8 +146,9 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
                 aria-label={item.label}
+                title={item.label}
                 className={cn(
-                  'flex w-16 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[10px] font-medium no-underline transition-colors active:scale-[0.97]',
+                  'flex w-16 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[11px] font-medium no-underline transition-colors active:scale-[0.97] xl:w-full xl:flex-row xl:gap-3 xl:px-3 xl:text-sm',
                   item.accent
                     ? 'my-1 bg-primary text-primary-foreground shadow-[0_12px_28px_-14px_hsl(var(--primary))] hover:brightness-95'
                     : active
@@ -131,16 +161,18 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               </Link>
             )
           })}
-          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={() => setMoreOpen(true)} />
+          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={openMore} />
         </nav>
 
         <button
           type='button'
           onClick={signOut}
           aria-label='Log out'
-          className='mt-auto flex size-11 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive active:scale-[0.97]'
+          title='Log out'
+          className='mt-auto flex size-11 cursor-pointer items-center justify-center gap-3 rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive active:scale-[0.97] xl:w-full xl:justify-start xl:rounded-xl xl:px-3'
         >
           <NavIcon path={ICONS.signout} />
+          <span className='hidden text-sm font-medium xl:inline'>Log out</span>
         </button>
       </aside>
 
@@ -173,7 +205,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 to={item.to}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 rounded-full text-[10px] font-medium no-underline transition-colors active:scale-[0.97]',
+                  'flex h-full min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium no-underline transition-colors active:scale-[0.97]',
                   active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
@@ -182,7 +214,7 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               </Link>
             )
           })}
-          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={() => setMoreOpen(true)} mobile />
+          <MoreButton active={secondaryActive} expanded={moreOpen} onClick={openMore} mobile />
         </div>
       </nav>
 
@@ -195,10 +227,11 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
             className='fixed inset-0 z-[1060] cursor-default bg-black/40 backdrop-blur-[2px]'
           />
           <section
+            ref={morePanelRef}
             role='dialog'
             aria-modal='true'
             aria-labelledby='more-menu-title'
-            className='fixed inset-x-3 bottom-3 z-[1070] mx-auto max-h-[calc(100dvh-1.5rem)] max-w-md overflow-y-auto rounded-[28px] border border-border bg-card p-3 shadow-2xl lg:inset-y-4 lg:right-auto lg:left-[96px] lg:m-0 lg:w-80 lg:max-w-none lg:rounded-3xl'
+            className='fixed inset-x-3 bottom-3 z-[1070] mx-auto max-h-[calc(100dvh-1.5rem)] max-w-md overflow-y-auto rounded-[28px] border border-border bg-card p-3 shadow-2xl lg:inset-y-4 lg:right-auto lg:left-[96px] lg:m-0 lg:w-80 lg:max-w-none lg:rounded-3xl xl:left-[252px]'
             style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
           >
             <div className='flex items-center gap-3 px-2 py-2'>
@@ -225,11 +258,15 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
               </form>
             )}
 
-            <div className='grid gap-1'>
-              {user?.isAdmin && <MenuLink to='/events' icon={ICONS.events} label='Live Events' onClick={() => setMoreOpen(false)} />}
+            <p className='m-0 px-3 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>Navigate</p>
+            <div className='mt-1 grid gap-1'>
+              {user?.isAdmin && <MenuLink to='/events' icon={ICONS.events} label='Display event QR' onClick={() => setMoreOpen(false)} />}
               {user?.isAdmin && <MenuLink to='/admin/reports' icon={ICONS.report} label='Reports' onClick={() => setMoreOpen(false)} />}
               {user?.isSuperAdmin && <MenuLink to='/admin/groups' icon={ICONS.groups} label='Special Groups' onClick={() => setMoreOpen(false)} />}
-              <MenuLink to='/profile' icon={ICONS.profile} label='My profile' onClick={() => setMoreOpen(false)} />
+            </div>
+            <p className='m-0 px-3 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>Account & appearance</p>
+            <div className='mt-1 grid gap-1'>
+              {user?.isAdmin && <MenuLink to='/profile' icon={ICONS.profile} label='My profile' onClick={() => setMoreOpen(false)} />}
               <button type='button' onClick={toggleTheme} className='flex min-h-12 w-full items-center gap-3 rounded-2xl px-3 text-left text-sm font-medium text-foreground hover:bg-secondary active:scale-[0.97]'>
                 <NavIcon path={ICONS.theme} className='text-muted-foreground' />
                 Theme
@@ -247,17 +284,18 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
   )
 }
 
-function MoreButton({ active, expanded, onClick, mobile = false }: { active: boolean; expanded: boolean; onClick: () => void; mobile?: boolean }) {
+function MoreButton({ active, expanded, onClick, mobile = false }: { active: boolean; expanded: boolean; onClick: (trigger: HTMLButtonElement) => void; mobile?: boolean }) {
   return (
     <button
       type='button'
-      onClick={onClick}
+      onClick={(event) => onClick(event.currentTarget)}
       aria-label='More navigation options'
+      title='More'
       aria-expanded={expanded}
       className={cn(
         mobile
-          ? 'flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-full text-[10px] font-medium transition-colors active:scale-[0.97]'
-          : 'flex w-16 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[10px] font-medium transition-colors active:scale-[0.97]',
+          ? 'flex h-full min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-full text-[11px] font-medium transition-colors active:scale-[0.97]'
+          : 'flex w-16 flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-[11px] font-medium transition-colors active:scale-[0.97] xl:w-full xl:flex-row xl:gap-3 xl:px-3 xl:text-sm',
         active ? 'text-primary lg:bg-primary/12' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
       )}
     >

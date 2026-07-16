@@ -51,7 +51,7 @@ function RedirectAdminEvent({ tail = '' }) {
 }
 
 function RedirectLegacyAdminHistory() {
-  return <Navigate to='/history' replace />
+  return <Navigate to='/app/events?view=past' replace />
 }
 
 function UnknownRouteRedirect() {
@@ -94,7 +94,8 @@ export default function App() {
         {/* Admin-only */}
         <Route path='/admin/events/new' element={<RequireAuth><CreateEventScreen /></RequireAuth>} />
         <Route path='/admin/reports' element={<RequireAuth><ReportsScreen /></RequireAuth>} />
-        <Route path='/history' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
+        <Route path='/app/events' element={<RequireAuth><EventHistoryScreen /></RequireAuth>} />
+        <Route path='/history' element={<Navigate to='/app/events?view=past' replace />} />
         <Route path='/admin/history' element={<RedirectLegacyAdminHistory />} />
         <Route path='/admin/members' element={<RequireAuth><MemberSearchScreen /></RequireAuth>} />
         <Route path='/admin/members/:memberId' element={<RequireAuth><MemberDetailScreen /></RequireAuth>} />

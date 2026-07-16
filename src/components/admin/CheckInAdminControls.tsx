@@ -115,7 +115,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
         eventId,
         details: { event_name: eventName },
       }).catch(() => {})
-      navigate('/history', { replace: true })
+      navigate('/app/events?view=past', { replace: true })
     } catch (err: any) {
       setActionError(err.message || 'Delete failed')
     } finally {

@@ -45,7 +45,7 @@ export default function TopBar({ user, right = null }: Props) {
         </div>
         {user?.level && (
           <span
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground ${badgeClass}`}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground ${badgeClass}`}
           >
             {user.level}
           </span>

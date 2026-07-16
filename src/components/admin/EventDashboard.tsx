@@ -29,6 +29,13 @@ const CREATOR_DASHBOARD_POLL_MS = 8_000
 const ADMIN_DASHBOARD_POLL_MS = 15_000
 const MONITOR_DASHBOARD_POLL_MS = 30_000
 const BACKGROUND_DASHBOARD_POLL_MS = 60_000
+const RISK_POLL_MS = 60_000
+
+// Spread thousands of clients across the polling window instead of creating
+// synchronized request spikes on round interval boundaries.
+function withJitter(ms: number) {
+  return Math.round(ms * (0.85 + Math.random() * 0.3))
+}
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return ids.filter((id, idx, arr): id is string =>
@@ -84,14 +91,22 @@ export default function EventDashboard({ eventId }) {
   const [showAddMember, setShowAddMember] = useState(false)
   const isSuperAdmin = !!user?.isSuperAdmin
 
-  // Refresh risk count alongside dashboard stats (admin only).
+  // Risk analysis is secondary and changes slowly. Poll it independently so
+  // the live counter cadence never doubles the RPC load.
   useEffect(() => {
     if (!eventId || !viewerCaps?.canManage) return
-    getRiskyCheckInCount(eventId)
-      .then(setRiskyCount)
-      .catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, dashboardStats?.updated_at, viewerCaps?.canManage])
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const pollRisk = async () => {
+      try {
+        const count = await getRiskyCheckInCount(eventId)
+        if (!cancelled) setRiskyCount(count)
+      } catch { /* risk flags must not disrupt the dashboard */ }
+      if (!cancelled) timer = setTimeout(pollRisk, withJitter(pageVisible ? RISK_POLL_MS : BACKGROUND_DASHBOARD_POLL_MS * 5))
+    }
+    pollRisk()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [eventId, viewerCaps?.canManage, pageVisible])
 
   useEffect(() => {
     if (!scopeLevel || !scopeChurchId) return
@@ -208,9 +223,14 @@ export default function EventDashboard({ eventId }) {
     : MONITOR_DASHBOARD_POLL_MS
 
   useEffect(() => {
-    fetchDashboardStats()
-    const id = setInterval(fetchDashboardStats, statsPollMs)
-    return () => clearInterval(id)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      await fetchDashboardStats()
+      if (!cancelled) timer = setTimeout(poll, withJitter(statsPollMs))
+    }
+    poll()
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [fetchDashboardStats, statsPollMs, refreshKey])
 
   // Present = has a check-in record for this event.
@@ -353,13 +373,12 @@ export default function EventDashboard({ eventId }) {
                 : 'Updating…'}
             </span>
           </div>
-          <div className='mb-3 flex items-center gap-1.5'>
-            <span className='relative flex h-2 w-2'>
-              <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60' />
-              <span className='relative inline-flex h-2 w-2 rounded-full bg-success' />
-            </span>
-            <span className='text-[11px] font-semibold uppercase tracking-wider text-success'>Live</span>
-          </div>
+          {dashboardStats && (
+            <p className='m-0 mb-3 text-sm font-semibold text-foreground'>
+              {dashboardStats.attended} of {dashboardStats.attended + dashboardStats.absent} present
+              <span className='font-normal text-muted-foreground'> · {dashboardStats.attended + dashboardStats.absent > 0 ? Math.round((dashboardStats.attended / (dashboardStats.attended + dashboardStats.absent)) * 100) : 0}%</span>
+            </p>
+          )}
           <div className='overflow-hidden rounded-2xl border border-border bg-card'>
             <LiveRow
               icon='present'
@@ -492,7 +511,7 @@ function IdentityRow({ childLabel, displayChildCount, childCountLink }: {
         </div>
         <div className='flex flex-col'>
           <span className='text-sm font-semibold text-foreground'>{childLabel}</span>
-          <span className='flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground'>
+          <span className='flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground'>
             View
             <svg viewBox='0 0 24 24' width='10' height='10' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
               <path d='M9 18l6-6-6-6'/>

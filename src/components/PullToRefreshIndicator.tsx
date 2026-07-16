@@ -36,7 +36,7 @@ export default function PullToRefreshIndicator() {
           >
             <path d='M12 5v14M5 12l7 7 7-7' />
           </svg>
-          <span className='text-[10px] font-medium tracking-wide text-muted-foreground/40 select-none'>
+          <span className='text-[11px] font-medium tracking-wide text-muted-foreground/40 select-none'>
             Pull to refresh
           </span>
         </div>

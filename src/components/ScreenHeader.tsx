@@ -4,7 +4,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import NavDrawer from './NavDrawer'
-import RefreshButton from './RefreshButton'
 import PullToRefreshIndicator from './PullToRefreshIndicator'
 import { getCurrentUser } from '../utils/auth'
 
@@ -54,7 +53,7 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
         )}
 
         {/* Centre — title */}
-        <div className='min-w-0 text-center'>
+        <div className={`min-w-0 ${hasBack ? 'text-left' : 'text-center'}`}>
           {title && (
             <h1 className='m-0 truncate text-base font-semibold leading-tight tracking-tight text-foreground'>
               {title}
@@ -62,9 +61,8 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           )}
         </div>
 
-        {/* Right — refresh · extra slot */}
+        {/* Right — screen-specific actions only. Live/home surfaces own refresh. */}
         <div className='flex items-center gap-1.5'>
-          <RefreshButton />
           {right}
         </div>
 
