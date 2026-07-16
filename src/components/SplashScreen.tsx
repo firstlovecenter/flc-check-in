@@ -68,49 +68,38 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   if (done === 'authed') return <Navigate to='/home' replace />
   if (done === 'guest')  return <>{children}</>
 
+  // Mirrors the FL Admin Portal splash (solid brand surface, white Synago
+  // mark, soft pulse) — and matches the native launch splash generated from
+  // resources/ so app start reads as one continuous screen.
   return (
-    <div className='page-shell fixed inset-0 z-[100] flex items-center justify-center'>
+    <div className='fixed inset-0 z-[100] flex items-center justify-center bg-brand'>
       <style>{`
-        @keyframes flcSplashSpin {
-          from { transform: rotate(0deg) scale(1); }
-          25%  { transform: rotate(30deg) scale(1.05); }
-          50%  { transform: rotate(120deg) scale(1); }
-          75%  { transform: rotate(150deg) scale(1.05); }
-          to   { transform: rotate(240deg) scale(1); }
-        }
-        @keyframes flcSplashHaloA {
-          0%   { transform: scale(0.7); opacity: 0.5; }
-          70%  { opacity: 0; }
-          100% { transform: scale(1.8); opacity: 0; }
-        }
-        @keyframes flcSplashHaloB {
-          0%   { transform: scale(0.7); opacity: 0.35; }
-          70%  { opacity: 0; }
-          100% { transform: scale(2.1); opacity: 0; }
-        }
         @keyframes flcSplashFadeIn {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
 
-      <div className='relative flex flex-col items-center gap-6'>
-        {/* Expanding halo rings */}
-        <div className='pointer-events-none absolute size-[120px] rounded-full border-[1.5px] border-primary/45 animate-[flcSplashHaloA_2.4s_ease-out_infinite]' />
-        <div className='pointer-events-none absolute size-[120px] rounded-full border-[1.5px] border-primary/30 animate-[flcSplashHaloB_2.4s_ease-out_1.2s_infinite]' />
+      <div className='flex flex-col items-center gap-5'>
+        <svg
+          viewBox='0 0 24 24'
+          xmlns='http://www.w3.org/2000/svg'
+          role='img'
+          aria-label='Hineni'
+          className='h-24 w-24 text-brand-foreground animate-[pulse_2s_ease-in-out_infinite]'
+        >
+          <g fill='currentColor'>
+            <path d='M12 2C13.2 2 15.1 3 15.7 5C16.3 7 15.3 9 13.2 10C12.6 10.3 11.4 10.3 10.8 10C8.7 9 7.7 7 8.3 5C8.9 3 10.8 2 12 2Z' />
+            <path d='M12 2C13.2 2 15.1 3 15.7 5C16.3 7 15.3 9 13.2 10C12.6 10.3 11.4 10.3 10.8 10C8.7 9 7.7 7 8.3 5C8.9 3 10.8 2 12 2Z' transform='rotate(120 12 12)' />
+            <path d='M12 2C13.2 2 15.1 3 15.7 5C16.3 7 15.3 9 13.2 10C12.6 10.3 11.4 10.3 10.8 10C8.7 9 7.7 7 8.3 5C8.9 3 10.8 2 12 2Z' transform='rotate(240 12 12)' />
+            <circle cx='12' cy='12' r='2.2' />
+          </g>
+        </svg>
 
-        {/* Pulsing logo */}
-        <img
-          src='/synago-logo.svg'
-          alt='Synago'
-          width={96}
-          height={96}
-          className='relative z-[1] animate-[flcSplashSpin_2.4s_cubic-bezier(0.4,0,0.6,1)_infinite]'
-        />
-
-        <p className='m-0 animate-[flcSplashFadeIn_0.6s_ease-out_0.3s_both] text-sm font-medium text-muted-foreground'>
-          Hineni check-in
-        </p>
+        <div className='animate-[flcSplashFadeIn_0.6s_ease-out_0.3s_both] text-center'>
+          <p className='m-0 text-2xl font-bold tracking-tight text-brand-foreground'>Hineni</p>
+          <p className='m-0 mt-1 text-sm font-medium text-brand-foreground/80'>Right here, right now</p>
+        </div>
       </div>
     </div>
   )

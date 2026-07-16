@@ -426,6 +426,43 @@ permissions are declared in both `AndroidManifest.xml` and `Info.plist`;
 vibration (haptics) is Android-only — iOS has no `navigator.vibrate`, which
 `haptics.ts` already tolerates.
 
+#### Icons & splash
+
+Master art lives in `resources/` (white Synago mark on brand `#FF4265`,
+matching the FL Admin Portal splash). After changing it, regenerate every
+platform asset with:
+
+```bash
+npx @capacitor/assets generate --android --ios \
+  --iconBackgroundColor '#FF4265' --iconBackgroundColorDark '#FF4265' \
+  --splashBackgroundColor '#FF4265' --splashBackgroundColorDark '#FF4265'
+```
+
+#### Play Store release
+
+One-time setup: generate an upload keystore and config (both gitignored):
+
+```bash
+cd android
+keytool -genkeypair -v -keystore hineni-upload.jks -alias hineni-upload \
+  -keyalg RSA -keysize 2048 -validity 10000
+cp keystore.properties.example keystore.properties   # then fill in passwords
+```
+
+Per release: bump `versionCode` (+1 every upload) and `versionName` in
+`android/app/build.gradle`, then:
+
+```bash
+npm run cap:sync
+cd android && ./gradlew bundleRelease
+# → android/app/build/outputs/bundle/release/app-release.aab → Play Console
+```
+
+Back up `hineni-upload.jks` and its passwords outside the repo — it is the
+permanent upload key for the Play listing. iOS releases are built from the
+committed `ios/` project via Xcode or CI (Codemagic) and uploaded to
+TestFlight/App Store Connect.
+
 ---
 
 ## End-to-end test plan

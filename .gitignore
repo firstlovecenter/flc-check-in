@@ -27,3 +27,6 @@ dist-ssr
 .scripts
 reports
 supabase/.temp/
+scripts
+.tmp-flc-*.json
+.tmp-flc-token.txt
