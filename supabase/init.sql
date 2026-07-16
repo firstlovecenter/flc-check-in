@@ -60,6 +60,9 @@ create table if not exists public.member_profiles (
   campus_id           text, campus_name       text,
   oversight_id        text, oversight_name    text,
   denomination_id     text, denomination_name text,
+  -- Current Hineni eligibility derived from Graph leader/admin relationships.
+  -- Ineligible rows remain for historical attendance integrity.
+  is_active           boolean not null default true,
   -- Cached profile picture URL from the FLC member graph. Synced at login
   -- and on bulk upserts. See migration 015.
   picture_url         text,
@@ -80,6 +83,7 @@ create index if not exists member_profiles_council_idx      on public.member_pro
 create index if not exists member_profiles_stream_idx       on public.member_profiles (stream_id);
 create index if not exists member_profiles_campus_idx       on public.member_profiles (campus_id);
 create index if not exists member_profiles_oversight_idx    on public.member_profiles (oversight_id);
+create index if not exists member_profiles_active_idx       on public.member_profiles (is_active) where is_active;
 create index if not exists member_profiles_has_face_id_idx  on public.member_profiles (has_face_id);
 
 

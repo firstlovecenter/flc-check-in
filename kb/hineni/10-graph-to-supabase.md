@@ -35,6 +35,17 @@ Requires a valid **access token** on GraphQL. Visibility is whatever the FLC API
 - **Sync Members** (`/admin/sync-members`) — superadmin pages the graph into many `member_profiles` rows.
 - **Event creation** — all leaders/admins in the selected scope(s) snapshotted to `event_scope_members` + profiles upserted.
 
+Hineni cannot change or extend the Graph schema. Its operational lifecycle is
+therefore derived from current `leads*` / `isAdminFor*` relationships. The Graph
+requires these active relationships to be removed before member deactivation.
+Hineni stores current operational eligibility as `member_profiles.is_active`:
+
+- active members are eligible for current directory searches and new event snapshots;
+- members without current leadership/admin relationships remain cached for historical attendance, but are removed
+  from open/future event snapshots and rejected by the server-side entry gate;
+- only superadmins may run directory-wide reconciliation, preventing a scope-limited
+  Graph response from falsely deactivating members outside the caller's visibility.
+
 Regular members only land in Supabase when they **log in** (or are included in an event scope sync / admin add-member flow).
 
 ## Failure behaviour

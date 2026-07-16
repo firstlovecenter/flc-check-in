@@ -223,7 +223,7 @@ const MEMBER_PROFILE_LIST_COLUMNS =
   'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
   'council_id, council_name, stream_id, stream_name, ' +
   'campus_id, campus_name, oversight_id, oversight_name, ' +
-  'denomination_id, denomination_name, scope_ids, updated_at'
+  'denomination_id, denomination_name, scope_ids, is_active, updated_at'
 
 const CHECKIN_EVENT_LIST_COLUMNS =
   'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
@@ -376,6 +376,7 @@ export async function upsertMemberProfile(user) {
     oversight_name:  user.oversight?.name  || user.oversight_name  || null,
     denomination_id: user.denomination?.id || user.denomination_id || null,
     denomination_name: user.denomination?.name || user.denomination_name || null,
+    ...(typeof user.is_active === 'boolean' ? { is_active: user.is_active } : {}),
     updated_at: new Date().toISOString(),
   }
   const { data, error } = await supabase
@@ -395,13 +396,36 @@ export async function upsertMemberProfile(user) {
 export async function bulkUpsertMemberProfiles(rows) {
   if (!rows?.length) return []
   const stamped = rows.map((r) => ({ ...r, updated_at: new Date().toISOString() }))
-  const { data, error } = await supabase
-    .from('member_profiles')
-    .upsert(stamped, { onConflict: 'id' })
-    // Explicit columns, not '*' — see upsertMemberProfile.
-    .select(MEMBER_PROFILE_LIST_COLUMNS)
-  if (error) throw error
-  return data || []
+  const BATCH_SIZE = 500
+  const saved: any[] = []
+  for (let i = 0; i < stamped.length; i += BATCH_SIZE) {
+    const { data, error } = await supabase
+      .from('member_profiles')
+      .upsert(stamped.slice(i, i + BATCH_SIZE), { onConflict: 'id' })
+      // Explicit columns, not '*' — see upsertMemberProfile.
+      .select(MEMBER_PROFILE_LIST_COLUMNS)
+    if (error) throw error
+    if (data) saved.push(...data)
+  }
+  return saved
+}
+
+/** Preserve historical profile/check-in rows while removing explicitly
+ * inactive Graph members from every current operational directory. */
+export async function bulkMarkMemberProfilesInactive(memberIds: string[]): Promise<number> {
+  const ids = [...new Set((memberIds || []).filter(Boolean))]
+  if (!ids.length) return 0
+  const BATCH_SIZE = 200
+  let updated = 0
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase.rpc('reconcile_inactive_member_profiles', {
+      p_member_ids: batch,
+    })
+    if (error) throw error
+    updated += Number(data) || 0
+  }
+  return updated
 }
 
 /** Read a member's flat profile row. */
@@ -412,8 +436,9 @@ export async function getMemberProfile(memberId) {
             'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
             'council_id, council_name, stream_id, stream_name, ' +
             'campus_id, campus_name, oversight_id, oversight_name, ' +
-            'denomination_id, denomination_name, updated_at')
+            'denomination_id, denomination_name, is_active, updated_at')
     .eq('id', memberId)
+    .eq('is_active', true)
     .maybeSingle()
   if (error) throw error
   return data
@@ -431,6 +456,7 @@ export async function listMemberProfilesPaginated(
       'bacenta_name, governorship_name, council_name, stream_name, campus_name',
       { count: 'exact' },
     )
+    .eq('is_active', true)
     .order('first_name', { ascending: true })
     .range(from, to)
   if (error) throw error
@@ -444,6 +470,7 @@ export async function searchMemberProfiles(query: string, limit = 50): Promise<a
     .from('member_profiles')
     .select('id, title, first_name, last_name, email, picture_url, roles, ' +
             'bacenta_name, governorship_name, council_name, stream_name, campus_name')
+    .eq('is_active', true)
     .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
     .order('first_name', { ascending: true })
     .limit(limit)
@@ -1023,6 +1050,7 @@ export async function listMemberProfilesByScope(
     .from('member_profiles')
     .select(MEMBER_PROFILE_LIST_COLUMNS)
     .eq(col, scopeChurchId)
+    .eq('is_active', true)
   if (error) throw error
   return data || []
 }

@@ -125,6 +125,11 @@ export function memberToProfileRow(m) {
 
   return {
     id: m.id,
+    // Hineni's operational universe is leaders/admins. Graph deactivation is
+    // only allowed after those relationships are removed, so relationship
+    // eligibility is the strongest lifecycle signal available without a
+    // Graph schema change.
+    is_active: isLeaderOrAdmin(m),
     email: m.email || null,
     title: (Array.isArray(m.title) ? m.title[0]?.name : m.title) || null,
     first_name: m.firstName || null,
@@ -320,7 +325,7 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
 
   const p = client().request(query, { churchId })
     .then((data: any) => {
-      const result: any[] = data?.members || []
+      const result: any[] = (data?.members || []).filter(isLeaderOrAdmin)
       scopeMembersCache.set(key, { data: result, ts: Date.now() })
       scopeMembersPending.delete(key)
       return result
@@ -344,13 +349,12 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
 // admin action that should always read the graph fresh.
 export async function getAllLeadersAndAdmins(
   onProgress?: (fetched: number, kept: number) => void,
-  opts?: { includeAllMembers?: boolean },
-): Promise<any[]> {
+): Promise<{ eligible: any[]; ineligibleIds: string[]; scanned: number }> {
   const PAGE_SIZE = 500
   const kept: any[] = []
+  const ineligibleIds: string[] = []
   let offset = 0
   let fetched = 0
-  const includeAll = !!opts?.includeAllMembers
   // Hard cap to avoid runaway loops if the server ignores offset.
   const MAX_PAGES = 200
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -360,13 +364,14 @@ export async function getAllLeadersAndAdmins(
     const batch: any[] = data?.members || []
     fetched += batch.length
     for (const m of batch) {
-      if (includeAll || isLeaderOrAdmin(m)) kept.push(m)
+      if (isLeaderOrAdmin(m)) kept.push(m)
+      else if (m?.id) ineligibleIds.push(m.id)
     }
     onProgress?.(fetched, kept.length)
     if (batch.length < PAGE_SIZE) break
     offset += PAGE_SIZE
   }
-  return kept
+  return { eligible: kept, ineligibleIds, scanned: fetched }
 }
 
 // ─── getAdminScopes(member, user?) ─────────────────────────────────────────
@@ -844,6 +849,7 @@ export async function getChildScopeLeaders(
     .then((data) => {
       const map = new Map<string, ChildScopeLeader>()
       for (const m of data?.members || []) {
+        if (!isLeaderOrAdmin(m)) continue
         const name = [m.firstName, m.lastName].filter(Boolean).join(' ')
         for (const led of m[entry.ledField] || []) {
           if (led?.id && !map.has(led.id)) {
@@ -939,5 +945,5 @@ export async function searchMembersByName(q: string, limit = 10): Promise<any[]>
     SEARCH_MEMBERS_BY_NAME,
     { q: titleCase, qLower: query.toLowerCase(), limit },
   )
-  return data?.members || []
+  return (data?.members || []).filter(isLeaderOrAdmin)
 }

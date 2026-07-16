@@ -12,32 +12,32 @@ import { Alert } from '../ui/alert'
 import { Button } from '../ui/button'
 import { getCurrentUser } from '../../utils/auth'
 import { getAllLeadersAndAdmins, memberToProfileRow } from '../../utils/membersApi'
-import { bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
+import { bulkMarkMemberProfilesInactive, bulkUpsertMemberProfiles } from '../../utils/supabaseCheckins'
 
 type SyncState =
   | { status: 'idle' }
   | { status: 'fetching'; fetched: number; kept: number }
-  | { status: 'upserting'; kept: number }
-  | { status: 'done'; fetched: number; upserted: number }
+  | { status: 'upserting'; kept: number; inactive: number }
+  | { status: 'done'; fetched: number; upserted: number; deactivated: number }
   | { status: 'error'; message: string }
 
 export default function SyncMembersPanel() {
   const user = getCurrentUser()
-  if (!user?.level || user.level === 'bacenta') return <Navigate to='/home' replace />
+  if (!user?.isSuperAdmin) return <Navigate to='/home' replace />
 
   const [state, setState] = useState<SyncState>({ status: 'idle' })
-  const [includeAllMembers, setIncludeAllMembers] = useState(false)
 
   async function handleSync() {
     setState({ status: 'fetching', fetched: 0, kept: 0 })
     try {
-      const members = await getAllLeadersAndAdmins((fetched, kept) => {
+      const result = await getAllLeadersAndAdmins((fetched, kept) => {
         setState({ status: 'fetching', fetched, kept })
-      }, { includeAllMembers })
-      setState({ status: 'upserting', kept: members.length })
-      const rows = members.map(memberToProfileRow)
+      })
+      setState({ status: 'upserting', kept: result.eligible.length, inactive: result.ineligibleIds.length })
+      const rows = result.eligible.map(memberToProfileRow)
       const upserted = await bulkUpsertMemberProfiles(rows)
-      setState({ status: 'done', fetched: rows.length, upserted: upserted.length })
+      const deactivated = await bulkMarkMemberProfilesInactive(result.ineligibleIds)
+      setState({ status: 'done', fetched: result.scanned, upserted: upserted.length, deactivated })
     } catch (err: any) {
       setState({ status: 'error', message: err?.message || 'Sync failed' })
     }
@@ -54,36 +54,25 @@ export default function SyncMembersPanel() {
             <p className='m-0 mb-2 text-sm font-semibold text-foreground'>Populate member profiles</p>
             <p className='m-0 text-xs leading-relaxed text-muted-foreground'>
               Pages the FLC member graph (with your login token) and upserts rows into Supabase.
-              Default: leaders and admins only. Optional: every member the graph returns for each page.
-              Not limited by your JWT church scopes in this app — graph visibility still depends on
-              the FLC API (ideally a JWT with the <code className='text-[11px]'>superAdmin</code> role).
+              Only current leaders and admins are kept. Graph deactivation removes those relationships,
+              so profiles that no longer qualify are reconciled without deleting attendance history.
+              This tool is restricted to <code className='text-[11px]'>superAdmin</code> because its
+              Graph visibility must be directory-wide.
             </p>
           </CardContent>
         </Card>
 
-        <label className='flex items-start gap-2 text-sm text-foreground cursor-pointer'>
-          <input
-            type='checkbox'
-            className='mt-1'
-            checked={includeAllMembers}
-            onChange={(e) => setIncludeAllMembers(e.target.checked)}
-            disabled={running}
-          />
-          <span>
-            Include all members (not only leaders/admins). Larger sync; use for full-directory probes.
-          </span>
-        </label>
-
         <Button type='button' onClick={handleSync} disabled={running}>
-          {state.status === 'fetching' && `Fetching… (${state.fetched} scanned, ${state.kept} kept)`}
-          {state.status === 'upserting' && `Writing ${state.kept} to Supabase…`}
+          {state.status === 'fetching' && `Fetching… (${state.fetched} scanned, ${state.kept} active kept)`}
+          {state.status === 'upserting' && `Writing ${state.kept} active and reconciling ${state.inactive} inactive…`}
           {!running && 'Sync all members'}
         </Button>
 
         {state.status === 'done' && (
           <Alert variant='success'>
-            Synced <strong>{state.upserted}</strong> leader{state.upserted === 1 ? '' : 's'}/admin
-            {state.upserted === 1 ? '' : 's'} into Supabase.
+            Scanned <strong>{state.fetched}</strong> Graph members, synced <strong>{state.upserted}</strong> active
+            member{state.upserted === 1 ? '' : 's'}, and marked <strong>{state.deactivated}</strong> cached
+            profile{state.deactivated === 1 ? '' : 's'} inactive. Historical attendance was preserved.
           </Alert>
         )}
 
