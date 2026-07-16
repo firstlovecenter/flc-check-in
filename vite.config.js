@@ -17,11 +17,20 @@ export default defineConfig(({ mode }) => {
     ? new URL(env.VITE_AUTH_API_URL).origin
     : null
 
+  // Native (Capacitor) builds disable the PWA layer: the app shell ships
+  // inside the binary, and on Android the SW would register against
+  // https://localhost and layer a second, staler Supabase cache inside the
+  // native app. iOS (capacitor://) can't register SWs at all. `disable`
+  // (not plugin removal) keeps virtual:pwa-register resolvable as a no-op
+  // for UpdatePrompt.tsx.
+  const isMobile = mode === 'mobile'
+
   return {
     plugins: [
       react(),
       tailwindcss(),
       VitePWA({
+        disable: isMobile,
         // Installed PWAs were sticking on old bundles (prompt mode waited for
         // a tap that never came). Auto-update activates the new SW and reloads.
         registerType: 'autoUpdate',

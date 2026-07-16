@@ -16,6 +16,8 @@
 // No hardcoded fallback — a misconfigured deployment fails loudly via a 500
 // rather than silently routing prod traffic to dev.
 
+import { applyCors } from './_cors.js'
+
 /** Normalise the env var: validate it's a URL, strip trailing slash.
  *  Unlike the auth proxy we keep the path because GraphQL endpoints
  *  typically live at /graphql, not at the origin. */
@@ -37,6 +39,8 @@ if (!TARGET) {
 }
 
 export default async function handler(req, res) {
+  // Native (Capacitor) callers are cross-origin — see api/_cors.js.
+  if (applyCors(req, res)) return
   if (!TARGET) {
     return res.status(500).json({
       error: 'GraphQL proxy is not configured',

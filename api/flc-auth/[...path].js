@@ -22,6 +22,8 @@
 // No hardcoded fallback — a misconfigured deployment fails loudly via a
 // 500 rather than silently routing prod logins to dev's user database.
 
+import { applyCors } from '../_cors.js'
+
 const RAW = process.env.VITE_AUTH_API_URL || process.env.AUTH_LAMBDA_URL
 
 /** Build "<origin>/auth" from whatever the env var contains. */
@@ -43,6 +45,8 @@ if (!TARGET) {
 }
 
 export default async function handler(req, res) {
+  // Native (Capacitor) callers are cross-origin — see api/_cors.js.
+  if (applyCors(req, res)) return
   if (!TARGET) {
     return res.status(500).json({
       error: 'Auth proxy is not configured',

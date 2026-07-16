@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   readonly VITE_LEAD_CHURCHES_API_URL?: string
   readonly VITE_GEOAPIFY_KEY?: string
   readonly VITE_GOOGLE_MAPS_API_KEY?: string
+  /** Set only by native (Capacitor) builds — see .env.mobile */
+  readonly VITE_API_ORIGIN?: string
 }
 
 interface ImportMeta {

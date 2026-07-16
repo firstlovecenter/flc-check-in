@@ -29,13 +29,14 @@ import {
   SEARCH_MEMBERS_BY_NAME,
 } from './membersApi.queries.js'
 import { createBoundedFetch } from './network'
+import { apiOrigin } from './apiOrigin'
 
 function graphqlEndpoint() {
-  // Always use the same-origin /flc-graphql path.
-  // Dev  → Vite proxy (vite.config.js) forwards to the FLC GraphQL endpoint.
-  // Prod → Vercel rewrite (vercel.json) forwards it server-side.
-  if (typeof window !== 'undefined') return `${window.location.origin}/flc-graphql`
-  return '/flc-graphql'
+  // Always use the same-origin /flc-graphql path (or VITE_API_ORIGIN on native).
+  // Dev    → Vite proxy (vite.config.js) forwards to the FLC GraphQL endpoint.
+  // Prod   → Vercel rewrite (vercel.json) forwards it server-side.
+  // Native → build:mobile sets VITE_API_ORIGIN to the deployed Vercel origin.
+  return `${apiOrigin()}/flc-graphql`
 }
 
 // GraphQL client factory. The endpoint is authenticated — without a bearer

@@ -400,6 +400,32 @@ Deploy target is **Vercel**. Set the same `VITE_*` environment variables in
 the Vercel project settings as in your local `.env`. The `vercel.json` file
 handles SPA routing and the `/flc-graphql` proxy rewrite automatically.
 
+### Native mobile apps (Capacitor)
+
+The same web bundle ships as native iOS/Android apps via
+[Capacitor](https://capacitorjs.com). The native projects live in `android/`
+and `ios/` (committed source, like any other code).
+
+```bash
+npm run build:mobile   # vite build --mode mobile (loads .env.mobile)
+npm run cap:sync       # build:mobile + copy bundle into android/ + ios/
+npm run cap:android    # sync + open in Android Studio
+npm run cap:ios        # sync + open in Xcode (macOS only)
+```
+
+Key difference from the web build: inside the native shell the app is served
+from `capacitor://localhost`, so the same-origin proxies (`/flc-graphql`,
+`/api/flc-auth`) don't exist. `.env.mobile` sets `VITE_API_ORIGIN` to the
+deployed Vercel origin (`https://hineni.firstlovecenter.com`) and
+`src/utils/apiOrigin.ts` routes API calls there. **Never ship a native build
+made with plain `npm run build`** — login and member search would 404.
+
+Prerequisites: Android needs Android Studio (or a JDK 17+ + the Android SDK);
+iOS needs Xcode on macOS. Camera (QR scanning) and geolocation (geofence)
+permissions are declared in both `AndroidManifest.xml` and `Info.plist`;
+vibration (haptics) is Android-only — iOS has no `navigator.vibrate`, which
+`haptics.ts` already tolerates.
+
 ---
 
 ## End-to-end test plan

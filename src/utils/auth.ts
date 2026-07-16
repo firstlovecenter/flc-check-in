@@ -3,13 +3,15 @@
 // Wire real auth by replacing getCurrentUser() body.
 
 // Always call the same-origin proxy — never the Lambda directly.
-// Dev  → Vite proxy rewrites /api/flc-auth → Lambda (vite.config.js).
-// Prod → Vercel serverless function at api/flc-auth/[...path].js forwards it.
+// Dev    → Vite proxy rewrites /api/flc-auth → Lambda (vite.config.js).
+// Prod   → Vercel serverless function at api/flc-auth/[...path].js forwards it.
+// Native → VITE_API_ORIGIN (set by build:mobile) points at the deployed
+//          Vercel origin, because capacitor://localhost has no proxy.
 import { fetchWithTimeout } from './network'
+import { apiOrigin } from './apiOrigin'
 
 function leadChurchesUrl() {
-  const base = typeof window !== 'undefined' ? window.location.origin : ''
-  return `${base}/api/flc-auth/churches`
+  return `${apiOrigin()}/api/flc-auth/churches`
 }
 
 export function decodeJWT(token) {
@@ -522,13 +524,14 @@ export function withActiveChurch(user, church) {
 
 // ── Real login call ───────────────────────────────────────────────────────
 
-// Always use the same-origin /flc-auth path.
+// Always use the same-origin /flc-auth path (or VITE_API_ORIGIN on native).
 // Dev  → Vite proxy rewrites to the Lambda URL (vite.config.js).
 // Prod → Vercel rewrite in vercel.json forwards it server-side.
-// Neither exposes the Lambda URL to the browser, so CORS is never an issue.
+// Neither exposes the Lambda URL to the browser. Web calls are same-origin
+// (no CORS); native (Capacitor) calls are cross-origin and rely on the CORS
+// headers the proxy functions set for the native shells (api/_cors.js).
 function authApiUrl() {
-  if (typeof window !== 'undefined') return `${window.location.origin}/api/flc-auth`
-  return '/api/flc-auth'
+  return `${apiOrigin()}/api/flc-auth`
 }
 
 export async function loginWithCredentials(email, password) {
