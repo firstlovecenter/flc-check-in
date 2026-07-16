@@ -11,7 +11,7 @@ interface PageShellProps {
 /** Full-page authenticated layout (gray canvas). */
 export function PageShell({ children, className, noSidebar }: PageShellProps) {
   return (
-    <div className={cn('page-shell flex min-h-dvh flex-col', !noSidebar && 'md:pl-64', className)}>
+    <div className={cn('page-shell flex min-h-dvh flex-col', !noSidebar && 'pb-28 lg:pb-0 lg:pl-[84px]', className)}>
       {children}
     </div>
   )

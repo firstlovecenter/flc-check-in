@@ -1,6 +1,5 @@
 // Shared header row for all screens.
-// Layout: [back or spacer] [title centered] [refresh · NavDrawer]
-// The NavDrawer trigger is always top-right, matching the home screen position.
+// Layout: [back or spacer] [title centered] [refresh · extras].
 
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -51,10 +50,7 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
             </button>
           )
         ) : (
-          /* invisible spacer — same width as the right cluster so title stays centred */
-          <span className='invisible pointer-events-none' aria-hidden>
-            <NavDrawer user={user} />
-          </span>
+          <span className='w-9' aria-hidden />
         )}
 
         {/* Centre — title */}
@@ -66,14 +62,14 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           )}
         </div>
 
-        {/* Right — refresh · extra slot · NavDrawer (hamburger hidden on desktop) */}
+        {/* Right — refresh · extra slot */}
         <div className='flex items-center gap-1.5'>
           <RefreshButton />
           {right}
-          <NavDrawer user={user} />
         </div>
 
       </header>
+      <NavDrawer user={user} />
     </>
   )
 }

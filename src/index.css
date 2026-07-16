@@ -184,15 +184,20 @@ html { scroll-behavior: smooth; }
 }
 
 /* ─── Portal layout & surfaces (DESIGN-new.md) ───────────────────────────── */
-.page-shell {
-  min-height: 100dvh;
-  background: var(--bg);
-  color: var(--text);
-  /* Keep content clear of notches / rounded corners / home indicator on
-     phones (viewport-fit=cover in index.html opts us into the full screen). */
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+/* In @layer components so Tailwind utilities (@layer utilities) can override
+   it. Unlayered, this padding-left beat PageShell's md:pl-64 and the sidebar
+   sat on top of full-width page content on 768px+ viewports (tablets). */
+@layer components {
+  .page-shell {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    /* Keep content clear of notches / rounded corners / home indicator on
+       phones (viewport-fit=cover in index.html opts us into the full screen). */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 .surface-card {
