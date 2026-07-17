@@ -414,6 +414,11 @@ npm run cap:android    # sync + open in Android Studio
 npm run cap:ios        # sync + open in Xcode (macOS only)
 ```
 
+> **Windows gotcha:** `npx cap sync` run on Windows writes backslash paths
+> into `ios/App/CapApp-SPM/Package.swift` for local plugin packages, which
+> does not parse as Swift. After syncing on Windows, check that file and fix
+> any `..\..\..` paths back to forward slashes before an iOS build.
+
 Key difference from the web build: inside the native shell the app is served
 from `capacitor://localhost`, so the same-origin proxies (`/flc-graphql`,
 `/api/flc-auth`) don't exist. `.env.mobile` sets `VITE_API_ORIGIN` to the

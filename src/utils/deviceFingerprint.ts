@@ -68,6 +68,30 @@ async function mediaDeviceSignal(): Promise<string> {
   }
 }
 
+// In the native (Capacitor) app, fold in the OS-level per-install identifier
+// (ANDROID_ID / iOS identifierForVendor). Two units of the same device model
+// running the identical WebView can otherwise produce near-identical signals
+// (canvas/WebGL/screen/CPU all match) and collide — surfacing as false
+// "device shared across members" risk flags. The native ID is collision-proof
+// and needs no permissions. Returns '' on the web so the browser fingerprint
+// formula (and therefore existing persisted fingerprints) is unchanged.
+async function nativeDeviceIdSignal(): Promise<string> {
+  let isNative = false
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    isNative = Capacitor.isNativePlatform()
+    if (!isNative) return ''
+    const { Device } = await import('@capacitor/device')
+    const { identifier } = await Device.getId()
+    return identifier ? `nativeId:${identifier}` : ''
+  } catch (err) {
+    // On native this silently degrades to the web formula AND the result is
+    // frozen in localStorage — surface it so degraded installs are diagnosable.
+    if (isNative) console.warn('[fingerprint] native device ID unavailable, using web formula:', err)
+    return ''
+  }
+}
+
 async function sha256hex(input: string): Promise<string> {
   const buf = await crypto.subtle.digest(
     'SHA-256',
@@ -81,9 +105,10 @@ async function sha256hex(input: string): Promise<string> {
 async function computeStrictFingerprint(visitorId: string): Promise<string> {
   const nav = navigator
   const scr = screen
-  const [canvas, media] = await Promise.all([
+  const [canvas, media, nativeId] = await Promise.all([
     Promise.resolve(canvasSignal()),
     mediaDeviceSignal(),
+    nativeDeviceIdSignal(),
   ])
   const signals = [
     visitorId,
@@ -98,8 +123,10 @@ async function computeStrictFingerprint(visitorId: string): Promise<string> {
     `lang:${nav.language ?? '?'}`,
     `tz:${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
     media,
-  ].join('||')
-  return sha256hex(signals)
+  ]
+  // Only appended on native so the web formula stays byte-identical.
+  if (nativeId) signals.push(nativeId)
+  return sha256hex(signals.join('||'))
 }
 
 // ---------------------------------------------------------------------------
