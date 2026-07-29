@@ -98,7 +98,11 @@ as $$
       or lower(coalesce(p.first_name, '') || ' ' || coalesce(p.last_name, '') || ' ' || coalesce(p.email, ''))
          like '%' || lower(btrim(p_search)) || '%'
     )
-  order by p.first_name nulls last, p.last_name nulls last, p.email nulls last;
+  -- p.id is REQUIRED, not cosmetic: it is the unique tiebreaker that keeps
+  -- paginated .range() reads stable across separate page requests. Without it,
+  -- rows with identical (possibly all-null) name/email tuples can reorder
+  -- between pages and silently skip or duplicate members. See migration 031.
+  order by p.first_name nulls last, p.last_name nulls last, p.email nulls last, p.id;
 $$;
 
 grant execute on function
