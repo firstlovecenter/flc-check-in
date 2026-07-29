@@ -24,6 +24,13 @@
 
 import { SCOPE_LEVELS, type ScopeLevel, type AppUser } from '../types/app'
 
+/** Hineni's operational universe is deliberately leaders and admins only.
+ *
+ *  Specialist roles (arrivalsAdmin*, arrivalsCounter*, teller*, fishers) carry
+ *  real church edges in the graph but are NOT modelled here: they belong to the
+ *  portal's arrivals and banking flows, not to attendance. A member who holds
+ *  only a specialist role therefore gets no hat and no event visibility from
+ *  it — that is the intended product boundary, not an oversight. */
 export type RoleScopeSource = 'leader' | 'admin'
 
 export interface RoleScope {
@@ -54,8 +61,13 @@ export function roleScopeKey(source: RoleScopeSource, level: string, id: string)
   return `${source}:${level}:${id}`
 }
 
+const SOURCE_LABEL: Record<RoleScopeSource, string> = {
+  leader: 'Leader',
+  admin: 'Admin',
+}
+
 function buildLabels(source: RoleScopeSource, level: ScopeLevel, name: string) {
-  const roleLabel = `${cap(level)} ${source === 'admin' ? 'Admin' : 'Leader'}`
+  const roleLabel = `${cap(level)} ${SOURCE_LABEL[source]}`
   return { roleLabel, displayName: name ? `${roleLabel} · ${name}` : roleLabel }
 }
 
@@ -109,6 +121,9 @@ export function getUserRoleScopes(user: AppUser | null | undefined): RoleScope[]
     if (Array.isArray(adminArr)) {
       for (const ref of adminArr) push('admin', level, ref?.id, ref?.name)
     }
+
+    // Specialist edges (isArrivalsCounterFor<Level>Of, isTellerFor<Level>Of,
+    // fishers) are intentionally NOT read here — see RoleScopeSource above.
   }
 
   const sourceRank: Record<RoleScopeSource, number> = { leader: 0, admin: 1 }

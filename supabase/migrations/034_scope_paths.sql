@@ -51,6 +51,21 @@ comment on column public.member_profiles.scope_ids is
   'Per-level union of every id across every chain. LOSSY — cannot pair a '
   'council with its stream. Prefer scope_paths in new code.';
 
+-- REQUIRED: migration 024 (face_descriptor_lockdown) revoked table-level SELECT
+-- from anon and replaced it with a COLUMN allow-list, so face_descriptor could
+-- never be read by a browser client. Every column added afterwards is excluded
+-- by default and must be granted explicitly — migration 033 had to do exactly
+-- this for is_active.
+--
+-- Omitting this grant breaks EVERY direct read of member_profiles with
+-- "permission denied for table member_profiles" as soon as any client
+-- projection includes scope_paths. (Postgres reports column-level denials as
+-- table-level errors, which makes it read like a much broader failure.)
+--
+-- scope_paths carries the same class of data as scope_ids, which anon already
+-- reads. face_descriptor stays excluded.
+grant select (scope_paths) on public.member_profiles to anon, authenticated;
+
 -- Containment queries ("members with any edge under campus X") run against
 -- scope_ids; jsonb_path_ops is the smaller, faster GIN variant for @>.
 create index if not exists member_profiles_scope_ids_gin

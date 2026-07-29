@@ -129,20 +129,33 @@ export function capsFor(input: CapsInput): ViewerCaps {
   if (relation === 'unrelated') return NO_CAPS
 
   // ── The hat sits exactly at the event's scope ────────────────────────────
+  //
+  // canCheckIn is ALWAYS the server's answer, for every hat type.
+  //
+  // This used to hardcode `canCheckIn: false` for admin hats on the reasoning
+  // that "admins run the event, they are not attendees of it". That is not the
+  // app's rule to make: whether someone is expected at an event is stated by
+  // the event's own allowed_roles, evaluated server-side against the scope
+  // snapshot (see resolve_event_snapshot_member + roles_overlap_allowed).
+  // Events here routinely DO list admin roles — the campus event that surfaced
+  // this has allowed_roles including adminStream — so the veto silently
+  // contradicted the event creator's explicit policy.
+  //
+  // Running an event and attending it are independent facts. The hat decides
+  // management and visibility; allowed_roles decides attendance.
   if (relation === 'exact') {
     if (hat.source === 'admin') {
-      // Admins run the event. They are not attendees of it.
       return {
         canManage: true,
-        canCheckIn: false,
+        canCheckIn: eligibleForCheckin,
         canView: true,
         canViewFullEvent: true,
         canManuallyCheckIn: true,
         viewerScope: eventScope,
       }
     }
-    // Leader of exactly this church: an expected attendee who can also see
-    // the whole register.
+    // Leader / specialist at exactly this church: an expected attendee who can
+    // also see the whole register.
     return {
       canManage: false,
       canCheckIn: eligibleForCheckin,
@@ -153,7 +166,7 @@ export function capsFor(input: CapsInput): ViewerCaps {
     }
   }
 
-  // ── The hat is ABOVE the event — supervising, not attending ──────────────
+  // ── The hat is ABOVE the event — supervising ─────────────────────────────
   if (relation === 'ancestor') {
     // Management requires PROVEN containment. When the hierarchy cache could
     // not confirm the event sits under this hat's church, the viewer still
@@ -163,7 +176,11 @@ export function capsFor(input: CapsInput): ViewerCaps {
     const manages = hat.source === 'admin' && proven
     return {
       canManage: manages,
-      canCheckIn: false,
+      // Still the server's answer. An ancestor is normally outside the event's
+      // scope snapshot and so ineligible anyway — but if the snapshot DOES
+      // include them, the snapshot is right and we defer to it rather than
+      // second-guessing from the hierarchy.
+      canCheckIn: eligibleForCheckin,
       canView: true,
       canViewFullEvent: true,
       canManuallyCheckIn: manages,

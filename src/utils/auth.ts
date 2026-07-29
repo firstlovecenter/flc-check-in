@@ -330,26 +330,19 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
   }
 }
 
-/** Check the superadmins Supabase table for this email via a security-definer
- * RPC — the anon role has no direct SELECT on the table. */
-async function checkSuperAdminTable(email: string): Promise<boolean> {
-  if (!email) return false
-  const { supabase } = await import('./supabase')
-  const { data, error } = await supabase
-    .rpc('is_super_admin', { p_email: email.toLowerCase().trim() })
-  if (error) throw error
-  return !!data
-}
-
-/** Check the superviewers Supabase table — view-only equivalent of superAdmin. */
-async function checkSuperViewerTable(email: string): Promise<boolean> {
-  if (!email) return false
-  const { supabase } = await import('./supabase')
-  const { data, error } = await supabase
-    .rpc('is_super_viewer', { p_email: email.toLowerCase().trim() })
-  if (error) throw error
-  return !!data
-}
+// NOTE: there is no superadmins allowlist any more.
+//
+// Superadmin is now derived solely from the graph: holding `adminDenomination`
+// grants it (see enrichUser below), which was already the product policy — the
+// Supabase `superadmins` table was a third, parallel grant path that could
+// disagree with the graph and had to be maintained by hand.
+//
+// Consequence, recorded deliberately: anyone who was in that table WITHOUT
+// adminDenomination lost superadmin when it was dropped. Restore access by
+// granting the role in the FL graph, not by reintroducing an allowlist.
+//
+// superviewers is unaffected and still allowlist-based — it grants read-only
+// cross-scope visibility that has no graph equivalent.
 
 // The super flags persist the result of the Supabase allowlist RPCs across
 // reloads. They store the email they were granted for, so a flag left behind
@@ -379,30 +372,21 @@ export async function verifySuperPrivileges(
     if (!opts?.force && Date.now() - last < VERIFY_SUPER_INTERVAL) return false
   } catch { /* private mode */ }
 
-  let isSA: boolean, isSV: boolean
-  try {
-    [isSA, isSV] = await Promise.all([
-      checkSuperAdminTable(email),
-      checkSuperViewerTable(email),
-    ])
-  } catch {
-    return false // network/RPC failure — keep current flags, retry next interval
-  }
   try { sessionStorage.setItem(VERIFY_SUPER_TS_KEY, String(Date.now())) } catch { /* ignore */ }
 
+  // Both allowlists are gone, so this no longer GRANTS anything — it only
+  // revokes. That is exactly why it is retained rather than deleted: a flag
+  // written by a previous build would otherwise keep granting privileges the
+  // graph does not, for as long as that browser's localStorage survives.
+  //
+  // Safe to delete once every active session has logged in at least once after
+  // this change (login clears both flags unconditionally).
   const hadSA = readSuperFlag('superAdminOverride', email)
   const hadSV = readSuperFlag('superViewerOverride', email)
-  if (isSA) {
-    localStorage.setItem('superAdminOverride', email)
-    localStorage.removeItem('superViewerOverride')
-  } else if (isSV) {
-    localStorage.setItem('superViewerOverride', email)
-    localStorage.removeItem('superAdminOverride')
-  } else {
-    localStorage.removeItem('superAdminOverride')
-    localStorage.removeItem('superViewerOverride')
-  }
-  const changed = hadSA !== isSA || hadSV !== (!isSA && isSV)
+  if (hadSA) localStorage.removeItem('superAdminOverride')
+  if (hadSV) localStorage.removeItem('superViewerOverride')
+
+  const changed = hadSA || hadSV
   if (changed) {
     // Let live providers (ChurchFocusContext etc.) re-read getCurrentUser().
     try { window.dispatchEvent(new Event('flc:privileges-changed')) } catch { /* SSR */ }
@@ -417,14 +401,25 @@ export function verifySuperPrivilegesBackground(user: { email?: string } | null 
 
 export function enrichUser(payload) {
   const roles = mergeRoleLists(payload?.roles)
-  // isSuperAdmin can come from the JWT role OR from the localStorage flag
-  // (set by loginWithCredentials after a Supabase table check, re-verified
-  // in the background by verifySuperPrivileges).
-  // Product policy: denomination admins inherit superadmin-level privileges.
+  // Superadmin is derived from the GRAPH, via the roles in the JWT:
+  // `adminDenomination` grants it, as does an explicit `superAdmin` role.
+  //
+  // The Supabase `superadmins` allowlist that used to be a third grant path is
+  // gone — it was a hand-maintained list that could disagree with the graph.
+  // To grant superadmin now, give the person `adminDenomination` in the graph.
+  //
+  // `localOverride` is retained only so a flag written by a PREVIOUS build stops
+  // mattering the moment verifySuperPrivileges() or a login clears it; nothing
+  // sets it any more.
   const email = (payload?.email || '').toLowerCase().trim()
   const localOverride = readSuperFlag('superAdminOverride', email)
   const denominationAdmin = roles.includes('adminDenomination')
   const superAdmin = roles.includes('superAdmin') || localOverride || denominationAdmin
+  // superViewer is likewise no longer grantable — the superviewers allowlist was
+  // its only source and it had no graph equivalent. The flag and every
+  // downstream `isSuperViewer` branch are left in place (they simply evaluate
+  // false) so the capability can be reinstated from a graph role later without
+  // rebuilding the plumbing.
   const superViewer = !superAdmin && readSuperFlag('superViewerOverride', email)
   const level = getLevelFromRoles(roles);
   const unitName =
@@ -535,11 +530,6 @@ function authApiUrl() {
 }
 
 export async function loginWithCredentials(email, password) {
-  // Start both privilege checks immediately — in parallel with the Lambda login fetch.
-  // RPCs (~150-300ms) typically resolve before the Lambda (~500-1500ms).
-  const saCheckPromise = checkSuperAdminTable(email.toLowerCase().trim()).catch(() => null)
-  const svCheckPromise = checkSuperViewerTable(email.toLowerCase().trim()).catch(() => null)
-
   const res = await fetchWithTimeout(`${authApiUrl()}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -557,19 +547,11 @@ export async function loginWithCredentials(email, password) {
   // Persist church refs so getCurrentUser() can fill in IDs not in the JWT.
   persistChurchContext(userFields)
 
-  // Await both checks — likely already resolved (ran concurrently above).
-  const normalizedEmail = email.toLowerCase().trim()
-  const [isSA, isSV] = await Promise.all([saCheckPromise, svCheckPromise])
-  if (isSA) {
-    localStorage.setItem('superAdminOverride', normalizedEmail)
-    localStorage.removeItem('superViewerOverride')
-  } else if (isSV) {
-    localStorage.setItem('superViewerOverride', normalizedEmail)
-    localStorage.removeItem('superAdminOverride')
-  } else {
-    localStorage.removeItem('superAdminOverride')
-    localStorage.removeItem('superViewerOverride')
-  }
+  // Privileges now come from the graph roles carried in the JWT — no allowlist
+  // round trip at login. Clear any flags a previous build wrote so a stale
+  // grant cannot outlive the allowlists that produced it.
+  localStorage.removeItem('superAdminOverride')
+  localStorage.removeItem('superViewerOverride')
   // Clear persisted eligibility cache so the new SA/SV status is picked up
   // immediately rather than waiting for the 30-min localStorage TTL to expire.
   try {

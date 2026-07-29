@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { capsFor, routeForCaps } from './eventCaps'
 import type { RoleScope } from './roleScopes'
 
-const hat = (source: 'leader' | 'admin', level: string, id: string, name = 'A Church'): RoleScope => ({
+const hat = (source: RoleScope['source'], level: string, id: string, name = 'A Church'): RoleScope => ({
   key: `${source}:${level}:${id}`,
   source,
   level: level as any,
@@ -27,15 +27,40 @@ const event = {
 }
 
 describe('capsFor — exact scope match', () => {
-  it('an admin at the event scope manages it and is not an attendee', () => {
+  // Running an event and attending it are independent facts. capsFor used to
+  // hardcode `canCheckIn: false` for admin hats — which silently contradicted
+  // events whose allowed_roles explicitly listed admin roles. Whether someone
+  // is expected is the EVENT's policy, evaluated server-side; the hat only
+  // decides management and visibility.
+  it('an admin at the event scope manages it AND may attend when the event allows it', () => {
     const caps = capsFor({
       hat: hat('admin', 'governorship', 'gov-1'),
       event, relation: 'exact', eligibleForCheckin: true,
     })
     expect(caps.canManage).toBe(true)
     expect(caps.canManuallyCheckIn).toBe(true)
-    expect(caps.canCheckIn).toBe(false)
+    expect(caps.canCheckIn).toBe(true)
     expect(caps.canViewFullEvent).toBe(true)
+  })
+
+  it('an admin cannot attend an event whose allowed_roles exclude them', () => {
+    const caps = capsFor({
+      hat: hat('admin', 'governorship', 'gov-1'),
+      event, relation: 'exact', eligibleForCheckin: false,
+    })
+    expect(caps.canManage).toBe(true)
+    expect(caps.canCheckIn).toBe(false)
+  })
+
+  it('a leader attends without managing', () => {
+    const caps = capsFor({
+      hat: hat('leader', 'stream', 'stream-1'),
+      event: { ...event, scope_level: 'stream', scope_church_id: 'stream-1' },
+      relation: 'exact', eligibleForCheckin: true,
+    })
+    expect(caps.canCheckIn).toBe(true)
+    expect(caps.canManage).toBe(false)
+    expect(caps.canManuallyCheckIn).toBe(false)
   })
 
   it('a leader at the event scope checks in and sees the whole register', () => {
@@ -60,10 +85,10 @@ describe('capsFor — exact scope match', () => {
 })
 
 describe('capsFor — hat above the event (supervising)', () => {
-  it('an ancestor admin manages without being counted as present', () => {
+  it('an ancestor admin manages the event', () => {
     const caps = capsFor({
       hat: hat('admin', 'stream', 'stream-1'),
-      event, relation: 'ancestor', eligibleForCheckin: true,
+      event, relation: 'ancestor', eligibleForCheckin: false,
     })
     expect(caps.canManage).toBe(true)
     expect(caps.canCheckIn).toBe(false)
@@ -73,12 +98,23 @@ describe('capsFor — hat above the event (supervising)', () => {
   it('an ancestor leader observes but does not manage', () => {
     const caps = capsFor({
       hat: hat('leader', 'stream', 'stream-1'),
-      event, relation: 'ancestor', eligibleForCheckin: true,
+      event, relation: 'ancestor', eligibleForCheckin: false,
     })
     expect(caps.canManage).toBe(false)
     expect(caps.canView).toBe(true)
     expect(caps.canViewFullEvent).toBe(true)
     expect(caps.canCheckIn).toBe(false)
+  })
+
+  it('an ancestor still defers to the snapshot if it does include them', () => {
+    // An ancestor is normally outside the event's scope snapshot and so
+    // ineligible. But the snapshot is authoritative about who is expected —
+    // if it lists them, we do not second-guess it from the hierarchy.
+    const caps = capsFor({
+      hat: hat('leader', 'stream', 'stream-1'),
+      event, relation: 'ancestor', eligibleForCheckin: true,
+    })
+    expect(caps.canCheckIn).toBe(true)
   })
 })
 

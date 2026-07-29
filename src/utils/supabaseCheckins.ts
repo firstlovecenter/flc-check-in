@@ -869,15 +869,36 @@ async function listAllEventsForFocusedScope(
     if (!authorized) return []
   }
 
-  const scopeKeys = await withFallbackAfter(
-    getDescendantScopeKeysForScope(focus),
-    DESC_SCOPE_HOME_TIMEOUT_MS,
-    exactScopeKeys([focus]),
-  )
-  const result = await queryEventsByExpandedScopeKeys(scopeKeys, {
-    excludeSpecialGroup: true,
-    limit: Math.max(200, opts?.limit ?? 50),
+  // ONE round trip. This used to expand the focus to its full descendant set
+  // client-side, then query events with PostgREST OR-filters batched 40 scopes
+  // at a time, 5 concurrent. A denomination-level focus expands to ~3,000
+  // scopes = ~77 HTTP requests in ~16 sequential rounds, each carrying a
+  // 40-clause OR filter — to find a handful of events.
+  //
+  // That is why a HIGHER role could see FEWER events than a lower one: the wide
+  // expansion timed out or crawled while a narrow one completed. The join now
+  // happens in Postgres (migration 039).
+  const { data, error } = await supabase.rpc('list_events_for_scope', {
+    p_level: focus.level,
+    p_id: focus.id,
+    p_statuses: null,
+    p_exclude_special_group: true,
+    p_limit: Math.max(200, opts?.limit ?? 50),
   })
+  if (error) throw error
+  const rows = data || []
+
+  // The hierarchy cache could not prove the subtree is complete, so this list
+  // covers the focused scope only. Surfaced rather than swallowed: silently
+  // showing fewer events is indistinguishable from having none.
+  if (rows.length > 0 && rows[0].descendants_resolved === false) {
+    console.warn(
+      '[events] sub-scope expansion unresolved for %s:%s — showing this scope only. ' +
+      'church_hierarchy needs warming.', focus.level, focus.id,
+    )
+  }
+
+  const result = rows.map(mapEventRow)
   _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
   return result
 }
