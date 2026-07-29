@@ -19,17 +19,38 @@ import {
 import { upsertMemberProfile } from './supabaseCheckins'
 import { cacheHierarchyChain, type HierarchyNode } from './hierarchyCache'
 
-/** Ancestor chain (highest level first) from a member_profiles-shaped row's
- *  flat columns. Gaps are fine — cacheHierarchyChain only links adjacent
- *  levels. */
-function profileRowToHierarchyChain(row: any): HierarchyNode[] {
+/** Ancestor chains (highest level first) from a profile row's `scope_paths`.
+ *
+ *  This MUST read scope_paths, never the flat columns. The flat columns hold
+ *  only the member's primary chain, and — before buildScopeChains existed —
+ *  could hold a chain spliced from two different hierarchies. Feeding that to
+ *  cacheHierarchyChain wrote a fabricated parent link into church_hierarchy,
+ *  a table shared by every user, silently breaking descendant scope expansion
+ *  for everyone under both hierarchies.
+ *
+ *  cacheHierarchyChain's own guard did not catch it: the guard only checks
+ *  that two nodes sit at ADJACENT levels, which a spliced chain satisfies.
+ *
+ *  Each entry in scope_paths is read from the parent objects the graph itself
+ *  embedded, so every link here is a genuine one. Returning all of them (not
+ *  just the primary) also widens the cache, which is what lets
+ *  get_descendant_scopes answer without falling back to the per-node GraphQL
+ *  BFS. */
+function profileRowToHierarchyChains(row: any): HierarchyNode[][] {
   const levels = ['denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta']
-  const chain: HierarchyNode[] = []
-  for (const lvl of levels) {
-    const id = row?.[`${lvl}_id`]
-    if (id) chain.push({ level: lvl, id, name: row[`${lvl}_name`] || null })
+  const paths = Array.isArray(row?.scope_paths) ? row.scope_paths : []
+  const chains: HierarchyNode[][] = []
+  for (const entry of paths) {
+    const path = entry?.path
+    if (!path) continue
+    const chain: HierarchyNode[] = []
+    for (const lvl of levels) {
+      const node = path[lvl]
+      if (node?.id) chain.push({ level: lvl, id: node.id, name: node.name ?? null })
+    }
+    if (chain.length) chains.push(chain)
   }
-  return chain
+  return chains
 }
 
 const SYNC_TS_PREFIX = 'flc:lastGraphProfileSync:'
@@ -106,7 +127,12 @@ export async function persistResolvedGraphProfileForUser(
   const row = member ? memberToProfileRow(member) : null
   if (row) {
     persistChurchContextFromProfileRow(row)
-    cacheHierarchyChain(profileRowToHierarchyChain(row))  // fire-and-forget
+    // Fire-and-forget. One call per chain: cacheHierarchyChain only links
+    // adjacent levels WITHIN a single chain, so passing them separately is
+    // what keeps two hierarchies from being cross-linked.
+    for (const chain of profileRowToHierarchyChains(row)) {
+      cacheHierarchyChain(chain)
+    }
   }
   if ((user as any).churchScopes) {
     persistChurchContextFromJwt((user as any).churchScopes)

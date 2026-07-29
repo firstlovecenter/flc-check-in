@@ -223,18 +223,28 @@ const MEMBER_PROFILE_LIST_COLUMNS =
   'bacenta_id, bacenta_name, governorship_id, governorship_name, ' +
   'council_id, council_name, stream_id, stream_name, ' +
   'campus_id, campus_name, oversight_id, oversight_name, ' +
-  'denomination_id, denomination_name, scope_ids, is_active, updated_at'
+  'denomination_id, denomination_name, scope_ids, scope_paths, is_active, updated_at'
 
 const CHECKIN_EVENT_LIST_COLUMNS =
   'id, name, event_type, status, scope_level, scope_church_id, scope_church_name, ' +
   'venue_name, starts_at, ends_at, grace_period_min, auto_checkout_min, ' +
   'allowed_check_in_methods, allowed_roles, ' +
   'geofence_type, geofence_center_lat, geofence_center_lng, geofence_radius_m, ' +
-  'qr_secret, created_by_id, created_by_name, created_at, ' +
+  // qr_secret is deliberately ABSENT. Including it here meant every event
+  // listing shipped the HMAC secret to every phone, letting any client that
+  // could see an event mint valid rotating PINs and QR codes for it from
+  // anywhere — which defeats the entire point of rotating codes. The venue
+  // display screen fetches it on demand via getEventDisplaySecret().
+  'created_by_id, created_by_name, created_at, ' +
   'series_id, series_index, is_public'
 
-// Detail/edit screens — pulls geofence_polygon and pin_hash columns too.
-const CHECKIN_EVENT_FULL_COLUMNS = '*'
+// Detail/edit screens — list columns plus geofence_polygon and pin_hash.
+// Explicitly enumerated rather than '*' so qr_secret is never included: a
+// SELECT * here would hand the rotating-code secret to every leader who opens
+// a dashboard, which is the same leak the listing columns were fixed for.
+// The venue display screen fetches it deliberately via getEventDisplaySecret().
+const CHECKIN_EVENT_FULL_COLUMNS =
+  CHECKIN_EVENT_LIST_COLUMNS + ', geofence_polygon, pin_hash'
 
 // Location-filtered listings — list columns plus the polygon needed for the
 // client-side pointInGeofence check. Avoids pulling every detail column
@@ -261,26 +271,21 @@ const _activeEventsCaches = new Map<string, { data: any[]; ts: number }>()
 const _pastEventsCaches   = new Map<string, { data: any[]; ts: number }>()
 const _allEventsCaches    = new Map<string, { data: any[]; ts: number }>()
 
-// Throttle: fire the auto-end RPC at most once per minute client-side.
-let _lastAutoEndTs = 0
-const AUTO_END_INTERVAL = 60 * 1000  // 1 min
-
-/** Fire-and-forget: tell the server to end any events that have passed
- *  their ends_at time. Safe to call frequently — the RPC is idempotent and
- *  this function is throttled to at most once per minute. */
-function triggerAutoEnd() {
-  const now = Date.now()
-  if (now - _lastAutoEndTs < AUTO_END_INTERVAL) return
-  _lastAutoEndTs = now
-  // Wrap in a real Promise so `.catch` is reachable — supabase-js's builder
-  // is a PromiseLike whose `.then` returns PromiseLike<void> without `.catch`.
-  Promise.resolve(supabase.rpc('auto_checkout_expired_events'))
-    .then(() => {
-      // Invalidate caches so the next read picks up the updated statuses.
-      invalidateEventListCache()
-    })
-    .catch(() => {/* best-effort */})
-}
+// NOTE: there is deliberately no client-side triggerAutoEnd() any more.
+//
+// Every event-listing call used to fire the `auto_checkout_expired_events`
+// RPC — an UPDATE on checkin_events — throttled to once per minute PER DEVICE.
+// That is a write issued by every phone running the app: at a thousand
+// concurrent users, ~1,000 update transactions per minute against the one
+// table every read path depends on, to flip a handful of rows that a single
+// scheduled job could flip once.
+//
+// Ending expired events is now solely the job of the auto-checkout edge
+// function (supabase/functions/auto-checkout), which calls the same idempotent
+// RPC on a cron schedule. See its README for the schedule setup.
+//
+// It was also an authorization hole: the RPC is granted to `anon`, so any
+// client could end events at will.
 
 // Sentinel returned when a non-superadmin has no resolvable church ID.
 // Listing functions short-circuit to [] when they see this value.
@@ -376,6 +381,13 @@ export async function upsertMemberProfile(user) {
     oversight_name:  user.oversight?.name  || user.oversight_name  || null,
     denomination_id: user.denomination?.id || user.denomination_id || null,
     denomination_name: user.denomination?.name || user.denomination_name || null,
+    // Multi-hierarchy data. This function builds its row field-by-field rather
+    // than spreading, so these must be listed explicitly — omitting them (as
+    // this function used to) meant the login path wrote a profile with NO
+    // scope_ids/scope_paths at all, and every consumer silently fell back to
+    // the flat columns, i.e. to the primary chain alone.
+    ...(user.scope_ids   !== undefined ? { scope_ids:   user.scope_ids   } : {}),
+    ...(user.scope_paths !== undefined ? { scope_paths: user.scope_paths } : {}),
     ...(typeof user.is_active === 'boolean' ? { is_active: user.is_active } : {}),
     updated_at: new Date().toISOString(),
   }
@@ -533,6 +545,17 @@ export async function createEvent(input) {
   return { eventId: data, qrSecretHex, pin: input.pin || null }
 }
 
+/** The event's rotating-code secret, for the venue DISPLAY screen only.
+ *
+ *  Fetched on demand rather than carried in every event listing — see
+ *  migration 038. Returns the hex form the crypto helpers expect. */
+export async function getEventDisplaySecret(eventId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('get_event_display_secret', { p_event_id: eventId })
+  if (error) throw error
+  if (!data) return null
+  return typeof data === 'string' && data.startsWith('\\x') ? data.slice(2) : data
+}
+
 export async function getEvent(eventId) {
   // Detail/edit screen — need geofence_polygon and pin_hash.
   const { data, error } = await supabase
@@ -546,14 +569,55 @@ export async function getEventEntryState(input: {
   eventId: string
   memberIds: string[]
   email?: string
+  /** The hat the viewer is acting as — the server resolves where it sits
+   *  relative to the event (migration 036). Omit for the legacy behaviour. */
+  hatLevel?: string | null
+  hatId?: string | null
 }): Promise<any> {
   const { data, error } = await supabase.rpc('get_event_entry_state', {
     p_event_id: input.eventId,
     p_member_ids: input.memberIds,
     p_email: input.email ?? null,
+    p_hat_level: input.hatLevel ?? null,
+    p_hat_id: input.hatId ?? null,
   })
   if (error) throw error
   return data
+}
+
+/** Everything the check-in screen needs, in ONE round trip.
+ *
+ *  Replaces the previous three sequential calls (entry gate → getEvent →
+ *  getMyRecord). On a phone at a venue that was three full latency round trips
+ *  before the scanner could appear, and three PostgREST connections per
+ *  attendee — which is what saturates a small instance when a crowd arrives
+ *  together.
+ *
+ *  Note the returned event deliberately omits `qr_secret`. The check-in screen
+ *  never needs it; the server verifies the code. Only the QR/PIN *display*
+ *  screen does, and it fetches the event separately. */
+export async function openCheckIn(input: {
+  eventId: string
+  memberIds: string[]
+  email?: string
+  hatLevel?: string | null
+  hatId?: string | null
+}): Promise<{ found: boolean; event: any | null; entry: any | null; record: any | null }> {
+  const { data, error } = await supabase.rpc('open_checkin', {
+    p_event_id: input.eventId,
+    p_member_ids: input.memberIds,
+    p_email: input.email ?? null,
+    p_hat_level: input.hatLevel ?? null,
+    p_hat_id: input.hatId ?? null,
+  })
+  if (error) throw error
+  if (!data?.found) return { found: false, event: null, entry: null, record: null }
+  return {
+    found: true,
+    event: mapEventRow(data.event),
+    entry: data.entry ?? null,
+    record: data.record ?? null,
+  }
 }
 
 /** Active events (status=ACTIVE, within time window), filtered to the events
@@ -561,9 +625,6 @@ export async function getEventEntryState(input: {
  *  SuperAdmins bypass the filter and see all events.
  *  Includes events starting within the next hour (pre-event check-in window). */
 export async function listActiveEvents(user?: AppUser) {
-  // Best-effort background sync: end expired events so DB stays up-to-date.
-  triggerAutoEnd()
-
   const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
@@ -615,7 +676,6 @@ export async function listActiveSpecialGroupEventsForUser(memberId: string) {
   if (!groupIds.length) return []
 
   // Step 2: fetch active events scoped to those groups.
-  triggerAutoEnd()
   const nowIso          = new Date().toISOString()
   const oneHourLaterIso = new Date(Date.now() + 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
@@ -712,8 +772,6 @@ async function listLowerScopeEventsVisibleToUser(user: AppUser, limit = 200, exi
  *  — instead of fetching everything the user's roles allow and narrowing the
  *  array in JS afterwards. */
 export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: FocusedScope; limit?: number }) {
-  triggerAutoEnd()
-
   const focus = opts?.focusedScope
   if (user && focus?.level && focus?.id) {
     return listAllEventsForFocusedScope(user, { level: focus.level, id: focus.id }, opts)
@@ -940,13 +998,34 @@ export async function addMemberToEventScope(
  *  profile row. Members who have never logged in are omitted from the join
  *  result but remain in event_scope_members for history purposes.
  *  Returns [] if no snapshot exists yet (caller should fall back to graph). */
-export async function listEventScopeMembersWithProfiles(eventId: string): Promise<any[]> {
+export async function listEventScopeMembersWithProfiles(
+  eventId: string,
+  opts?: {
+    /** Filter to members whose roles overlap these — the "eligible" rule.
+     *  Applying it server-side is the difference between shipping a whole
+     *  roster to every phone and shipping only the rows that get rendered.
+     *  See migration 037: on Free-tier egress this is a cost control, not
+     *  just a latency one. */
+    allowedRoles?: string[] | null
+    scopeLevel?: string | null
+    scopeChurchId?: string | null
+    search?: string | null
+  },
+): Promise<any[]> {
   if (!eventId) return []
   try {
     // .range() pages past PostgREST's default 1000-row cap — without it,
     // events with larger scopes silently lose members off the end.
     return await fetchAllPages<any>((from, to) =>
-      supabase.rpc('get_event_scope_profiles', { p_event_id: eventId }).range(from, to),
+      supabase
+        .rpc('get_event_scope_profiles', {
+          p_event_id: eventId,
+          p_allowed_roles: opts?.allowedRoles ?? null,
+          p_scope_level: opts?.scopeLevel ?? null,
+          p_scope_church_id: opts?.scopeChurchId ?? null,
+          p_search: opts?.search ?? null,
+        })
+        .range(from, to),
     )
   } catch (err: any) {
     if (!/function .*get_event_scope_profiles|could not find/i.test(err?.message || '')) {

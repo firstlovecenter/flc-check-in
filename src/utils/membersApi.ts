@@ -54,8 +54,18 @@ function client(): GraphQLClient {
     : null
   if (!_client || _clientToken !== token) {
     _client = new GraphQLClient(graphqlEndpoint(), {
+      // retryUnsafe is deliberately OFF. GraphQL requests are POSTs, and
+      // retrying them under load is how a slow upstream becomes a dead one:
+      // Neo4j slows → requests hit the 10s timeout → every client retries →
+      // offered load doubles → nothing recovers. Reads here are idempotent in
+      // principle, but the failure mode we actually hit is saturation, and
+      // retrying is exactly the wrong response to saturation.
+      //
+      // A failed graph read degrades gracefully everywhere it is used (callers
+      // fall back to Supabase profiles or to JWT scopes), so one clean failure
+      // beats two that make the outage worse for everyone else.
       headers: token ? { Authorization: `Bearer ${token}` } : {},
-      fetch: createBoundedFetch({ timeoutMs: 10_000, retries: 1, retryUnsafe: true }),
+      fetch: createBoundedFetch({ timeoutMs: 10_000, retries: 0 }),
     })
     _clientToken = token
   }
@@ -85,43 +95,148 @@ const memberByUserCache    = new Map<string, any>()       // positive hits
 const memberByUserNullTs   = new Map<string, number>()    // null-hit timestamps
 const memberByUserPending  = new Map<string, Promise<any>>()
 
-// ─── Convert a Member node into the shape we cache in member_profiles ──────
-// Picks the church the member LEADS or ADMINS at each level, falling back to
-// their personal assignment only if they hold no leadership at that level.
+// ─── Scope chains ───────────────────────────────────────────────────────────
+// A member can hold role edges in SEVERAL hierarchies at once — e.g. lead a
+// Bacenta under Council C1 while also administering Council C2 in a different
+// stream. Each such edge implies its own complete, real path up to the
+// denomination.
 //
-// Why this matters: a leader's `Member.bacenta` is where they personally
-// attend, which may differ from the bacenta they LEAD. E.g. Kofi attends
-// Bacenta A (Stream A) but leads Bacenta B (Stream B). Our event eligibility
-// filter places him under Stream B (because that's where his leadership
-// edge points). The row we cache should agree — bacenta_name = Bacenta B,
-// stream_name = Stream B — otherwise the dashboard shows the wrong unit.
+// These MUST be kept apart. The previous implementation resolved each level
+// independently (leader edge → admin edge → walk-up from the level below),
+// which let the chain jump hierarchies mid-walk and produced a path that
+// exists nowhere in the graph: Bacenta B → Governorship G1 → Council C2,
+// where G1's real parent is C1. That fabricated path was then written to
+// member_profiles, to localStorage, and — worst — to the shared
+// church_hierarchy table, where it corrupted descendant expansion for every
+// other user.
+//
+// buildScopeChains keeps one chain per edge. Every entry within a chain is a
+// genuine parent of the one below it, because it is read from the parent
+// objects the graph itself embedded (see MEMBER_FIELDS).
+
+export type ScopeChainSource = 'leader' | 'admin' | 'member'
+
+export interface ScopeChainNode { id: string; name: string | null }
+
+export interface ScopeChain {
+  /** Which kind of edge produced this chain. */
+  source: ScopeChainSource
+  /** Level of the edge itself — the most specific level in the chain. */
+  level: string
+  /** level → node, from `level` up to denomination. Internally consistent. */
+  path: Record<string, ScopeChainNode>
+}
+
+/** Church levels, lowest → highest. Excludes special_group, which sits
+ *  outside the church tree and has no parent chain. */
+const CHURCH_LEVELS: string[] = [
+  'bacenta', 'governorship', 'council', 'stream', 'campus', 'oversight', 'denomination',
+]
+
+/** Walk from `node` (at `startLevel`) up through the parent objects the graph
+ *  embedded, collecting one node per level. Stops at the first missing link —
+ *  a partial chain is correct-but-incomplete, which is safe; a guessed link
+ *  would be neither. */
+function chainFromNode(node: any, startLevel: string): Record<string, ScopeChainNode> | null {
+  if (!node?.id) return null
+  const path: Record<string, ScopeChainNode> = {}
+  let cur: any = node
+  let idx = CHURCH_LEVELS.indexOf(startLevel)
+  if (idx < 0) return null
+  while (cur?.id && idx < CHURCH_LEVELS.length) {
+    path[CHURCH_LEVELS[idx]] = { id: cur.id, name: cur.name ?? null }
+    idx++
+    if (idx >= CHURCH_LEVELS.length) break
+    cur = cur[CHURCH_LEVELS[idx]] ?? null
+  }
+  return path
+}
+
+/** Every coherent hierarchy chain this member belongs to, one per role edge.
+ *
+ *  Ordered most-specific-first so `[0]` is the natural "primary" identity —
+ *  the same rule the FL Admin Portal uses when it defaults its Church-in-Focus
+ *  picker to the user's lowest role. Ties break leader-before-admin, then by
+ *  id, so the ordering is deterministic across logins: the graph does not
+ *  guarantee array order, and the old `pickFirst` let the stored chain flip
+ *  from one session to the next. */
+export function buildScopeChains(m: any): ScopeChain[] {
+  const chains: ScopeChain[] = []
+  const seen = new Set<string>()
+
+  const addEdges = (arr: any, level: string, source: ScopeChainSource) => {
+    for (const node of Array.isArray(arr) ? arr : []) {
+      const key = `${source}:${level}:${node?.id}`
+      if (!node?.id || seen.has(key)) continue
+      const path = chainFromNode(node, level)
+      if (!path) continue
+      seen.add(key)
+      chains.push({ source, level, path })
+    }
+  }
+
+  addEdges(m?.leadsBacenta,             'bacenta',      'leader')
+  addEdges(m?.leadsGovernorship,        'governorship', 'leader')
+  addEdges(m?.isAdminForGovernorship,   'governorship', 'admin')
+  addEdges(m?.leadsCouncil,             'council',      'leader')
+  addEdges(m?.isAdminForCouncil,        'council',      'admin')
+  addEdges(m?.leadsStream,              'stream',       'leader')
+  addEdges(m?.isAdminForStream,         'stream',       'admin')
+  addEdges(m?.leadsCampus,              'campus',       'leader')
+  addEdges(m?.isAdminForCampus,         'campus',       'admin')
+  addEdges(m?.leadsOversight,           'oversight',    'leader')
+  addEdges(m?.isAdminForOversight,      'oversight',    'admin')
+  addEdges(m?.leadsDenomination,        'denomination', 'leader')
+  addEdges(m?.isAdminForDenomination,   'denomination', 'admin')
+
+  // No role edges at all — fall back to personal membership. MEMBER_FIELDS
+  // does not embed parents on `bacenta`, so this chain is bacenta-only. That
+  // is a real limitation of the query, not a merge: one true node beats seven
+  // guessed ones.
+  if (chains.length === 0 && m?.bacenta?.id) {
+    chains.push({
+      source: 'member',
+      level: 'bacenta',
+      path: { bacenta: { id: m.bacenta.id, name: m.bacenta.name ?? null } },
+    })
+  }
+
+  const sourceRank: Record<ScopeChainSource, number> = { leader: 0, admin: 1, member: 2 }
+  return chains.sort((a, b) => {
+    const levelDiff = CHURCH_LEVELS.indexOf(a.level) - CHURCH_LEVELS.indexOf(b.level)
+    if (levelDiff !== 0) return levelDiff
+    const sourceDiff = sourceRank[a.source] - sourceRank[b.source]
+    if (sourceDiff !== 0) return sourceDiff
+    return (a.path[a.level]?.id ?? '').localeCompare(b.path[b.level]?.id ?? '')
+  })
+}
+
+// ─── Convert a Member node into the shape we cache in member_profiles ──────
+// The flat *_id / *_name columns hold the member's PRIMARY chain only — the
+// single most-specific hierarchy they belong to. They are deliberately NOT a
+// summary of everywhere the member has a role; a member in two hierarchies
+// cannot be described by one set of flat columns, and pretending otherwise is
+// what produced the fabricated paths this function used to write.
+//
+// The full picture lives in `scope_paths` (every chain, tagged with the edge
+// that produced it). Read that when you need to answer "is this member within
+// scope X" for any X. Read the flat columns only when you need the one
+// canonical unit to display.
+//
+// Note a leader's `Member.bacenta` is where they personally attend, which may
+// differ from the bacenta they LEAD. Leadership wins: event visibility follows
+// role edges, so the cached row must agree with that.
 export function memberToProfileRow(m) {
-  const pickFirst = (arr) => (Array.isArray(arr) && arr[0]) || null
-  // Leadership-target wins at each level.
-  // Crucially: a bacenta leader only has a direct leadership edge at the
-  // bacenta level — their governorship/council/stream IDs must be derived by
-  // walking up the parent chain embedded in the leadsBacenta object.
-  // The MEMBER_FIELDS fragment now includes those nested parents.
-  const leadsBackenta = pickFirst(m.leadsBacenta)
-  const bacenta       = leadsBackenta || m.bacenta
-  // Walk up: leadsGovernorship → isAdminForGovernorship → bacenta.governorship
-  const governorship  = pickFirst(m.leadsGovernorship) || pickFirst(m.isAdminForGovernorship)
-                        || (leadsBackenta as any)?.governorship || null
-  // Walk up: leadsCouncil → isAdminForCouncil → governorship.council
-  const council       = pickFirst(m.leadsCouncil) || pickFirst(m.isAdminForCouncil)
-                        || (governorship as any)?.council || null
-  // Walk up: leadsStream → isAdminForStream → council.stream
-  const stream        = pickFirst(m.leadsStream) || pickFirst(m.isAdminForStream)
-                        || (council as any)?.stream || null
-  // Walk up: leadsCampus → isAdminForCampus → stream.campus
-  const campus        = pickFirst(m.leadsCampus) || pickFirst(m.isAdminForCampus)
-                        || (stream as any)?.campus || null
-  // Walk up: leadsOversight → isAdminForOversight → campus.oversight
-  const oversight     = pickFirst(m.leadsOversight) || pickFirst(m.isAdminForOversight)
-                        || (campus as any)?.oversight || null
-  // Walk up: leadsDenomination → isAdminForDenomination → oversight.denomination
-  const denomination  = pickFirst(m.leadsDenomination) || pickFirst(m.isAdminForDenomination)
-                        || (oversight as any)?.denomination || null
+  const chains = buildScopeChains(m)
+  const primary = chains[0]?.path ?? {}
+
+  const bacenta      = primary.bacenta      ?? null
+  const governorship = primary.governorship ?? null
+  const council      = primary.council      ?? null
+  const stream       = primary.stream       ?? null
+  const campus       = primary.campus       ?? null
+  const oversight    = primary.oversight    ?? null
+  const denomination = primary.denomination ?? null
 
   return {
     id: m.id,
@@ -144,51 +259,31 @@ export function memberToProfileRow(m) {
     campus_id:       campus?.id       || null,  campus_name:       campus?.name       || null,
     oversight_id:    oversight?.id    || null,  oversight_name:    oversight?.name    || null,
     denomination_id: denomination?.id || null,  denomination_name: denomination?.name || null,
-    scope_ids: extractAllScopeIds(m),
+    // Every level this member touches, flattened. Answers "is this member
+    // inside scope X" without implying the levels form one chain.
+    scope_ids: scopeIdsFromChains(chains),
+    // The chains themselves, pairing preserved. This is the only field that
+    // can distinguish "Council C1 under Stream S1" from "Council C2 under
+    // Stream S2" for a member who holds edges in both.
+    scope_paths: chains,
   }
 }
 
-// Walks every leads* and isAdminFor* edge on a graph Member node and collects
-// ALL scope IDs at each hierarchy level. The MEMBER_FIELDS fragment embeds
-// each node's full parent chain, so a single pass per edge type is enough.
-// Result shape: { campus: ["id1","id2"], stream: ["id1"], … }
-// Only levels with at least one ID are included.
-function extractAllScopeIds(m: any): Record<string, string[]> {
+/** Per-level union of every id across every chain.
+ *  Shape: { campus: ["id1","id2"], stream: ["id1"], … }
+ *
+ *  Kept for backward compatibility with consumers written against migration
+ *  020. It is lossy by construction — a union tells you a member touches
+ *  Council C1 and C2 and Streams S1 and S2, but not which council sits under
+ *  which stream. Prefer `scope_paths` in new code. */
+function scopeIdsFromChains(chains: ScopeChain[]): Record<string, string[]> {
   const acc: Record<string, Set<string>> = {}
-  const add = (level: string, node: any) => {
-    if (!node?.id) return
-    ;(acc[level] ??= new Set()).add(node.id)
-  }
-  // Walk from `node` at `startLevel` up through embedded parent fields.
-  // The MEMBER_FIELDS fragment nests parents using their level name as the
-  // field key (bacenta → bacenta.governorship → …governorship.council → etc.)
-  const walkUp = (node: any, startLevel: string) => {
-    if (!node) return
-    let cur: any = node
-    let idx = (SCOPE_LEVELS as readonly string[]).indexOf(startLevel)
-    while (idx >= 0 && idx < SCOPE_LEVELS.length) {
-      const level = SCOPE_LEVELS[idx]
-      if (level === 'special_group') break
-      add(level, cur)
-      idx++
-      if (idx >= SCOPE_LEVELS.length || SCOPE_LEVELS[idx] === 'special_group') break
-      cur = cur[SCOPE_LEVELS[idx]] ?? null
-      if (!cur) break
+  for (const chain of chains) {
+    for (const [level, node] of Object.entries(chain.path)) {
+      if (!node?.id) continue
+      ;(acc[level] ??= new Set()).add(node.id)
     }
   }
-  for (const b   of m.leadsBacenta            || []) walkUp(b,   'bacenta')
-  for (const g   of m.leadsGovernorship        || []) walkUp(g,   'governorship')
-  for (const g   of m.isAdminForGovernorship   || []) walkUp(g,   'governorship')
-  for (const c   of m.leadsCouncil             || []) walkUp(c,   'council')
-  for (const c   of m.isAdminForCouncil        || []) walkUp(c,   'council')
-  for (const s   of m.leadsStream              || []) walkUp(s,   'stream')
-  for (const s   of m.isAdminForStream         || []) walkUp(s,   'stream')
-  for (const cam of m.leadsCampus              || []) walkUp(cam, 'campus')
-  for (const cam of m.isAdminForCampus         || []) walkUp(cam, 'campus')
-  for (const o   of m.leadsOversight           || []) walkUp(o,   'oversight')
-  for (const o   of m.isAdminForOversight      || []) walkUp(o,   'oversight')
-  for (const d   of m.leadsDenomination        || []) add('denomination', d)
-  for (const d   of m.isAdminForDenomination   || []) add('denomination', d)
   return Object.fromEntries(Object.entries(acc).map(([k, v]) => [k, [...v]]))
 }
 

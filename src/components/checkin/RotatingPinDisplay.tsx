@@ -1,5 +1,6 @@
 import Spinner from '../Spinner'
 import { useRotatingPin } from '../../hooks/useRotatingPin'
+import { useEventDisplaySecret } from '../../hooks/useEventDisplaySecret'
 import type { CheckinEventRow } from '../../types/app'
 
 // Shows the event's current rotating PIN on the check-in page so a member who
@@ -8,7 +9,10 @@ import type { CheckinEventRow } from '../../types/app'
 // member is confirmed on-site), and the same PIN is shown publicly on the
 // /events display, so it exposes nothing new.
 export default function RotatingPinDisplay({ event }: { event: CheckinEventRow }) {
-  const { pin, secsLeft } = useRotatingPin(event)
+  // The secret is no longer carried on the event row (see migration 038) —
+  // request it for this screen, which legitimately displays a code.
+  const secretHex = useEventDisplaySecret(event.id)
+  const { pin, secsLeft } = useRotatingPin({ id: event.id, qr_secret_hex: secretHex })
 
   return (
     <div className='rounded-xl border border-border bg-secondary p-4 text-center'>

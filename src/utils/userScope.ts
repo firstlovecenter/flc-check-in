@@ -56,10 +56,21 @@ function cap(s: string): string {
  *  level (different church IDs), both are returned — the user can see
  *  events for either church, and capability is decided per-event.
  *
- *  Order within a level: flat → activeChurch → admin → leader. The first
- *  match for any given id wins (so a flat ref shadowing an admin ref keeps
- *  the `source: 'flat'` tag — flat refs are usually the user's "primary"
- *  scope). */
+ *  Order within a level: leader → admin → activeChurch → flat. The first
+ *  match for any given id wins, and callers that want ONE answer take [0].
+ *
+ *  Why role edges come first
+ *  -------------------------
+ *  The flat ref is read from the localStorage `churchContext`, which is a
+ *  CACHE of member_profiles' flat columns. Those columns describe only the
+ *  member's primary chain, and historically could describe a chain spliced
+ *  from two different hierarchies (see buildScopeChains in membersApi.ts).
+ *  Ranking that cache above the actual `leads<L>Of` / `isAdminFor<L>Of` edges
+ *  meant capability checks consulted a stale — sometimes fabricated —
+ *  hierarchy in preference to the authoritative one.
+ *
+ *  Role edges come from the JWT and the graph. They are the truth. The flat
+ *  ref stays as a last resort for accounts whose JWT carries no role edges. */
 export function getUserChurchRefsAt(user: AppUser | null | undefined, level: ScopeLevel): UserScopeRef[] {
   if (!user) return []
   const out: UserScopeRef[] = []
@@ -71,33 +82,30 @@ export function getUserChurchRefsAt(user: AppUser | null | undefined, level: Sco
     out.push({ level, id, name, source })
   }
 
-  // 1. Flat top-level ref (JWT-embedded or hydrated from member_profiles).
-  const flat = (user as any)[level]
-  if (flat && typeof flat === 'object') {
-    push(flat.id, typeof flat.name === 'string' ? flat.name : undefined, 'flat')
-  }
+  const cs = user.churchScopes as Record<string, { id: string; name?: string } | null | undefined> | undefined
 
-  // 2. The user's "active church" if its level matches.
-  const active = user.activeChurch
-  if (active && active.level === level) {
-    push(active.id, typeof active.name === 'string' ? active.name : undefined, 'active')
-  }
-
-  // 3. JWT churchScopes block — single-edge refs (one per level in the token).
-  const cs = user.churchScopes
+  // 1. JWT leader edge — the strongest signal for "where does this user belong".
   if (cs) {
-    const adminRef = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`isAdminFor${cap(level)}Of`]
-    if (adminRef) push(adminRef.id, adminRef.name, 'admin')
-
-    // 4. JWT leader edge — kept alongside the admin edge if it's a different id.
-    const leadsRef = (cs as Record<string, { id: string; name?: string } | null | undefined>)[`leads${cap(level)}Of`]
+    const leadsRef = cs[`leads${cap(level)}Of`]
     if (leadsRef) push(leadsRef.id, leadsRef.name, 'leader')
   }
 
-  // 5. Top-level admin array — the auth lambda populates isAdminFor<Level>
-  //    (no "Of") as a full array when the user holds multiple admin edges at the
-  //    same level (e.g. adminCampus for Ashesi AND Central University).
-  //    `seen` deduplicates against anything already pushed from churchScopes.
+  // 2. Top-level leader array — the auth lambda populates leads<Level>
+  //    (no "Of") as a full array when the user holds several edges at one level.
+  const leadsArr = (user as any)[`leads${cap(level)}`]
+  if (Array.isArray(leadsArr)) {
+    for (const ref of leadsArr) {
+      if (ref?.id) push(ref.id, ref.name, 'leader')
+    }
+  }
+
+  // 3. JWT admin edge.
+  if (cs) {
+    const adminRef = cs[`isAdminFor${cap(level)}Of`]
+    if (adminRef) push(adminRef.id, adminRef.name, 'admin')
+  }
+
+  // 4. Top-level admin array (e.g. adminCampus for Ashesi AND Central University).
   const adminArr = (user as any)[`isAdminFor${cap(level)}`]
   if (Array.isArray(adminArr)) {
     for (const ref of adminArr) {
@@ -105,12 +113,17 @@ export function getUserChurchRefsAt(user: AppUser | null | undefined, level: Sco
     }
   }
 
-  // 6. Top-level leader array — same pattern for leads<Level> arrays.
-  const leadsArr = (user as any)[`leads${cap(level)}`]
-  if (Array.isArray(leadsArr)) {
-    for (const ref of leadsArr) {
-      if (ref?.id) push(ref.id, ref.name, 'leader')
-    }
+  // 5. The user's "active church" if its level matches.
+  const active = user.activeChurch
+  if (active && active.level === level) {
+    push(active.id, typeof active.name === 'string' ? active.name : undefined, 'active')
+  }
+
+  // 6. Flat top-level ref (JWT-embedded or hydrated from member_profiles).
+  //    Last: it is a cache of the primary chain, not an authoritative edge.
+  const flat = (user as any)[level]
+  if (flat && typeof flat === 'object') {
+    push(flat.id, typeof flat.name === 'string' ? flat.name : undefined, 'flat')
   }
 
   return out

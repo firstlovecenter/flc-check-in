@@ -15,7 +15,7 @@ export default defineConfig([
   },
   {
     // k6 load-test scripts — k6 injects __ENV / __VU at runtime.
-    files: ['.scripts/load/**/*.js'],
+    files: ['.scripts/load/**/*.js', 'scripts/scale/**/*.js'],
     languageOptions: { globals: { __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly' } },
     rules: { 'no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }] },
   },

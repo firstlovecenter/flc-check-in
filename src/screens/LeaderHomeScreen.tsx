@@ -12,7 +12,7 @@ import ChurchScopeSwitcher from '../components/ChurchScopeSwitcher'
 import { canCreateMeetings, getCurrentUser, persistChurchContextFromProfileRow, persistChurchContextFromJwt } from '../utils/auth'
 import {
   listAllEvents, getMemberProfile, upsertMemberProfile,
-  getEvent, listCheckedIn,
+  getEvent,
 } from '../utils/supabaseCheckins'
 import { useRefreshSignal } from '../hooks/useRefreshSignal'
 import { getUserChurchRefs } from '../utils/userScope'
@@ -235,7 +235,7 @@ export default function LeaderHomeScreen() {
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
   const canCreate = canCreateMeetings(user)
-  const { focusedScope } = useChurchFocus()
+  const { focusedScope, focusedHat, isMultiRole } = useChurchFocus()
   const homeCacheKey = `${user?.userId ?? 'anon'}:${focusCacheSuffix(focusedScope)}`
   const [state, setState] = useState<HomeState>(() => {
     const cached = readPersistedEvents(homeCacheKey)
@@ -285,10 +285,16 @@ export default function LeaderHomeScreen() {
     return () => cancelIdle(handle)
   }, [])
 
-  // Warm the data for live events once the list has rendered: getEvent +
-  // listCheckedIn are plain Supabase GETs, so prefetching them primes the
-  // service worker's stale-while-revalidate cache — opening a live event
-  // then paints instantly from cache while revalidating in the background.
+  // Warm the event detail for live events once the list has rendered, so
+  // opening one paints from the service worker's cache while it revalidates.
+  //
+  // This deliberately does NOT prefetch listCheckedIn any more. That call
+  // pages through EVERY check-in record for the event, and nothing on the home
+  // screen renders records — so the cost was pure waste, scaling as
+  // (viewers x attendees) and re-firing on every visibilitychange, i.e. every
+  // screen unlock and app switch. On a 1,000-attendee event with 1,000 leaders
+  // that is a million rows moved per refresh cycle, which on Supabase's
+  // metered egress is a bill as well as a latency problem.
   useEffect(() => {
     if (state.status !== 'ok') return
     const liveIds = state.events.filter((e) => e.status === 'ACTIVE').slice(0, 2).map((e) => e.id)
@@ -298,7 +304,6 @@ export default function LeaderHomeScreen() {
     const handle = idle(() => {
       for (const id of liveIds) {
         getEvent(id).catch(() => {})
-        listCheckedIn(id).catch(() => {})
       }
     })
     return () => cancelIdle(handle)
@@ -431,11 +436,17 @@ export default function LeaderHomeScreen() {
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
               <EmptyState
-                title='No events yet'
+                // An empty home used to be a dead end. Now that the list is
+                // scoped to ONE role, "nothing here" is usually "nothing here
+                // for THIS role" — so name the role and point at the switcher
+                // rather than implying there are no events at all.
+                title={focusedHat ? `No events for ${focusedHat.name}` : 'No events yet'}
                 description={
-                  isAdmin
-                    ? 'Create an event to start taking check-ins.'
-                    : 'Check-ins will appear here once a leader opens an event.'
+                  isMultiRole && focusedHat
+                    ? `You're acting as ${focusedHat.roleLabel}. Tap the role chip above to switch to another of your roles.`
+                    : isAdmin
+                      ? 'Create an event to start taking check-ins.'
+                      : 'Check-ins will appear here once a leader opens an event.'
                 }
                 icon={
                   <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>

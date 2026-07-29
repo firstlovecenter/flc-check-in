@@ -14,6 +14,7 @@ import { listActiveEvents, listActiveSpecialGroupEventsForUser } from '../utils/
 import Spinner from '../components/Spinner'
 import { generateQrToken, currentBucket } from '../utils/checkinsCrypto'
 import { useRotatingPin } from '../hooks/useRotatingPin'
+import { useEventDisplaySecret } from '../hooks/useEventDisplaySecret'
 import { formatDistanceToNowStrict } from 'date-fns'
 import type { CheckinEventRow } from '../types/app'
 import { getCurrentUser } from '../utils/auth'
@@ -232,7 +233,9 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
   const [qrSize, setQrSize] = useState(260)
   const showQr = event.allowed_check_in_methods.includes('QR')
   const showPin = event.allowed_check_in_methods.includes('PIN')
-  const { pin, secsLeft } = useRotatingPin(event, showPin)
+  // Secret is fetched, not carried on the event row (migration 038).
+  const secretHex = useEventDisplaySecret(event.id)
+  const { pin, secsLeft } = useRotatingPin({ id: event.id, qr_secret_hex: secretHex }, showPin)
 
   useEffect(() => {
     const updateSize = () => {
@@ -248,11 +251,12 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
     if (!showQr) return
     let cancelled = false
     ;(async () => {
-      const t = await generateQrToken({ secretHex: event.qr_secret_hex, eventId: event.id, bucket: currentBucket() })
+      if (!secretHex) return
+      const t = await generateQrToken({ secretHex, eventId: event.id, bucket: currentBucket() })
       if (!cancelled) setToken(t)
     })()
     return () => { cancelled = true }
-  }, [event.id, event.qr_secret_hex, tick, showQr])
+  }, [event.id, secretHex, tick, showQr])
 
   return (
     <div className='surface-card p-4 text-center sm:p-5'>

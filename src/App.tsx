@@ -7,6 +7,7 @@ import SplashScreen from './components/SplashScreen'
 import UpdatePrompt from './components/UpdatePrompt'
 import Spinner from './components/Spinner'
 import { ChurchFocusProvider } from './contexts/ChurchFocusContext'
+import { RoleScopeOnboarding } from './components/ChurchScopeSwitcher'
 import OfflineBanner from './components/OfflineBanner'
 import { ToastHost } from './components/Toast'
 import { getCurrentUser } from './utils/auth'
@@ -62,6 +63,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <ChurchFocusProvider>
+      {/* One-time explainer for multi-role users. Self-suppressing: renders
+          null unless the user holds more than one hat and hasn't dismissed it. */}
+      <RoleScopeOnboarding />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path='/' element={<SplashScreen><LoginScreen /></SplashScreen>} />

@@ -27,11 +27,12 @@ import {
   resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
   getAdminScopes, countChildScopes,
 } from '../utils/membersApi'
-import { getUserChurchRef } from '../utils/userScope'
+import { getUserChurchRef, getUserAdminScopesFromJwt } from '../utils/userScope'
 import { getUserLeadershipRefs } from '../utils/userScope'
 import { friendlyErrorMessage } from '../utils/network'
 import { bypassesScopeAndRoleLimits } from '../utils/superadmin'
 import { SCOPE_LEVELS } from '../types/app'
+import type { ViewerCaps } from '../utils/eventCaps'
 import type { AppUser, CheckinEventRow, ScopeLevel } from '../types/app'
 
 // ─── Module-level SWR cache ──────────────────────────────────────────────
@@ -254,7 +255,16 @@ export function useEventEligibility(
     pollMs,
     refreshKey = 0,
     loadRecords = true,
-  }: { pollMs?: number; refreshKey?: number; loadRecords?: boolean } = {},
+    capsOverride,
+  }: {
+    pollMs?: number
+    refreshKey?: number
+    loadRecords?: boolean
+    /** Capabilities already decided by the entry gate from the active hat.
+     *  Supplying this skips the whole legacy cascade AND the two Neo4j calls
+     *  that only existed to feed it. */
+    capsOverride?: ViewerCaps | null
+  } = {},
 ): EventEligibilityResult {
   const [event, setEvent]         = useState<CheckinEventRow | null>(null)
   const [eligible, setEligible]   = useState<any[]>([])
@@ -354,10 +364,21 @@ export function useEventEligibility(
         // listEventScopeMembersWithProfiles hits Supabase (~50ms) vs Neo4j (~1s+).
         // resolveCurrentMember / getChurchAncestors are graph calls — swallow
         // their errors so a graph outage degrades gracefully instead of crashing.
+        //
+        // When the caller supplies capsOverride (the entry gate already resolved
+        // capabilities from the active hat + the server's scope relation), the
+        // two graph calls that existed ONLY to feed getViewerCapabilities are
+        // skipped entirely. That removes two Neo4j round trips per event open
+        // per viewer — the single biggest source of fan-out on this screen —
+        // and makes capability deterministic instead of dependent on whether
+        // the graph answered in time.
         const isSpecialGroup = evt.scope_level === 'special_group'
+        const needsGraphViewer = !capsOverride
         const [viewer, ancestors, snapshotProfiles, childTotal, scopeCountFetched] = await Promise.all([
-          resolveCurrentMember(user).catch(() => null),
-          isSpecialGroup ? Promise.resolve([]) : getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => []),
+          needsGraphViewer ? resolveCurrentMember(user).catch(() => null) : Promise.resolve(null),
+          needsGraphViewer && !isSpecialGroup
+            ? getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => [])
+            : Promise.resolve([]),
           listEventScopeMembersWithProfiles(eventId),
           isSpecialGroup ? Promise.resolve(null) : countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
           countEventScopeMembers(eventId).catch(() => 0),
@@ -490,6 +511,48 @@ export function useEventEligibility(
             .catch(() => {})
         }
 
+        // ── Capability ───────────────────────────────────────────────────────
+        // Preferred path: the entry gate already decided, from the ONE hat the
+        // user is wearing plus the server's scope relation. Pure, deterministic,
+        // no network. See utils/eventCaps.ts.
+        if (capsOverride) {
+          const slice = capsOverride.canManage || capsOverride.canViewFullEvent
+            ? eligibleRows
+            : eligibleRows.filter((r) => {
+                const scopeIds: string[] | undefined = (r.scope_ids as any)?.[capsOverride.viewerScope?.level ?? '']
+                if (scopeIds?.length) return capsOverride.viewerScope ? scopeIds.includes(capsOverride.viewerScope.id) : false
+                return (r as any)[`${capsOverride.viewerScope?.level}_id`] === capsOverride.viewerScope?.id
+              })
+
+          if (!cancelled) {
+            setEligible(eligibleRows)
+            setEligibleIds(eligibleIdSet)
+            setViewerCaps(capsOverride)
+            setViewerSlice(slice)
+            setAdminScopes(getUserAdminScopesFromJwt(user))
+            setChildCount(childTotal)
+            setScopeMemberCount(scopeCountFetched)
+            setInitialLoading(false)
+            const entry: CachedEligibility = {
+              eligible: eligibleRows,
+              eligibleIds: eligibleIdSet,
+              viewerCaps: capsOverride,
+              viewerSlice: slice,
+              adminScopes: getUserAdminScopesFromJwt(user),
+              childCount: childTotal,
+              scopeMemberCount: scopeCountFetched,
+              event: evt,
+              records: loadRecords ? recs : [],
+              ts: Date.now(),
+            }
+            eligibilityCache.set(cacheKey, entry)
+            writePersistedEligibility(cacheKey, entry)
+          }
+          return
+        }
+
+        // Legacy path, kept for callers that have no entry state yet (e.g. a
+        // screen reached directly by URL before the gate has run).
         // getViewerCapabilities requires a graph viewer node. When the graph is
         // unavailable (viewer === null, ancestors === []), fall back to the
         // AppUser profile. Only the EXACT scope level is granted access —
@@ -620,7 +683,7 @@ export function useEventEligibility(
     })()
 
     return () => { cancelled = true }
-  }, [eventId, user?.userId, user?.email, refreshKey, loadRecords]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId, user?.userId, user?.email, refreshKey, loadRecords, capsOverride]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Optional poll: cheaply refresh records + event status only ────────
   // The expensive eligibility pipeline above is NOT re-run on every tick.

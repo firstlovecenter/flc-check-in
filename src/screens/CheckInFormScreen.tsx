@@ -16,9 +16,8 @@ import PinEntry from '../components/checkin/PinEntry'
 import RotatingPinDisplay from '../components/checkin/RotatingPinDisplay'
 import LocationPreWarmer from '../components/LocationPreWarmer'
 import { getCurrentUser, formatName, logout } from '../utils/auth'
-import {
-  getEvent, submitCheckIn, getMyRecord,
-} from '../utils/supabaseCheckins'
+import { openCheckIn, submitCheckIn } from '../utils/supabaseCheckins'
+import { candidateMemberIds } from '../utils/eventEntryGate'
 import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
 import { vibrateSuccess } from '../utils/haptics'
@@ -64,13 +63,22 @@ export default function CheckInFormScreen() {
 
     ;(async () => {
       try {
-        const [evt, rec] = await Promise.all([
-          getEvent(eventId),
-          getMyRecord(eventId, user.userId),
-        ])
+        // ONE round trip for event + eligibility + any existing record. This
+        // used to be three sequential calls; at a venue that meant three full
+        // latency hops before the scanner rendered, and three connections per
+        // attendee against a shared PostgREST pool.
+        const { found, event: evt, record } = await openCheckIn({
+          eventId,
+          memberIds: candidateMemberIds(user),
+          email: user.email,
+        })
         if (cancelled) return
+        if (!found) {
+          setHardError('Event not found.')
+          return
+        }
         setEvent(evt)
-        setExistingRecord(rec)
+        setExistingRecord(record)
         // Default tab: first allowed method that's not MANUAL
         const tabs = evt.allowed_check_in_methods.filter((m) => m !== 'MANUAL')
         setActiveTab(tabs[0] || null)
@@ -79,7 +87,7 @@ export default function CheckInFormScreen() {
       }
     })()
     return () => { cancelled = true }
-  }, [eventId, user.userId])
+  }, [eventId, user.userId, user.email])
 
   const submit = useCallback(async (method: 'QR' | 'PIN', payload: { qrToken?: string; pin?: string }, position) => {
     if (submitting) return

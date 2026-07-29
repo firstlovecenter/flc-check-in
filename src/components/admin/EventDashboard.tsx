@@ -8,6 +8,7 @@ import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
 import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
+import type { ViewerCaps } from '../../utils/eventCaps'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import {
   getEventDashboardStats,
@@ -43,7 +44,13 @@ function uniqueIds(ids: Array<string | null | undefined>): string[] {
   )
 }
 
-export default function EventDashboard({ eventId }) {
+export default function EventDashboard({ eventId, capsOverride = null }: {
+  eventId: string
+  /** Capabilities already resolved by the entry gate from the active hat.
+   *  Passing them skips useEventEligibility's legacy cascade and the two
+   *  Neo4j calls that only existed to feed it. */
+  capsOverride?: ViewerCaps | null
+}) {
   const navigate = useNavigate()
   const user = getCurrentUser()
   const [searchParams] = useSearchParams()
@@ -65,7 +72,7 @@ export default function EventDashboard({ eventId }) {
   const {
     event, eligible, viewerCaps, viewerSlice,
     childCount, scopeMemberCount, error, initialLoading,
-  } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey, loadRecords: false })
+  } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey, loadRecords: false, capsOverride })
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
   const [dashboardStatsError, setDashboardStatsError] = useState<string | null>(null)

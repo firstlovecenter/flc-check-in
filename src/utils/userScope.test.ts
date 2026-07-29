@@ -38,7 +38,15 @@ describe('getUserChurchRef — canonical (preferred) ref', () => {
     expect(getUserChurchRef(baseUser(), 'council')).toBeNull()
   })
 
-  it('rung 1: flat top-level ref wins over all other sources', () => {
+  // Resolution order is leader → admin → activeChurch → flat.
+  //
+  // It used to be the reverse (flat first). That ranked the localStorage
+  // churchContext CACHE above the authoritative JWT role edges — and that
+  // cache mirrors member_profiles' flat columns, which describe only the
+  // member's primary chain and could once describe a chain spliced from two
+  // different hierarchies. Capability checks were therefore reading a stale,
+  // sometimes fabricated, hierarchy in preference to the real one.
+  it('rung 1: leader edge wins over every other source', () => {
     const user = baseUser({
       council: { id: 'top-1', name: 'Top Council' },
       activeChurch: { id: 'active-1', name: 'Active Council', level: 'council' },
@@ -48,21 +56,32 @@ describe('getUserChurchRef — canonical (preferred) ref', () => {
       },
     })
     expect(getUserChurchRef(user, 'council')).toEqual({
-      level: 'council', id: 'top-1', name: 'Top Council', source: 'flat',
+      level: 'council', id: 'leads-1', name: 'Leads Council', source: 'leader',
     })
   })
 
-  it('rung 2: activeChurch wins when matching level and no flat ref', () => {
+  it('rung 2: admin edge wins when there is no leader edge', () => {
     const user = baseUser({
+      council: { id: 'top-1', name: 'Top Council' },
       activeChurch: { id: 'active-1', name: 'Active Council', level: 'council' },
-      churchScopes: { isAdminForCouncilOf: { id: 'admin-1' } },
+      churchScopes: { isAdminForCouncilOf: { id: 'admin-1', name: 'Admin Council' } },
+    })
+    const ref = getUserChurchRef(user, 'council')
+    expect(ref?.id).toBe('admin-1')
+    expect(ref?.source).toBe('admin')
+  })
+
+  it('rung 3: activeChurch is used when no role edge exists at the level', () => {
+    const user = baseUser({
+      council: { id: 'top-1', name: 'Top Council' },
+      activeChurch: { id: 'active-1', name: 'Active Council', level: 'council' },
     })
     const ref = getUserChurchRef(user, 'council')
     expect(ref?.id).toBe('active-1')
     expect(ref?.source).toBe('active')
   })
 
-  it('rung 2: activeChurch is ignored when its level does not match', () => {
+  it('rung 3: activeChurch is ignored when its level does not match', () => {
     const user = baseUser({
       activeChurch: { id: 'active-stream', name: 'Stream', level: 'stream' },
       churchScopes: { isAdminForCouncilOf: { id: 'admin-1' } },
@@ -72,25 +91,13 @@ describe('getUserChurchRef — canonical (preferred) ref', () => {
     expect(ref?.source).toBe('admin')
   })
 
-  it('rung 3: churchScopes admin edge wins over leader edge for the canonical pick', () => {
+  it('rung 4: the flat cached ref is the last resort, not the first choice', () => {
     const user = baseUser({
-      churchScopes: {
-        isAdminForCouncilOf: { id: 'admin-1', name: 'Admin Council' },
-        leadsCouncilOf:      { id: 'leads-1', name: 'Leads Council' },
-      },
+      council: { id: 'top-1', name: 'Top Council' },
     })
     const ref = getUserChurchRef(user, 'council')
-    expect(ref?.id).toBe('admin-1')
-    expect(ref?.source).toBe('admin')
-  })
-
-  it('rung 4: leader edge is used when admin edge is absent', () => {
-    const user = baseUser({
-      churchScopes: { leadsCouncilOf: { id: 'leads-1', name: 'Leads Council' } },
-    })
-    const ref = getUserChurchRef(user, 'council')
-    expect(ref?.id).toBe('leads-1')
-    expect(ref?.source).toBe('leader')
+    expect(ref?.id).toBe('top-1')
+    expect(ref?.source).toBe('flat')
   })
 
   it('rejects scope refs whose id is missing/non-string', () => {
@@ -152,11 +159,11 @@ describe('getUserChurchRefsAt — multiple refs per level', () => {
     })
     const refs = getUserChurchRefsAt(user, 'stream')
     expect(refs).toHaveLength(1)
-    // Admin runs first in the source order, so admin wins the dedupe.
-    expect(refs[0].source).toBe('admin')
+    // Leader runs first in the source order, so leader wins the dedupe.
+    expect(refs[0].source).toBe('leader')
   })
 
-  it('flat ref keeps its source tag even when it shadows admin/leader edges', () => {
+  it('returns role edges ahead of the flat cached ref', () => {
     const user = baseUser({
       council: { id: 'flat-1', name: 'Flat Council' },
       churchScopes: {
@@ -165,11 +172,12 @@ describe('getUserChurchRefsAt — multiple refs per level', () => {
       },
     })
     const refs = getUserChurchRefsAt(user, 'council')
-    // All three distinct IDs come through, in order.
+    // All three distinct IDs come through — but authoritative edges first, so
+    // callers taking [0] get a real edge rather than a cached primary chain.
     expect(refs.map((r) => `${r.source}:${r.id}`)).toEqual([
-      'flat:flat-1',
-      'admin:admin-1',
       'leader:leads-1',
+      'admin:admin-1',
+      'flat:flat-1',
     ])
   })
 
