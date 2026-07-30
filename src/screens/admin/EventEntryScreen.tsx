@@ -46,14 +46,14 @@ export default function EventEntryScreen() {
     if (!eventId || !user) return
     let cancelled = false
 
-    if (hasScopeDrilldown) {
-      setState({ status: 'dashboard', caps: null })
-      return
-    }
-
     ;(async () => {
       setState({ status: 'loading' })
       try {
+        // Run the gate even for drill-downs. It is one cheap Postgres RPC, and
+        // it means capsOverride is ALWAYS supplied to the dashboard — which is
+        // what lets useEventEligibility drop its graph-backed capability
+        // cascade entirely. Previously drill-downs passed caps: null and fell
+        // through to that cascade, so the Neo4j path stayed alive for them.
         const entry = await loadEventEntryState(eventId, user, focusedHat)
         if (cancelled) return
 

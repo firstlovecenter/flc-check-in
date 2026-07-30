@@ -12,7 +12,6 @@ import {
 // v2 because v1 stored a church ref, which cannot express "leader vs admin at
 // the same church" — they are two different hats with different capabilities.
 const STORAGE_KEY = 'flc:roleScope:v2'
-const ONBOARDING_KEY = 'flc:roleScopeOnboarded:v1'
 const ALL_ROLES = 'ALL'
 
 interface ChurchFocusValue {
@@ -32,11 +31,6 @@ interface ChurchFocusValue {
   availableScopes: ChurchRef[]
   isMultiScope: boolean
   setFocusedScope: (s: ChurchRef | null) => void
-
-  /** True until the user has seen the one-time "you now act as one role at a
-   *  time" explainer. Only ever true for users holding more than one hat. */
-  needsOnboarding: boolean
-  dismissOnboarding: () => void
 }
 
 const ChurchFocusCtx = createContext<ChurchFocusValue>({
@@ -48,8 +42,6 @@ const ChurchFocusCtx = createContext<ChurchFocusValue>({
   availableScopes: [],
   isMultiScope: false,
   setFocusedScope: () => {},
-  needsOnboarding: false,
-  dismissOnboarding: () => {},
 })
 
 export function useChurchFocus() {
@@ -123,19 +115,6 @@ export function ChurchFocusProvider({ children }: { children: ReactNode }) {
     } catch { /* quota / disabled storage */ }
   }, [storageKey])
 
-  // ── One-time explainer ───────────────────────────────────────────────────
-  // Defaulting to a single role shows multi-role users FEWER events than they
-  // saw yesterday. Without an announcement that reads as "the app lost my
-  // events", so the switcher is introduced once, and only to people who
-  // actually hold more than one hat.
-  const [onboarded, setOnboarded] = useState(() => {
-    try { return localStorage.getItem(ONBOARDING_KEY) === '1' } catch { return true }
-  })
-  const dismissOnboarding = useCallback(() => {
-    setOnboarded(true)
-    try { localStorage.setItem(ONBOARDING_KEY, '1') } catch { /* ignore */ }
-  }, [])
-
   // ── Legacy church-shaped API, derived so existing callers keep working ────
   const availableScopes = useMemo<ChurchRef[]>(() => {
     const seen = new Set<string>()
@@ -164,11 +143,9 @@ export function ChurchFocusProvider({ children }: { children: ReactNode }) {
     availableScopes,
     isMultiScope: availableScopes.length > 1,
     setFocusedScope,
-    needsOnboarding: !onboarded && availableHats.length > 1,
-    dismissOnboarding,
   }), [
     focusedHat, availableHats, setFocusedHat, availableScopes,
-    setFocusedScope, onboarded, dismissOnboarding,
+    setFocusedScope,
   ])
 
   return (

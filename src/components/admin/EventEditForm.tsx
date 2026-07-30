@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import CheckInAdminControls from './CheckInAdminControls'
+import RefreshEligibleList from './RefreshEligibleList'
 import { Alert } from '../ui/alert'
 import { cn } from '../../lib/utils'
 import { getEvent, updateEvent, resetPin } from '../../utils/supabaseCheckins'
@@ -36,8 +37,6 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
   const [startsAt, setStartsAt]               = useState('')
   const [durationPreset, setDurationPreset]   = useState<'30' | '60' | '120' | 'custom'>('60')
   const [customMinutes, setCustomMinutes]     = useState<number | string>(90)
-  const [gracePeriodMin, setGracePeriodMin]   = useState<number | string>(15)
-  const [autoCheckoutMin, setAutoCheckoutMin] = useState<number | string>(0)
   const [methods, setMethods]                 = useState<string[]>([])
   const [roles, setRoles]                     = useState<string[]>([])
   const [geofence, setGeofence]               = useState<GeofenceInput | null>(null)
@@ -62,8 +61,6 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         setVenueName(evt.venue_name || '')
         setStartsAt(toLocalInput(evt.starts_at))
         applyDurationFromEvent(evt.starts_at, evt.ends_at, setDurationPreset, setCustomMinutes)
-        setGracePeriodMin(evt.grace_period_min ?? 15)
-        setAutoCheckoutMin(evt.auto_checkout_min ?? 0)
         setMethods(evt.allowed_check_in_methods || [])
         setRoles(evt.allowed_roles || [])
         setPin('') // PIN never returns from server; admin types a new one if rotating
@@ -109,8 +106,6 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       venue_name: venueName.trim() || null,
       starts_at: new Date(startsAt) as any,
       ends_at: new Date(endsAt) as any,
-      grace_period_min: Number(gracePeriodMin),
-      auto_checkout_min: Number(autoCheckoutMin),
     }
     if (!locked('allowed_check_in_methods')) patch.allowed_check_in_methods = methods as any
     if (!locked('allowed_roles'))           patch.allowed_roles = roles
@@ -176,6 +171,13 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         }} />
       </Section>
 
+      {/* The sanctioned re-probe of the member graph. Replaces the old
+          "add member to event scope" flow: one action that re-runs the same
+          snapshot the creation path builds, rather than patching individuals. */}
+      <Section title='Eligible attendees'>
+        <RefreshEligibleList event={event} />
+      </Section>
+
       <Section title='Event'>
         <Field label='Name'>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
@@ -227,16 +229,6 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
             </p>
           )}
         </Field>
-        <div className='grid grid-cols-2 gap-3'>
-          <Field label='Grace (min)'>
-            <input type='number' min={0} max={180} value={gracePeriodMin} onChange={(e) => setGracePeriodMin(e.target.value)}
-              className='input-field' />
-          </Field>
-          <Field label='Auto-checkout (min)'>
-            <input type='number' min={0} max={1440} value={autoCheckoutMin} onChange={(e) => setAutoCheckoutMin(e.target.value)}
-              className='input-field' />
-          </Field>
-        </div>
       </Section>
 
       <Section title='Check-in methods' lockedHint={locked('allowed_check_in_methods') ? 'Pause the event to edit.' : null}>

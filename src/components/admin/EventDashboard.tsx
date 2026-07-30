@@ -6,19 +6,21 @@ import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
 import PullToRefreshIndicator from '../PullToRefreshIndicator'
 import { getCurrentUser } from '../../utils/auth'
-import { countChildScopes, childScopeLabel } from '../../utils/membersApi'
+import { childScopeLabel, childScopeLevel } from '../../utils/membersApi'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import type { ViewerCaps } from '../../utils/eventCaps'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import {
   getEventDashboardStats,
+  getEventCheckInRate,
   getRiskyCheckInCount,
   type DashboardStats,
 } from '../../utils/supabaseCheckins'
-import AddMemberModal from './AddMemberModal'
+import EventLiveHeader, { AttendanceBar } from './EventLiveHeader'
+import InlineScopeRollup from './InlineScopeRollup'
+import ChurchScopeSwitcher from '../ChurchScopeSwitcher'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
-import { Card, CardContent } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Alert } from '../ui/alert'
@@ -36,6 +38,12 @@ const RISK_POLL_MS = 60_000
 // synchronized request spikes on round interval boundaries.
 function withJitter(ms: number) {
   return Math.round(ms * (0.85 + Math.random() * 0.3))
+}
+
+/** "campus" -> "Campus". The scope line reads "Revival Campus", so the level is
+ *  sentence-cased rather than the SHOUTED uppercase it used to be. */
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
 }
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
@@ -68,10 +76,10 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
 
   // Core eligibility data + cheap poll for event status.
   // Dashboard counters use aggregate RPC polling below, not full record loads.
-  // The expensive graph pipeline is SWR-cached; navigation back here is instant.
+  // Roster is snapshot-only (Postgres); SWR cache makes revisits instant.
   const {
     event, eligible, viewerCaps, viewerSlice,
-    childCount, scopeMemberCount, error, initialLoading,
+    scopeMemberCount, error, initialLoading,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey, loadRecords: false, capsOverride })
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
@@ -87,16 +95,10 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [])
 
-  // Dashboard stats and child-scope queries run only after the entry gate
-  // has decided this viewer should see the dashboard (not self check-in).
-  // Child count for the URL-scoped church (when navigating from ScopeBreakdown).
-  const [scopedChildCount, setScopedChildCount] = useState<number | null>(null)
-  // Child count for non-admin leaders viewing their own scope (no URL params).
-  const [viewerScopeChildCount, setViewerScopeChildCount] = useState<number | null>(null)
   // Risk flags — count of members whose device fingerprint was shared.
   const [riskyCount, setRiskyCount] = useState(0)
-  const [showAddMember, setShowAddMember] = useState(false)
-  const isSuperAdmin = !!user?.isSuperAdmin
+  // Arrival rate — the "are people still coming?" signal.
+  const [rate, setRate] = useState<{ recent: number; windowMin: number } | null>(null)
 
   // Risk analysis is secondary and changes slowly. Poll it independently so
   // the live counter cadence never doubles the RPC load.
@@ -115,23 +117,21 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
     return () => { cancelled = true; clearTimeout(timer) }
   }, [eventId, viewerCaps?.canManage, pageVisible])
 
+  // Rate only means anything while check-in is open, so don't poll otherwise.
   useEffect(() => {
-    if (!scopeLevel || !scopeChurchId) return
+    if (!eventId || event?.status !== 'ACTIVE') { setRate(null); return }
     let cancelled = false
-    countChildScopes({ level: scopeLevel, id: scopeChurchId })
-      .then((n) => { if (!cancelled) setScopedChildCount(n) })
-      .catch(() => { if (!cancelled) setScopedChildCount(null) })
-    return () => { cancelled = true }
-  }, [scopeLevel, scopeChurchId])
-
-  useEffect(() => {
-    if (!viewerCaps || viewerCaps.canManage || !viewerCaps.viewerScope || scopeLevel) return
-    let cancelled = false
-    countChildScopes({ level: viewerCaps.viewerScope.level, id: viewerCaps.viewerScope.id })
-      .then((n) => { if (!cancelled) setViewerScopeChildCount(n) })
-      .catch(() => { if (!cancelled) setViewerScopeChildCount(null) })
-    return () => { cancelled = true }
-  }, [viewerCaps?.viewerScope?.id, viewerCaps?.canManage, scopeLevel]) // eslint-disable-line
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const next = await getEventCheckInRate(eventId, 5)
+        if (!cancelled) setRate(next)
+      } catch { /* supplementary — never disrupt the dashboard */ }
+      if (!cancelled) timer = setTimeout(poll, withJitter(pageVisible ? 30_000 : 120_000))
+    }
+    poll()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [eventId, event?.status, pageVisible])
 
   // Bacenta leaders and special-group members: entry gate routes to check-in or
   // home before this screen mounts for self-service attendees.
@@ -269,12 +269,10 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
   const activeScopeChurchName = scopeChurchName ?? (isViewerScopedLeader ? viewerCaps.viewerScope!.name  : event.scope_church_name)
 
   const childLabel        = activeScopeLevel !== 'governorship' ? childScopeLabel(activeScopeLevel) : null
-  const displayChildCount = scopeLevel ? scopedChildCount : isViewerScopedLeader ? viewerScopeChildCount : childCount
   const childCountLink    = `/events/${event.id}/scopes?level=${activeScopeLevel}&churchId=${activeScopeChurchId}&churchName=${encodeURIComponent(activeScopeChurchName)}`
   const scopeFilter = activeScopeLevel !== event.scope_level || activeScopeChurchId !== event.scope_church_id
     ? `level=${activeScopeLevel}&churchId=${activeScopeChurchId}&churchName=${encodeURIComponent(activeScopeChurchName)}`
     : ''
-  const endsRel = formatDistanceToNowStrict(new Date(event.ends_at), { addSuffix: true })
 
 
   return (
@@ -299,7 +297,6 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <span />
           )}
           <div className='flex items-center gap-1.5'>
-            {event.status !== 'ENDED' && <StatusPill status={event.status} />}
             {viewerCaps.canManage && !scopeChurchName && (
               <Link to={`/events/${event.id}/edit`} aria-label='Edit event' className='icon-btn'>
                 <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
@@ -311,48 +308,31 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <NavDrawer user={user} />
           </div>
         </div>
-        {event.status === 'ENDED' && (
-          <div className='flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3.5 text-sm font-semibold text-destructive'>
-            <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' className='shrink-0'>
-              <path d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' />
-            </svg>
-            <span>This event has ended. Check-in is closed.</span>
-          </div>
-        )}
-        <Card>
-          <CardContent className='px-4 py-4 text-center pt-4'>
-          {scopeChurchName ? (
-            <>
-              <p className='section-heading m-0 text-center'>{event.name}</p>
-              <h2 className='m-0 mt-1 text-lg font-semibold tracking-tight text-foreground'>{scopeChurchName}</h2>
-              <p className='text-xs mt-1.5 m-0 text-muted-foreground'>
-                <span className='uppercase tracking-wider'>{scopeLevel}</span>
-                {' · '}ends {endsRel}
-              </p>
-              <IdentityRow childLabel={childLabel} displayChildCount={displayChildCount} childCountLink={childCountLink} />
-            </>
-          ) : (
-            <>
-              <h2 className='m-0 text-xl font-bold leading-tight tracking-tight text-foreground'>
-                {event.name}
-              </h2>
-              {event.venue_name && (
-                <p className='m-0 mt-2 flex items-center justify-center gap-1 text-sm text-muted-foreground'>
-                  <svg viewBox='0 0 24 24' width='13' height='13' fill='currentColor' className='shrink-0 opacity-70'>
-                    <path d='M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z' />
-                  </svg>
-                  {event.venue_name}
-                </p>
-              )}
-              <p className='text-xs mt-2 m-0 text-muted-foreground'>
-                <span className='uppercase tracking-wider'>{event.scope_level}</span>
-                {' · '}{event.scope_church_name}{' · '}ends {endsRel}
-              </p>
-              <IdentityRow childLabel={childLabel} displayChildCount={displayChildCount} childCountLink={childCountLink} />
-            </>
-          )}
-          </CardContent>
-        </Card>
+        {/* Live state, loudest element on the screen. Replaces a small status
+            badge plus a separate ENDED banner. */}
+        <EventLiveHeader event={event} />
+
+        {/* Title block: the meeting and the scope it belongs to, nothing else.
+            The venue, the level prefix and the "ends N days ago" relative time
+            all lived here and competed with the live header directly above,
+            which already states the phase and the time remaining. The child
+            drill-down ("Streams") that also sat here is redundant now that the
+            attendance rows and the sub-scope rollup both link into the same
+            member lists. */}
+        <div>
+          <h2 className='m-0 text-xl font-bold leading-tight tracking-tight text-foreground'>
+            {event.name}
+          </h2>
+          <p className='m-0 mt-1 text-sm text-muted-foreground'>
+            {scopeChurchName
+              ? `${scopeChurchName} ${cap(scopeLevel ?? '')}`
+              : `${event.scope_church_name} ${cap(event.scope_level)}`}
+          </p>
+        </div>
+
+        {/* Church in Focus, on the event page too: capability here follows the
+            active hat, so the control that changes it must be reachable. */}
+        <ChurchScopeSwitcher />
 
         {viewerCaps.canCheckIn && !isCheckedIn && event.status === 'ACTIVE' && (
           <Button size='lg' className='w-full' onClick={() => navigate(`/checkin/${event.id}`, { viewTransition: true })}>
@@ -381,10 +361,20 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             </span>
           </div>
           {dashboardStats && (
-            <p className='m-0 mb-3 text-sm font-semibold text-foreground'>
-              {dashboardStats.attended} of {dashboardStats.attended + dashboardStats.absent} present
-              <span className='font-normal text-muted-foreground'> · {dashboardStats.attended + dashboardStats.absent > 0 ? Math.round((dashboardStats.attended / (dashboardStats.attended + dashboardStats.absent)) * 100) : 0}%</span>
-            </p>
+            <div className='mb-3 flex flex-col gap-2'>
+              <AttendanceBar
+                attended={dashboardStats.attended}
+                expected={dashboardStats.attended + dashboardStats.absent}
+              />
+              {rate && rate.recent > 0 && (
+                <p className='m-0 flex items-center gap-1.5 text-xs font-semibold text-success'>
+                  <svg viewBox='0 0 24 24' width='13' height='13' fill='currentColor' aria-hidden>
+                    <path d='M3.5 18.5l6-6 4 4L22 8l-1.5-1.5-7 7-4-4-7.5 7.5z' />
+                  </svg>
+                  {rate.recent} in the last {rate.windowMin} min
+                </p>
+              )}
+            </div>
           )}
           <div className='overflow-hidden rounded-2xl border border-border bg-card'>
             <LiveRow
@@ -400,19 +390,63 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
               count={dashboardStats?.absent ?? '—'}
               to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
+            <div className='h-px bg-border' />
+            {/* Last: Present and Absent are the outcomes, Total Expected is the
+                denominator they sum to — reading it after them makes the
+                arithmetic visible down the column.
+                Derived as attended + absent, NOT from countEventScopeMembers:
+                both metrics come from get_event_dashboard_stats over ONE
+                population, so this total matches the drill-down lists by
+                construction. The raw snapshot count can legitimately differ (it
+                includes members excluded by allowed_roles), which would make the
+                three rows fail to add up on screen. */}
+            <LiveRow
+              icon='expected'
+              label='Total Expected'
+              count={dashboardStats ? dashboardStats.attended + dashboardStats.absent : '—'}
+              to={`/events/${event.id}/members?status=all${scopeFilter ? `&${scopeFilter}` : ''}`}
+            />
           </div>
           {dashboardStatsError && (
             <p className='m-0 mt-2 text-[11px] text-muted-foreground'>{dashboardStatsError}</p>
           )}
           {viewerCaps.canManage && riskyCount > 0 && (
-            <Link to={`/events/${event.id}/members?status=present`} className='mt-3 block no-underline'>
-              <Alert variant='destructive' className='flex items-center gap-2'>
-                <span>⚠</span>
-                <span>{riskyCount} member{riskyCount > 1 ? 's' : ''} flagged for shared device — possible proxy check-in</span>
-              </Alert>
+            <Link to={`/events/${event.id}/members?status=present&flagged=1`} className='mt-3 block no-underline'>
+              {/* Proxy check-in is a fraud signal, not a validation warning, so
+                  it gets its own treatment and a route straight to the affected
+                  members rather than the generic present list. */}
+              <div className='flex items-center gap-3 rounded-2xl border-2 border-destructive/50 bg-destructive/10 px-4 py-3'>
+                <span className='flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive'>
+                  <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor' aria-hidden>
+                    <path d='M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 6h2v6h-2V7zm0 8h2v2h-2v-2z' />
+                  </svg>
+                </span>
+                <div className='min-w-0 flex-1'>
+                  <p className='m-0 text-sm font-bold text-destructive'>
+                    {riskyCount} shared device{riskyCount > 1 ? 's' : ''} detected
+                  </p>
+                  <p className='m-0 mt-0.5 text-xs text-destructive/80'>
+                    Possible proxy check-in — review these members
+                  </p>
+                </div>
+                <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-destructive' aria-hidden>
+                  <path d='M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z' />
+                </svg>
+              </div>
             </Link>
           )}
         </div>
+
+        {/* Per-sub-scope split, inline. For anyone overseeing several
+            sub-scopes this IS the dashboard; it used to be behind a link. */}
+        {canViewWholeEvent && childLabel && (
+          <InlineScopeRollup
+            eventId={event.id}
+            childLevel={childScopeLevel(activeScopeLevel)}
+            allowedRoles={event.scope_level === 'special_group' ? null : (event.allowed_roles || null)}
+            fullListTo={childCountLink}
+          />
+        )}
 
         {viewerCaps.canManage && (
           <Link to={`/events/${event.id}/audit`} className='block no-underline'>
@@ -431,26 +465,25 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
           </Link>
         )}
 
-        {isSuperAdmin && !scopeChurchName && (
-          <Button variant='outline' className='mt-1 w-full border-dashed text-muted-foreground' onClick={() => setShowAddMember(true)}>
-            + Add member to event scope
-          </Button>
-        )}
-
       </PageMain>
 
-      {showAddMember && (
-        <AddMemberModal eventId={eventId} onClose={() => setShowAddMember(false)} />
-      )}
     </PageShell>
   )
 }
 
 // ─── Live check-in rows ──────────────────────────────────────────────────────
 
-type LiveTone = 'present' | 'absent'
+type LiveTone = 'expected' | 'present' | 'absent'
 
 const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
+  expected: (
+    <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
+      <path d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' />
+      <circle cx='9' cy='7' r='4' />
+      <path d='M23 21v-2a4 4 0 0 0-3-3.87' />
+      <path d='M16 3.13a4 4 0 0 1 0 7.75' />
+    </svg>
+  ),
   present: (
     <svg viewBox='0 0 24 24' width='20' height='20' fill='none' stroke='currentColor' strokeWidth='2.2' strokeLinecap='round' strokeLinejoin='round'>
       <path d='M20 6L9 17l-5-5' />
@@ -466,13 +499,17 @@ const LIVE_ICONS: Record<LiveTone, React.ReactNode> = {
 }
 
 const LIVE_ICON_BG: Record<LiveTone, string> = {
-  present: 'bg-success/15 text-success',
-  absent:  'bg-destructive/15 text-destructive',
+  // Neutral on purpose: Total Expected is a denominator, not an outcome, so it
+  // must not compete with the green/red rows it contextualises.
+  expected: 'bg-secondary text-muted-foreground',
+  present:  'bg-success/15 text-success',
+  absent:   'bg-destructive/15 text-destructive',
 }
 
 const LIVE_VALUE_COLOR: Record<LiveTone, string> = {
-  present: 'text-success',
-  absent:  'text-destructive',
+  expected: 'text-foreground',
+  present:  'text-success',
+  absent:   'text-destructive',
 }
 
 function LiveRow({ icon, label, count, to }: {
@@ -499,39 +536,3 @@ function LiveRow({ icon, label, count, to }: {
   return body
 }
 
-function IdentityRow({ childLabel, displayChildCount, childCountLink }: {
-  childLabel: string | null; displayChildCount: number | null; childCountLink: string
-}) {
-  // Keep the drill chip visible while the child-count RPC is in flight.
-  // Hiding until count arrives made drills look "gone" after entry-gate work
-  // (slow/failed count ⇒ blank IdentityRow).
-  if (!childLabel) return null
-  const countLabel = displayChildCount == null ? '…' : String(displayChildCount)
-  return (
-    <div className='mt-4 flex items-center gap-2'>
-      <Link
-        to={childCountLink}
-        className='flex items-center gap-2 rounded-full border border-border bg-background px-1.5 py-1.5 pr-4 no-underline hover:bg-accent'
-      >
-        <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-foreground'>
-          {countLabel}
-        </div>
-        <div className='flex flex-col'>
-          <span className='text-sm font-semibold text-foreground'>{childLabel}</span>
-          <span className='flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground'>
-            View
-            <svg viewBox='0 0 24 24' width='10' height='10' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'>
-              <path d='M9 18l6-6-6-6'/>
-            </svg>
-          </span>
-        </div>
-      </Link>
-    </div>
-  )
-}
-
-function StatusPill({ status, className = '' }: { status: string; className?: string }) {
-  const variant =
-    status === 'ACTIVE' ? 'active' : status === 'PAUSED' ? 'warning' : status === 'ENDED' ? 'muted' : 'outline'
-  return <Badge variant={variant as 'active'} className={className}>{status}</Badge>
-}

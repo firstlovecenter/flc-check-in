@@ -44,7 +44,7 @@ export default function TopBar({ user, right = null }: Props) {
         {/* The active hat is switchable from EVERY screen that uses TopBar.
             It used to live only on Home, so users lost track of which identity
             they were in as soon as they navigated anywhere. */}
-        <ChurchScopeSwitcher compact />
+        <ChurchScopeSwitcher variant='compact' />
         <div className='flex shrink-0 items-center gap-1 text-xs'>
           <RefreshButton />
           {right}

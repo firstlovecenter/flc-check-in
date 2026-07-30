@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTheme } from '../hooks/useTheme'
 import { cn } from '../lib/utils'
 import { logout } from '../utils/auth'
+import ChurchScopeSwitcher from './ChurchScopeSwitcher'
 import type { AppUser } from '../types/app'
 
 const ICONS = {
@@ -243,6 +244,13 @@ export default function NavDrawer({ user }: { user?: AppUser | null }) {
                 <p className='m-0 truncate text-xs text-muted-foreground'>{user?.unitName || 'Hineni'}</p>
               </div>
               <button type='button' onClick={() => setMoreOpen(false)} aria-label='Close menu' className='flex size-10 items-center justify-center rounded-full text-xl text-muted-foreground hover:bg-secondary active:scale-[0.97]'>×</button>
+            </div>
+
+            {/* Church in Focus lives in the drawer, matching where the FL Admin
+                Portal puts it (its sidebar). The top bar carries a compact copy
+                so switching stays one tap away without opening the drawer. */}
+            <div className='px-2 pb-1 pt-1'>
+              <ChurchScopeSwitcher />
             </div>
 
             {user?.isAdmin && (

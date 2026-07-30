@@ -1,39 +1,32 @@
 // SWR-style hook that loads the eligibility pipeline for an event:
-//   getEvent + listCheckedIn + resolveCurrentMember + getChurchAncestors
-//   + scope members (snapshot-first) → eligible members + viewer capabilities.
+//   getEvent + listCheckedIn + event_scope_members (Postgres snapshot)
+//   → eligible members + viewer capabilities.
+//
+// Architectural rule: the live Neo4j graph is NEVER probed here. Eligibility
+// comes from the event snapshot taken at creation (or by an explicit
+// "Refresh eligible list" — see utils/eventScopeSnapshot.ts). Capabilities
+// come from capsOverride (the entry gate) with a JWT-only fallback.
 //
 // Performance design:
 //   • Stale-while-revalidate: serves the previous result from the module-level
 //     cache IMMEDIATELY (no spinner on revisit), then revalidates in the
 //     background and updates the UI when fresh data arrives.
-//   • Snapshot-first: loads scope members from event_scope_members (Supabase,
-//     fast) instead of querying the live Neo4j graph. Falls back to the graph
-//     only if no snapshot exists yet (legacy events / create race), and saves
-//     the snapshot immediately so the next load is fast.
-//   • bulkUpsertMemberProfiles fires in the background — never blocks render.
-//   • All graph calls are already deduplicated / TTL-cached in membersApi.ts.
+//   • Snapshot-only roster: listEventScopeMembersWithProfiles hits Supabase
+//     with server-side role/scope filters (migration 037).
 //   • Optional poll: only refreshes the cheap part (event status + records).
-//     The expensive eligibility pipeline is NOT re-run on every poll tick.
+//     The eligibility pipeline is NOT re-run on every poll tick.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  getEvent, listCheckedIn, bulkUpsertMemberProfiles,
-  listEventScopeMembersWithProfiles, snapshotEventScopeMembers,
-  listMemberProfilesByScope, listSpecialGroupMembers,
+  getEvent, listCheckedIn,
+  listEventScopeMembersWithProfiles, listSpecialGroupMembers,
   countEventScopeMembers,
 } from '../utils/supabaseCheckins'
-import {
-  getMembersInScope, memberToProfileRow,
-  resolveCurrentMember, getChurchAncestors, getViewerCapabilities,
-  getAdminScopes, countChildScopes,
-} from '../utils/membersApi'
-import { getUserChurchRef, getUserAdminScopesFromJwt } from '../utils/userScope'
-import { getUserLeadershipRefs } from '../utils/userScope'
+import { getUserChurchRef, getUserAdminScopesFromJwt, getUserLeadershipRefs } from '../utils/userScope'
 import { friendlyErrorMessage } from '../utils/network'
-import { bypassesScopeAndRoleLimits } from '../utils/superadmin'
 import { SCOPE_LEVELS } from '../types/app'
 import type { ViewerCaps } from '../utils/eventCaps'
-import type { AppUser, CheckinEventRow, ScopeLevel } from '../types/app'
+import type { AppUser, CheckinEventRow } from '../types/app'
 
 // ─── Module-level SWR cache ──────────────────────────────────────────────
 const ELIGIBILITY_TTL = 4 * 60 * 1000  // 4 min
@@ -51,6 +44,9 @@ interface CachedEligibility {
   viewerCaps: any
   viewerSlice: any[]
   adminScopes: any[]
+  /** Always null — child-scope counts used to come from Neo4j; the inline
+   *  rollup RPC replaced that. Kept on the cache shape so persisted v2
+   *  entries still normalize cleanly. */
   childCount: number | null
   /** event_scope_members row count for this event; 0 = no snapshot yet. */
   scopeMemberCount: number | null
@@ -235,6 +231,7 @@ export interface EventEligibilityResult {
   viewerCaps: any | null
   viewerSlice: any[]      // eligible members scoped to the viewer's unit
   adminScopes: any[]
+  /** Deprecated: always null. Prefer get_event_scope_rollup / InlineScopeRollup. */
   childCount: number | null
   /** event_scope_members row count for this event (0 = no snapshot yet);
    *  null until resolved. */
@@ -272,7 +269,6 @@ export function useEventEligibility(
   const [viewerCaps, setViewerCaps]   = useState<any | null>(null)
   const [viewerSlice, setViewerSlice] = useState<any[]>([])
   const [adminScopes, setAdminScopes] = useState<any[]>([])
-  const [childCount, setChildCount]   = useState<number | null>(null)
   const [scopeMemberCount, setScopeMemberCount] = useState<number | null>(null)
   const [records, setRecords]         = useState<any[]>([])
   const [error, setError]             = useState<string | null>(null)
@@ -326,7 +322,6 @@ export function useEventEligibility(
       setViewerCaps(cachedCaps)
       setViewerSlice(cachedSlice)
       setAdminScopes(hit.adminScopes)
-      setChildCount(hit.childCount)
       setScopeMemberCount(hit.scopeMemberCount ?? null)
       setEvent(hit.event)
       setRecords(loadRecords ? hit.records : [])
@@ -336,22 +331,7 @@ export function useEventEligibility(
 
     ;(async () => {
       try {
-        // Speculative Tier-3 warm-up: a non-admin leader's viewer slice is
-        // (almost) always their own JWT scope, which we know before any
-        // network call. getMembersInScope dedupes in-flight requests and
-        // caches results, so the real Tier-3 call below joins this promise
-        // instead of starting a fresh 400-600ms graph query after Tier 2.
-        // Harmless when the guess is wrong (admin / special-group events) —
-        // it just warms a cache entry.
-        if (!user.isAdmin && !user.isSuperAdmin && !user.isSuperViewer && user.level) {
-          const ownRef = getUserChurchRef(user, user.level as ScopeLevel)
-          if (ownRef?.id) {
-            getMembersInScope({ level: ownRef.level, churchId: ownRef.id }).catch(() => {})
-          }
-        }
-
-        // Tier 1: get event and, when requested by the screen, current
-        // check-in records. Dashboards opt out and use aggregate RPC polling.
+        // Tier 1: event + records. Both Postgres.
         const [evt, recs] = await Promise.all([
           getEvent(eventId),
           loadRecords ? listCheckedIn(eventId) : Promise.resolve([]),
@@ -360,313 +340,122 @@ export function useEventEligibility(
         setEvent(evt)
         setRecords(recs)
 
-        // Tier 2: load scope members (snapshot-first) + viewer identity in parallel.
-        // listEventScopeMembersWithProfiles hits Supabase (~50ms) vs Neo4j (~1s+).
-        // resolveCurrentMember / getChurchAncestors are graph calls — swallow
-        // their errors so a graph outage degrades gracefully instead of crashing.
-        //
-        // When the caller supplies capsOverride (the entry gate already resolved
-        // capabilities from the active hat + the server's scope relation), the
-        // two graph calls that existed ONLY to feed getViewerCapabilities are
-        // skipped entirely. That removes two Neo4j round trips per event open
-        // per viewer — the single biggest source of fan-out on this screen —
-        // and makes capability deterministic instead of dependent on whether
-        // the graph answered in time.
         const isSpecialGroup = evt.scope_level === 'special_group'
-        const needsGraphViewer = !capsOverride
-        const [viewer, ancestors, snapshotProfiles, childTotal, scopeCountFetched] = await Promise.all([
-          needsGraphViewer ? resolveCurrentMember(user).catch(() => null) : Promise.resolve(null),
-          needsGraphViewer && !isSpecialGroup
-            ? getChurchAncestors({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => [])
-            : Promise.resolve([]),
-          listEventScopeMembersWithProfiles(eventId),
-          isSpecialGroup ? Promise.resolve(null) : countChildScopes({ level: evt.scope_level, id: evt.scope_church_id }).catch(() => null),
+
+        // Tier 2: the event's eligible list, read ENTIRELY from the snapshot.
+        //
+        // This block used to make up to five separate Neo4j calls —
+        // resolveCurrentMember, getChurchAncestors, countChildScopes, a
+        // no-snapshot getMembersInScope fallback, and a "widen visibility from
+        // the live graph" probe. All of them ran while an event was live.
+        //
+        // They are gone. Eligibility is decided by event_scope_members, which is
+        // captured once at creation and refreshed only by an explicit admin
+        // action (see utils/eventScopeSnapshot.ts). Login is already gated by
+        // the auth JWT, so a live service no longer depends on the member
+        // directory being reachable — which mattered most exactly when it was
+        // under the heaviest load.
+        //
+        // Server-side filtering: passing allowedRoles makes Postgres return
+        // only the eligible rows rather than the whole roster (migration 037).
+        const [snapshotProfiles, scopeCountFetched] = await Promise.all([
+          listEventScopeMembersWithProfiles(eventId, {
+            allowedRoles: isSpecialGroup ? null : (evt.allowed_roles || null),
+          }),
           countEventScopeMembers(eventId).catch(() => 0),
         ])
         if (cancelled) return
 
-        let allRows: any[]
-        let needsProfileRefresh = false
-        if (isSpecialGroup) {
-          // Special-group events: membership lives in special_group_members,
-          // not in the church hierarchy. Use the event snapshot if it exists;
-          // otherwise fall back to a live special_group_members query.
-          if (snapshotProfiles.length > 0) {
-            allRows = snapshotProfiles
-          } else {
-            const members = await listSpecialGroupMembers(evt.scope_church_id)
-            allRows = members.map((m) => ({
-              id: m.member_id,
-              first_name: m.member_name?.split(' ')[0] ?? '',
-              last_name: m.member_name?.split(' ').slice(1).join(' ') ?? '',
-              roles: [],
-              picture_url: (m as any).picture_url ?? null,
-            }))
-          }
-        } else if (snapshotProfiles.length > 0 && (scopeCountFetched === 0 || snapshotProfiles.length >= scopeCountFetched)) {
-          // Snapshot exists and profile coverage is complete — use directly.
-          allRows = snapshotProfiles
-          // Flag for background refresh if profiles lack scope_ids (stale snapshot).
-          needsProfileRefresh = snapshotProfiles.filter((r: any) => r.scope_ids == null).length > snapshotProfiles.length * 0.05
-        } else {
-          // Either no snapshot yet (creation race / new event), or snapshot exists
-          // but profiles are incomplete (creation-time write partially failed).
-          // Fall back to the graph to get the full member list and backfill profiles.
-          let graphMembers: any[] | null = null
-          let graphError: Error | null = null
-          try {
-            graphMembers = await getMembersInScope({
-              level: evt.scope_level, churchId: evt.scope_church_id,
-            })
-          } catch (e: any) {
-            graphError = e
-          }
-          if (cancelled) return
+        let allRows: any[] = snapshotProfiles
 
-          if (graphMembers !== null) {
-            allRows = graphMembers.map(memberToProfileRow)
-            const ids = graphMembers.map((m: any) => m.id).filter(Boolean)
-            // Fire-and-forget: save snapshot so subsequent loads skip the graph.
-            Promise.all([
-              snapshotEventScopeMembers(eventId, ids),
-              bulkUpsertMemberProfiles(allRows),
-            ]).catch(() => {})
-          } else {
-            // Graph unavailable — query member_profiles directly by scope.
-            // Coverage is best-effort (only members who have logged in at
-            // least once), but avoids a hard error when Neo4j is down.
-            const profileRows = await listMemberProfilesByScope(
-              evt.scope_level, evt.scope_church_id,
-            )
-            if (cancelled) return
-            if (profileRows.length > 0) {
-              allRows = profileRows
-            } else {
-              const isServiceDown = graphError?.message?.includes('503')
-                || graphError?.message?.includes('Service Unavailable')
-                || graphError?.message?.includes('502')
-                || graphError?.message?.includes('Failed to fetch')
-                || graphError?.message?.includes('Load failed')
-                || graphError?.message?.includes('ERR_NAME_NOT_RESOLVED')
-              throw new Error(
-                isServiceDown
-                  ? 'The member directory is temporarily unavailable. Please try again in a few minutes.'
-                  : (graphError?.message ?? 'Failed to load event members.'),
-              )
-            }
-          }
+        // Special-group events whose snapshot was never written fall back to
+        // live group membership — that is a Supabase table, not the graph.
+        if (isSpecialGroup && snapshotProfiles.length === 0) {
+          const members = await listSpecialGroupMembers(evt.scope_church_id)
+          if (cancelled) return
+          allRows = members.map((m) => ({
+            id: m.member_id,
+            first_name: m.member_name?.split(' ')[0] ?? '',
+            last_name: m.member_name?.split(' ').slice(1).join(' ') ?? '',
+            roles: [],
+            picture_url: (m as any).picture_url ?? null,
+          }))
         }
 
         const allowed = new Set<string>(evt.allowed_roles || [])
-        const allMemberIdSet = new Set<string>(allRows.map((r: any) => r.id))
-        const viewerIds = candidateUserIds(user, viewer)
-        // Visibility should be tied to current church scope, not only the
-        // event-time snapshot. Start with snapshot IDs, then widen from graph
-        // when needed so leadership handovers can still view church-owned events.
-        let visibilityMemberIdSet = allMemberIdSet
         // Special-group: membership IS eligibility (roles are irrelevant).
-        // All other events: filter by allowed_roles regardless of who is viewing —
-        // allowed_roles defines "expected attendance" and must drive the count
-        // even for superAdmin/superViewer (they bypass scope, not the event's own policy).
+        // Everything else: allowed_roles defines expected attendance and drives
+        // the count even for superAdmin (they bypass scope, not event policy).
+        // Postgres already applied this filter when allowedRoles was passed;
+        // re-applying is cheap and keeps the special-group path correct.
         const eligibleRows = (isSpecialGroup
           ? allRows
           : allRows.filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
         ).filter((r) => r != null && r.id != null && r.id !== '')
         const eligibleIdSet = new Set<string>(eligibleRows.map((r) => r.id))
 
-        // Snapshot rows can legitimately omit newly assigned leaders/admins
-        // (for example after a leadership handover). If the current viewer is
-        // missing from snapshot IDs, verify structural membership against the
-        // live scope graph and use that set for capability checks.
-        if (!isSpecialGroup && viewer?.id && !allMemberIdSet.has(viewer.id)) {
-          try {
-            const scopeMembers = await getMembersInScope({
-              level: evt.scope_level,
-              churchId: evt.scope_church_id,
-            })
-            if (!cancelled) {
-              visibilityMemberIdSet = new Set<string>((scopeMembers || []).map((m: any) => m.id))
-            }
-          } catch {
-            // Keep snapshot set on graph failure.
-          }
+        // Capability comes from the entry gate — a pure function of the active
+        // hat and the server's scope relation (utils/eventCaps.ts). The old
+        // three-way cascade (getViewerCapabilities → fallbackCapsFromUser → JWT
+        // reconstruction) needed a live graph viewer node, which meant the same
+        // user could get different UI depending on whether Neo4j answered.
+        //
+        // capsOverride is always supplied now: EventEntryScreen runs the gate
+        // for drill-downs too. The fallback below is JWT-only and exists purely
+        // so a direct component mount cannot render capability-less.
+        const caps: ViewerCaps = capsOverride ?? (fallbackCapsFromUser(
+          user,
+          evt,
+          candidateUserIds(user, null),
+          eligibleIdSet,
+          new Set<string>(allRows.map((r: any) => r.id)),
+          [],
+        ) as ViewerCaps | null) ?? {
+          canManage: false,
+          canCheckIn: false,
+          canView: true,
+          canViewFullEvent: false,
+          canManuallyCheckIn: false,
+          viewerScope: {
+            level: evt.scope_level,
+            id: evt.scope_church_id,
+            name: evt.scope_church_name,
+          },
         }
 
-        // Background: stale snapshot profiles (scope_ids null) break sub-scope
-        // filtering. Re-fetch from graph, upsert fresh profiles, and update state.
-        if (needsProfileRefresh) {
-          getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
-            .then((graphMembers: any[]) => {
-              if (cancelled) return
-              const freshRows = graphMembers.map(memberToProfileRow)
-              bulkUpsertMemberProfiles(freshRows).catch(() => {})
-              const freshEligible = freshRows
-                .filter((r) => (r.roles || []).some((role: string) => allowed.has(role)))
-                .filter((r) => r != null && r.id != null && r.id !== '')
-              if (!cancelled) {
-                setEligible(freshEligible)
-                setEligibleIds(new Set<string>(freshEligible.map((r) => r.id)))
-              }
-            })
-            .catch(() => {})
-        }
-
-        // ── Capability ───────────────────────────────────────────────────────
-        // Preferred path: the entry gate already decided, from the ONE hat the
-        // user is wearing plus the server's scope relation. Pure, deterministic,
-        // no network. See utils/eventCaps.ts.
-        if (capsOverride) {
-          const slice = capsOverride.canManage || capsOverride.canViewFullEvent
-            ? eligibleRows
-            : eligibleRows.filter((r) => {
-                const scopeIds: string[] | undefined = (r.scope_ids as any)?.[capsOverride.viewerScope?.level ?? '']
-                if (scopeIds?.length) return capsOverride.viewerScope ? scopeIds.includes(capsOverride.viewerScope.id) : false
-                return (r as any)[`${capsOverride.viewerScope?.level}_id`] === capsOverride.viewerScope?.id
-              })
-
-          if (!cancelled) {
-            setEligible(eligibleRows)
-            setEligibleIds(eligibleIdSet)
-            setViewerCaps(capsOverride)
-            setViewerSlice(slice)
-            setAdminScopes(getUserAdminScopesFromJwt(user))
-            setChildCount(childTotal)
-            setScopeMemberCount(scopeCountFetched)
-            setInitialLoading(false)
-            const entry: CachedEligibility = {
-              eligible: eligibleRows,
-              eligibleIds: eligibleIdSet,
-              viewerCaps: capsOverride,
-              viewerSlice: slice,
-              adminScopes: getUserAdminScopesFromJwt(user),
-              childCount: childTotal,
-              scopeMemberCount: scopeCountFetched,
-              event: evt,
-              records: loadRecords ? recs : [],
-              ts: Date.now(),
-            }
-            eligibilityCache.set(cacheKey, entry)
-            writePersistedEligibility(cacheKey, entry)
-          }
-          return
-        }
-
-        // Legacy path, kept for callers that have no entry state yet (e.g. a
-        // screen reached directly by URL before the gate has run).
-        // getViewerCapabilities requires a graph viewer node. When the graph is
-        // unavailable (viewer === null, ancestors === []), fall back to the
-        // AppUser profile. Only the EXACT scope level is granted access —
-        // ancestors do not see events below their scope (superAdmin handled above).
-        let rawCaps = getViewerCapabilities(viewer, evt, ancestors, eligibleIdSet, visibilityMemberIdSet)
-        // Special-group events: church-hierarchy checks are irrelevant.
-        // Any member present in the group snapshot can self-check-in.
-        if (isSpecialGroup && !rawCaps.canManage && hasAnyId(viewerIds, allMemberIdSet)) {
-          rawCaps = {
-            canManage: false,
-            canCheckIn: true,
-            canView: true,
-            canViewFullEvent: false,
-            canManuallyCheckIn: false,
-            viewerScope: {
-              level: evt.scope_level as any,
-              id: evt.scope_church_id,
-              name: evt.scope_church_name,
-            },
-          }
-        }
-        const fallbackCaps = !rawCaps.canView && !rawCaps.canCheckIn && !rawCaps.canManage
-          ? fallbackCapsFromUser(user, evt, viewerIds, eligibleIdSet, visibilityMemberIdSet, ancestors)
-          : null
-        if (fallbackCaps) {
-          rawCaps = fallbackCaps
-        }
-        if (!rawCaps.canManage && viewer === null) {
-          // Graph unavailable — reconstruct viewerScope from the JWT/profile.
-          // Per-level resolution lives in utils/userScope.ts; only the
-          // hierarchy comparisons happen here.
-          const userLevelIdx = user.level ? SCOPE_LEVELS.indexOf(user.level) : -1
-          const evtScopeIdx  = SCOPE_LEVELS.indexOf(evt.scope_level)
-          const userChurchAtEvt = getUserChurchRef(user, evt.scope_level)
-          if (userChurchAtEvt && userChurchAtEvt.id === evt.scope_church_id && userLevelIdx === evtScopeIdx) {
-            const viewerScope = {
-              level: evt.scope_level,
-              id: evt.scope_church_id,
-              name: evt.scope_church_name,
-            }
-            // Admins exist from governorship level upwards — bacenta has no admin role.
-            const isAdminLevel = user.level !== 'bacenta'
-            rawCaps = (user.isAdmin && isAdminLevel)
-              ? { canManage: true,  canCheckIn: false, canView: true, canViewFullEvent: false, canManuallyCheckIn: !(user.roles || []).some((r) => r.startsWith('leader')), viewerScope }
-              : { canManage: false, canCheckIn: false, canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
-          } else if (!rawCaps.canView && userLevelIdx >= 0 && userLevelIdx < evtScopeIdx) {
-            // Sub-scope leader: their JWT church hierarchy must include the event scope church,
-            // confirming they are structurally within that scope.
-            if (userChurchAtEvt && userChurchAtEvt.id === evt.scope_church_id) {
-              const ownRef = user.level ? getUserChurchRef(user, user.level as ScopeLevel) : null
-              if (ownRef) {
-                const viewerScope = { level: ownRef.level, id: ownRef.id, name: ownRef.name ?? '' }
-                rawCaps = { canManage: false, canCheckIn: hasAnyId(viewerIds, eligibleIdSet), canView: true, canViewFullEvent: false, canManuallyCheckIn: false, viewerScope }
-              }
-            }
-          }
-        }
-        const eventScope = {
-          level: evt.scope_level,
-          id: evt.scope_church_id,
-          name: evt.scope_church_name,
-        }
-        const scopeFallback = rawCaps.canViewFullEvent ? eventScope : (rawCaps.viewerScope ?? eventScope)
-        const caps = user.isSuperAdmin
-          ? { ...rawCaps, canManage: true, canCheckIn: hasAnyId(viewerIds, eligibleIdSet), canView: true, canViewFullEvent: true, canManuallyCheckIn: true, viewerScope: eventScope }
-          : user.isSuperViewer
-          ? { ...rawCaps, canManage: false, canCheckIn: false, canView: true, canViewFullEvent: true, canManuallyCheckIn: false, viewerScope: eventScope }
-          : rawCaps.canViewFullEvent
-          ? { ...rawCaps, viewerScope: scopeFallback }
-          : rawCaps
-        const scopes = getAdminScopes(viewer, user)
-
-        // Tier 3: viewer slice (only needed for non-admin leaders).
+        // Viewer slice: narrow the eligible list to the viewer's own sub-scope.
+        // Done in Postgres via the scope filter migration 037 added, replacing a
+        // getMembersInScope call against Neo4j.
         let slice = eligibleRows
-        // Skip the graph slice call for special-group events — the full group
-        // member list is already the correct slice.
         if (!isSpecialGroup && !caps.canManage && !caps.canViewFullEvent && caps.viewerScope) {
           try {
-            const sliceMembers = await getMembersInScope({
-              level: caps.viewerScope.level,
-              churchId: caps.viewerScope.id,
+            slice = await listEventScopeMembersWithProfiles(eventId, {
+              allowedRoles: evt.allowed_roles || null,
+              scopeLevel: caps.viewerScope.level,
+              scopeChurchId: caps.viewerScope.id,
             })
             if (cancelled) return
-            const sliceIds = new Set(sliceMembers.map((m: any) => m.id))
-            slice = eligibleRows.filter((r) => sliceIds.has(r.id))
           } catch {
-            // Graph down — show the full eligible list unfiltered rather than crash.
+            // Show the full eligible list unfiltered rather than nothing.
           }
         }
-
-        // Raw event_scope_members row count. 0 means "no snapshot yet"
-        // (legacy events / creation race) — EventDashboard uses that signal to
-        // decide whether the stats RPC can derive its population server-side
-        // from the snapshot, or must be sent explicit member ids.
-        const resolvedScopeCount = scopeCountFetched
 
         if (!cancelled) {
           setEligible(eligibleRows)
           setEligibleIds(eligibleIdSet)
           setViewerCaps(caps)
           setViewerSlice(slice)
-          setAdminScopes(scopes)
-          setChildCount(childTotal)
-          setScopeMemberCount(resolvedScopeCount)
+          setAdminScopes(getUserAdminScopesFromJwt(user))
+          setScopeMemberCount(scopeCountFetched)
           setInitialLoading(false)
-          // Update cache so the next navigation is instant.
           const entry: CachedEligibility = {
             eligible: eligibleRows,
             eligibleIds: eligibleIdSet,
             viewerCaps: caps,
             viewerSlice: slice,
-            adminScopes: scopes,
-            childCount: childTotal,
-            scopeMemberCount: resolvedScopeCount,
+            adminScopes: getUserAdminScopesFromJwt(user),
+            childCount: null,
+            scopeMemberCount: scopeCountFetched,
             event: evt,
             records: loadRecords ? recs : [],
             ts: Date.now(),
@@ -717,7 +506,7 @@ export function useEventEligibility(
 
   return {
     event, eligible, eligibleIds, viewerCaps, viewerSlice,
-    adminScopes, childCount, scopeMemberCount, records, error, initialLoading,
+    adminScopes, childCount: null, scopeMemberCount, records, error, initialLoading,
     setEvent, setRecords,
   }
 }

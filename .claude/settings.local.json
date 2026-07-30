@@ -50,7 +50,8 @@
       "mcp__claude_ai_Supabase__list_migrations",
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__get_logs",
-      "Bash(sed -n '/async function listAllEventsForFocusedScope/,/^}/p' src/utils/supabaseCheckins.ts)"
+      "Bash(sed -n '/async function listAllEventsForFocusedScope/,/^}/p' src/utils/supabaseCheckins.ts)",
+      "Bash(awk 'NR>=576 && NR<=615' src/components/admin/EventDashboard.tsx)"
     ],
     "additionalDirectories": [
       "C:\\Users\\samuel cyrus-aduteye\\Documents\\Codeslaw\\flc-check-in\\.claude"

@@ -4,12 +4,13 @@ import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import {
-  createEvent, snapshotEventScopeMembers, bulkUpsertMemberProfiles,
+  createEvent,
   listSpecialGroups, listSpecialGroupMembers, type SpecialGroup,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
+import { snapshotEventScopeFromGraph } from '../../utils/eventScopeSnapshot'
 import {
-  resolveCurrentMember, getCreatorScopes, allowedRolesForScope, getMembersInScope, memberToProfileRow,
+  resolveCurrentMember, getCreatorScopes, allowedRolesForScope,
   searchChurches, getChildChurches, childScopeLevel, type ChurchSearchResult,
 } from '../../utils/membersApi'
 import type { GeofenceInput } from '../../types/app'
@@ -63,8 +64,6 @@ export default function CreateEventForm() {
     if (isNaN(start.getTime())) return ''
     return new Date(start.getTime() + durationMin * 60_000).toISOString().slice(0, 16)
   }, [startsAt, durationMin])
-  const [gracePeriodMin, setGracePeriodMin] = useState<number | string>(15)
-  const [autoCheckoutMin, setAutoCheckoutMin] = useState<number | string>(0)
   const [methods, setMethods] = useState<string[]>(['QR', 'PIN'])
   const [roles, setRoles] = useState<string[]>([])
   const [pin, setPin] = useState(generatePin())
@@ -315,8 +314,6 @@ export default function CreateEventForm() {
           scopeChurchName: anchorScope.name,
           startsAt: occurrences[i].startsAt,
           endsAt: occurrences[i].endsAt,
-          gracePeriodMin: Number(gracePeriodMin),
-          autoCheckoutMin: Number(autoCheckoutMin),
           allowedCheckInMethods: methods,
           allowedRoles: roles,
           geofence,
@@ -332,41 +329,18 @@ export default function CreateEventForm() {
           // event dashboard sees a complete member list on the very first load.
           setSubmitProgress('Preparing member list…')
           try {
-            let memberIds: string[] = []
-            let profileRows: any[] = []
-
-            if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0) {
-              // Group mode: union members across all selected groups, deduplicated.
-              const results = await Promise.all(selectedGroupIds.map(listSpecialGroupMembers))
-              const seen = new Set<string>()
-              memberIds = results.flat().filter((m) => {
-                if (seen.has(m.member_id)) return false
-                seen.add(m.member_id); return true
-              }).map((m) => m.member_id)
-            } else {
-              // Church scopes: union members from all selected scopes.
-              const scopesToFetch = isSuperAdmin ? superScopes : [anchorScope]
-              const results = await Promise.all(
-                scopesToFetch.map((s) => getMembersInScope({ level: s.level, churchId: s.id }))
-              )
-              const allMembers = results.flat()
-              // Deduplicate by member id.
-              const seen = new Set<string>()
-              const unique = allMembers.filter((m) => {
-                if (!m?.id || seen.has(m.id)) return false
-                seen.add(m.id); return true
-              })
-              profileRows = unique.map(memberToProfileRow)
-              memberIds = profileRows.map((r: any) => r.id).filter(Boolean)
-            }
-
-            await Promise.all([
-              snapshotEventScopeMembers(eventId, memberIds),
-              profileRows.length ? bulkUpsertMemberProfiles(profileRows) : Promise.resolve(),
-            ])
+            // The ONE graph probe in an event's life. Shared with the edit
+            // page's "Refresh eligible list" so both paths build the snapshot
+            // identically. See utils/eventScopeSnapshot.ts.
+            const useGroups = isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0
+            await snapshotEventScopeFromGraph({
+              eventId,
+              groupIds: useGroups ? selectedGroupIds : [],
+              scopes: useGroups ? [] : (isSuperAdmin ? superScopes : [anchorScope]),
+            })
           } catch {
-            // Non-critical: if the write fails the event dashboard fallback will
-            // re-derive and backfill profiles on first load.
+            // Non-critical here: the event still exists, and an admin can run
+            // "Refresh eligible list" from the edit page to build the snapshot.
           }
         }
       }
@@ -626,16 +600,6 @@ export default function CreateEventForm() {
             </p>
           )}
         </Field>
-        <div className='grid grid-cols-2 gap-3'>
-          <Field label='Grace period (min)'>
-            <input type='number' min={0} max={180} value={gracePeriodMin} onChange={(e) => setGracePeriodMin(e.target.value)}
-              className='input-field' />
-          </Field>
-          <Field label='Auto-checkout (min)'>
-            <input type='number' min={0} max={1440} value={autoCheckoutMin} onChange={(e) => setAutoCheckoutMin(e.target.value)}
-              className='input-field' />
-          </Field>
-        </div>
       </Section>
       </fieldset>
 

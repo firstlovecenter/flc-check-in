@@ -8,6 +8,7 @@ import {
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { useChurchFocus } from '../../contexts/ChurchFocusContext'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
 import { Badge } from '../ui/badge'
@@ -21,6 +22,7 @@ const EVENTS_PAGE_SIZE = 5
 
 export default function EventHistoryList() {
   const user = getCurrentUser()
+  const { focusedScope } = useChurchFocus()
   const [searchParams, setSearchParams] = useSearchParams()
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -34,8 +36,19 @@ export default function EventHistoryList() {
     let cancelled = false
     ;(async () => {
       try {
+        // Scoped to the ACTIVE HAT, like every other list. Previously this
+        // ignored the focus entirely, so History showed events from every role
+        // the user held while Home showed one — the same person, two different
+        // answers to "which events are mine", on adjacent screens.
+        //
+        // Events the user personally attended are merged in regardless of hat:
+        // their own attendance history is theirs, not a property of the role
+        // they happen to be wearing right now.
         const [scopeEvts, attendedEvts] = await Promise.all([
-          listAllEvents(user ?? undefined, { limit: 200 }),
+          listAllEvents(user ?? undefined, {
+            limit: 200,
+            focusedScope: focusedScope ?? undefined,
+          }),
           listEventsAttendedByMember(user!.userId),
         ])
         if (cancelled) return
@@ -54,7 +67,7 @@ export default function EventHistoryList() {
       }
     })()
     return () => { cancelled = true }
-  }, [user?.userId, refreshKey])
+  }, [user?.userId, refreshKey, focusedScope?.level, focusedScope?.id])
 
   const filtered = useMemo(() => {
     const now = Date.now()

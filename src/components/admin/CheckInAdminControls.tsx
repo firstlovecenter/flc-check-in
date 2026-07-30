@@ -27,7 +27,15 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
   const navigate = useNavigate()
   const admin = getCurrentUser()
   const adminName = admin ? formatName(admin) : 'Admin'
-  const isSuperAdmin = !!admin?.isSuperAdmin
+  // Deleting an event is permitted for its CREATOR and for denomination admins.
+  // Authorisation is enforced server-side in delete_event (migration 043); this
+  // only decides whether to OFFER the button, so a creator is not shown an
+  // action that would be refused, and vice versa.
+  const isEventCreator = !!admin && (
+    event.created_by_id === admin.userId
+    || (!!admin.graphMemberId && event.created_by_id === admin.graphMemberId)
+  )
+  const canDelete = isEventCreator || !!admin?.isSuperAdmin
   const [busy, setBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<'end' | 'pin' | 'delete' | null>(null)
@@ -107,7 +115,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
     try {
       const eventName = event.name
       const eventId = event.id
-      await deleteEvent(eventId, admin?.email || '')
+      await deleteEvent(eventId, admin?.email ?? null, admin?.graphMemberId || admin?.userId || null)
       addAuditLog({
         action: 'event.delete',
         actorId: admin?.userId,
@@ -186,7 +194,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
             </ControlBtn>
           </>
         )}
-        {isSuperAdmin && (
+        {canDelete && (
           <ControlBtn
             disabled={busy}
             danger

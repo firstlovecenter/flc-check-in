@@ -155,17 +155,17 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
           {line2}
         </h1>
 
+        {/* The role chip is the only badge here. A separate "Super Admin"
+            label used to sit alongside it, but superadmin is not a scope you
+            act under — it is a privilege that widens whichever hat you are
+            wearing. Showing it as a peer of the role chip implied it was
+            another selectable identity. */}
         <div className='mt-4 flex flex-wrap items-center gap-2'>
           <ChurchScopeSwitcher fallback={
             <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
               {user?.unitName || 'No assigned church scope'}
             </span>
           } />
-          {user?.isSuperAdmin && (
-            <span className='rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground'>
-              Super Admin
-            </span>
-          )}
         </div>
       </div>
     </div>

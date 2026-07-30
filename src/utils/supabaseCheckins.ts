@@ -1004,8 +1004,8 @@ export async function snapshotEventScopeMembers(
 }
 
 /** Add a single member to an event's scope snapshot and upsert their profile.
- *  Used by superadmins to include a member who was added to the graph after
- *  the snapshot was taken. profileRow must be the output of memberToProfileRow(). */
+ *  Prefer snapshotEventScopeFromGraph / "Refresh eligible list" — the
+ *  one-at-a-time UI path was removed. Kept for rare scripted repairs. */
 export async function addMemberToEventScope(
   eventId: string,
   profileRow: any,
@@ -1181,18 +1181,25 @@ export async function endEvent(eventId) {
  *  delete_event RPC checks the caller's email against the superadmins
  *  table before proceeding. Cascades via FKs remove every related
  *  checkin_record, audit_log entry, etc. Irreversible. */
-export async function deleteEvent(eventId: string, adminEmail: string) {
-  if (!adminEmail) throw new Error('Admin email is required')
+/** Delete an event. Permitted for the event's CREATOR and for denomination
+ *  admins — authorised server-side against created_by_id and
+ *  member_profiles.roles (migration 043), not an allowlist. */
+export async function deleteEvent(
+  eventId: string,
+  adminEmail?: string | null,
+  memberId?: string | null,
+) {
+  if (!adminEmail && !memberId) throw new Error('Sign-in required to delete an event')
   const { data, error } = await supabase.rpc('delete_event', {
     p_event_id: eventId,
-    p_admin_email: adminEmail,
+    p_admin_email: adminEmail ?? null,
+    p_member_id: memberId ?? null,
   })
   if (error) throw error
   if (!data?.ok) {
     const reason = data?.reason
-    if (reason === 'forbidden')        throw new Error('Only super-admins can delete events.')
-    if (reason === 'event_not_found')  throw new Error('Event not found.')
-    if (reason === 'admin_email_required') throw new Error('Admin email is required.')
+    if (reason === 'forbidden')       throw new Error('Only the event creator or a denomination admin can delete this event.')
+    if (reason === 'event_not_found') throw new Error('Event not found.')
     throw new Error(reason || 'Delete failed.')
   }
   invalidateEventListCache()
@@ -1512,6 +1519,45 @@ export async function getEventDashboardStats(input: {
     viewer_checked_in: !!row?.viewer_checked_in,
     updated_at: row?.updated_at ?? new Date().toISOString(),
   }
+}
+
+/** How many people checked in during the trailing window.
+ *  "42 present" doesn't answer the question asked during a service — "are
+ *  people still arriving?" does. Backed by checkin_records_event_time_idx. */
+export async function getEventCheckInRate(
+  eventId: string,
+  windowMin = 5,
+): Promise<{ recent: number; windowMin: number } | null> {
+  const { data, error } = await supabase
+    .rpc('get_event_checkin_rate', { p_event_id: eventId, p_window_min: windowMin })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) return null
+  return { recent: Number(row.recent) || 0, windowMin: Number(row.window_min) || windowMin }
+}
+
+export interface ScopeRollupRow {
+  church_id: string
+  church_name: string | null
+  expected: number
+  attended: number
+}
+
+/** Per-sub-scope attendance, grouped in Postgres (migration 044).
+ *  Deliberately server-side: the old client-side breakdown needed the whole
+ *  eligible roster, which is exactly the download migration 037 removed. */
+export async function getEventScopeRollup(input: {
+  eventId: string
+  childLevel: string
+  allowedRoles?: string[] | null
+}): Promise<ScopeRollupRow[]> {
+  const { data, error } = await supabase.rpc('get_event_scope_rollup', {
+    p_event_id: input.eventId,
+    p_child_level: input.childLevel,
+    p_allowed_roles: input.allowedRoles ?? null,
+  })
+  if (error) throw error
+  return (data || []) as ScopeRollupRow[]
 }
 
 export async function getRiskyCheckInCount(eventId: string): Promise<number> {

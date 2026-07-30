@@ -12,6 +12,7 @@ import {
   listSpecialGroupMembers,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
+import { useChurchFocus } from '../../contexts/ChurchFocusContext'
 import { getMembersInScope, memberToProfileRow } from '../../utils/membersApi'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { PageShell, PageMain } from '../layout/PageShell'
@@ -103,6 +104,7 @@ function detectPresetId(options: ExportOptions): string {
 
 export default function ReportsList() {
   const user = getCurrentUser()
+  const { focusedScope } = useChurchFocus()
   const [events, setEvents] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -133,9 +135,20 @@ export default function ReportsList() {
     let cancelled = false
     ;(async () => {
       try {
-        const ownLevel = user?.level
-        const ownId = ownLevel ? (user as any)[ownLevel]?.id : null
-        const scopes = ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
+        // Scope from the ACTIVE HAT, falling back to the user's own level only
+        // when they are browsing "All roles".
+        //
+        // This used to read `user.level` and `user[level].id` directly — the
+        // JWT's single "level" field, which is one value for someone who may
+        // hold several roles. So Reports silently reported on whichever role the
+        // JWT happened to name, regardless of which one the user had selected.
+        const scopes = focusedScope?.level && focusedScope?.id
+          ? [{ level: focusedScope.level, id: focusedScope.id }]
+          : (() => {
+              const ownLevel = user?.level
+              const ownId = ownLevel ? (user as any)[ownLevel]?.id : null
+              return ownLevel && ownId ? [{ level: ownLevel, id: ownId }] : []
+            })()
         const evs = await listEventsForAdminScopes(scopes, { user })
         if (!cancelled) setEvents(evs)
       } catch (err: any) {
@@ -143,7 +156,7 @@ export default function ReportsList() {
       }
     })()
     return () => { cancelled = true }
-  }, [user?.userId, refreshKey])
+  }, [user?.userId, refreshKey, focusedScope?.level, focusedScope?.id])
 
   async function handleDownload(eventId: string, options: ExportOptions) {
     try {
@@ -416,7 +429,6 @@ export default function ReportsList() {
                   <div className='space-y-1 px-4 pb-4 text-xs text-muted-foreground'>
                     <p>Starts: {format(new Date(evt.starts_at), 'PP HH:mm')}</p>
                     <p>Ends: {format(new Date(evt.ends_at), 'PP HH:mm')}</p>
-                    <p>Grace: {evt.grace_period_min} min</p>
                     <p>Methods: {(evt.allowed_check_in_methods || []).join(', ')}</p>
                   </div>
                 )}
