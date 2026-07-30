@@ -28,7 +28,7 @@ export default function TopBar({ user, right = null }: Props) {
   return (
     <>
       <PullToRefreshIndicator />
-      <header className='sticky top-0 z-10 flex items-center gap-3 border-b-0 bg-card px-4 py-3 shadow-sm'>
+      <header className='sticky top-0 z-10 flex min-h-11 items-center gap-3 border-b-0 bg-card px-4 py-3 shadow-sm'>
         <NavDrawer user={user} />
         <Avatar pictureUrl={pictureUrl} initials={initials} />
         <div className='min-w-0 flex-1'>

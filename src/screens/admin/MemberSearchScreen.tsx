@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ScreenHeader from '../../components/ScreenHeader'
-import Spinner from '../../components/Spinner'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
+import { EmptyState } from '../../components/layout/EmptyState'
 import { Modal } from '../../components/ui/modal'
 import { Button } from '../../components/ui/button'
+import { SkeletonRows } from '../../components/ui/skeleton'
 import RequireAdmin from '../../components/admin/RequireAdmin'
 import { getCurrentUser } from '../../utils/auth'
+import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { useInfiniteScroll } from '../../hooks/useInfiniteScroll'
 import {
   searchMemberProfiles, listMemberProfilesPaginated,
   listSpecialGroups, addMembersToSpecialGroup,
@@ -28,66 +31,85 @@ function MemberSearch() {
   const isSuperAdmin = !!user?.isSuperAdmin
   const canSyncMembers = !!user?.level && user.level !== 'bacenta'
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const [query, setQuery]             = useState('')
-  const [page, setPage]               = useState(0)
-  const [members, setMembers]         = useState<any[]>([])
-  const [total, setTotal]             = useState(0)
+  const [query, setQuery] = useState(() => searchParams.get('q') || '')
+  const debouncedQuery = useDebouncedValue(query, 300)
+  const [page, setPage] = useState(0)
+  const [members, setMembers] = useState<any[]>([])
+  const [total, setTotal] = useState(0)
   const [searchResults, setSearchResults] = useState<any[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Add-to-group
-  const [groups, setGroups]           = useState<SpecialGroup[]>([])
-  const [addTarget, setAddTarget]     = useState<any | null>(null)
-  const [adding, setAdding]           = useState(false)
-  const [addError, setAddError]       = useState<string | null>(null)
+  const [groups, setGroups] = useState<SpecialGroup[]>([])
+  const [addTarget, setAddTarget] = useState<any | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
   const [addedGroupId, setAddedGroupId] = useState<string | null>(null)
 
-  const isSearchMode = query.trim().length >= 2
+  const isSearchMode = debouncedQuery.trim().length >= 2
+  const hasMore = !isSearchMode && members.length < total
 
-  // Reset page when switching search mode
-  const prevSearchMode = useRef(isSearchMode)
   useEffect(() => {
-    if (prevSearchMode.current && !isSearchMode) setPage(0)
-    prevSearchMode.current = isSearchMode
-  })
+    const next = query.trim()
+    const current = searchParams.get('q') || ''
+    if (next === current) return
+    if (next) setSearchParams({ q: next }, { replace: true })
+    else setSearchParams({}, { replace: true })
+  }, [query, searchParams, setSearchParams])
 
-  // Load paginated list
+  useEffect(() => {
+    if (!isSearchMode) {
+      setPage(0)
+      setMembers([])
+    }
+  }, [isSearchMode])
+
   useEffect(() => {
     if (isSearchMode) return
     let cancelled = false
-    setLoading(true)
+    if (page === 0) setLoading(true)
+    else setLoadingMore(true)
     setError(null)
     listMemberProfilesPaginated(page, PAGE_SIZE)
       .then(({ data, count }) => {
-        if (!cancelled) { setMembers(data); setTotal(count) }
+        if (cancelled) return
+        setMembers((prev) => (page === 0 ? data : [...prev, ...data]))
+        setTotal(count)
       })
       .catch((err) => { if (!cancelled) setError(err.message) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+      .finally(() => {
+        if (!cancelled) { setLoading(false); setLoadingMore(false) }
+      })
     return () => { cancelled = true }
   }, [page, isSearchMode])
 
-  // Search
   useEffect(() => {
     if (!isSearchMode) { setSearchResults([]); return }
     let cancelled = false
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const data = await searchMemberProfiles(query.trim(), 100)
-        if (!cancelled) setSearchResults(data)
-      } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Search failed')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }, 300)
-    return () => { cancelled = true; clearTimeout(timer) }
-  }, [query, isSearchMode])
+    setLoading(true)
+    setError(null)
+    searchMemberProfiles(debouncedQuery.trim(), 100)
+      .then((data) => { if (!cancelled) setSearchResults(data) })
+      .catch((err: any) => { if (!cancelled) setError(err.message || 'Search failed') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [debouncedQuery, isSearchMode])
 
-  // Load groups once for superAdmin
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || !hasMore) return
+    setPage((p) => p + 1)
+  }, [loading, loadingMore, hasMore])
+
+  const sentinelRef = useInfiniteScroll({
+    enabled: !isSearchMode,
+    hasMore,
+    loading: loading || loadingMore,
+    onLoadMore: loadMore,
+  })
+
   useEffect(() => {
     if (!isSuperAdmin) return
     listSpecialGroups().then(setGroups).catch(() => {})
@@ -114,7 +136,6 @@ function MemberSearch() {
   }
 
   const displayList = isSearchMode ? searchResults : members
-  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   return (
     <PageShell>
@@ -137,15 +158,35 @@ function MemberSearch() {
           className='input-field'
         />
 
-        {loading && <Spinner />}
+        {loading && page === 0 && <SkeletonRows count={6} />}
         {error && <p className='text-sm text-destructive'>{error}</p>}
 
         {!loading && isSearchMode && searchResults.length === 0 && (
-          <p className='mt-4 text-center text-sm text-muted-foreground'>No members found.</p>
+          <EmptyState
+            kind='no-match'
+            title='No members found'
+            description={`Nothing matched “${debouncedQuery.trim()}”. Try another name or email.`}
+            action={
+              <Button type='button' variant='secondary' size='sm' onClick={() => setQuery('')}>
+                Clear search
+              </Button>
+            }
+          />
         )}
 
         {!loading && !isSearchMode && members.length === 0 && (
-          <p className='mt-4 text-center text-sm text-muted-foreground'>No members yet.</p>
+          <EmptyState
+            kind='no-scope'
+            title='No members yet'
+            description='Synced leader profiles will appear here. Run Sync Members if this looks empty.'
+            action={
+              canSyncMembers ? (
+                <Button type='button' onClick={() => navigate('/admin/sync-members')}>
+                  Sync Members
+                </Button>
+              ) : undefined
+            }
+          />
         )}
 
         <div className='flex flex-col gap-2'>
@@ -159,37 +200,17 @@ function MemberSearch() {
           ))}
         </div>
 
-        {/* Pagination */}
-        {!isSearchMode && !loading && totalPages > 1 && (
-          <div className='flex items-center justify-between gap-3 pt-1'>
-            <button
-              type='button'
-              disabled={page === 0}
-              onClick={() => setPage((p) => p - 1)}
-              className='btn-pill btn-secondary px-4 py-2 text-sm disabled:opacity-40 cursor-pointer'
-            >
-              ← Prev
-            </button>
-            <span className='text-xs text-muted-foreground'>
-              {page + 1} / {totalPages}
-            </span>
-            <button
-              type='button'
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => p + 1)}
-              className='btn-pill btn-secondary px-4 py-2 text-sm disabled:opacity-40 cursor-pointer'
-            >
-              Next →
-            </button>
-          </div>
+        {!isSearchMode && <div ref={sentinelRef} className='h-4' aria-hidden />}
+        {loadingMore && (
+          <p className='text-center text-xs text-muted-foreground'>Loading more…</p>
         )}
-
-        {!isSearchMode && !loading && total > 0 && totalPages <= 1 && (
-          <p className='text-center text-xs text-muted-foreground'>{total} members</p>
+        {!isSearchMode && !loading && total > 0 && (
+          <p className='text-center text-xs text-muted-foreground'>
+            Showing {members.length} of {total}
+          </p>
         )}
       </PageMain>
 
-      {/* Add to group modal (superAdmin only) */}
       {isSuperAdmin && (
         <Modal
           open={!!addTarget}
@@ -258,7 +279,7 @@ function MemberRow({
     <div className='flex items-center gap-2 rounded-2xl border border-border bg-card overflow-hidden'>
       <Link
         to={`/admin/members/${m.id}`}
-        className='flex flex-1 items-center gap-3 p-3 no-underline min-w-0'
+        className='flex min-w-0 flex-1 items-center gap-3 p-3 no-underline'
       >
         {m.picture_url ? (
           <img src={m.picture_url} alt={name} className='h-11 w-11 shrink-0 rounded-full object-cover' />
@@ -282,7 +303,7 @@ function MemberRow({
         <button
           type='button'
           onClick={onAddToGroup}
-          className='shrink-0 mr-3 flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-primary/30 text-primary hover:bg-primary/10'
+          className='mr-3 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-primary/30 text-primary hover:bg-primary/10'
           title='Add to special group'
           aria-label='Add to special group'
         >

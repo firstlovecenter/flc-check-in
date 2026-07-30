@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { getCurrentUser, isTokenExpired, isTokenNearExpiry, refreshSession, logout, verifySuperPrivilegesBackground } from '../utils/auth'
+import {
+  getCurrentUser, isTokenExpired, isTokenNearExpiry,
+  refreshSession, refreshSessionDetailed, logout,
+  verifySuperPrivilegesBackground,
+} from '../utils/auth'
 import { syncGraphProfileForUserBackground } from '../utils/graphProfileSync'
 import LocationPermissionBanner from './LocationPermissionBanner'
 import Spinner from './Spinner'
+import { Button } from './ui/button'
 
-type State = 'checking' | 'ok' | 'redirect'
+type State = 'checking' | 'ok' | 'redirect' | 'retry'
 
 // FLC access tokens live ~1h. A leader who opens a check-in/dashboard screen
 // once and leaves it open for a whole service (routinely 1.5-2h+) never
@@ -27,20 +32,28 @@ export default function RequireAuth({ children }) {
 
   useEffect(() => {
     if (state !== 'checking') return
-    refreshSession()
-      .then((user) => {
-        if (user) {
-          syncGraphProfileForUserBackground(user, { force: true })
+    let cancelled = false
+    refreshSessionDetailed()
+      .then((result) => {
+        if (cancelled) return
+        if (result.status === 'ok') {
+          syncGraphProfileForUserBackground(result.user, { force: true })
           setState('ok')
-        } else {
+          return
+        }
+        // Real auth rejection → clear session. Network/5xx → keep tokens and
+        // offer retry (venue Wi‑Fi must not look like "logged out").
+        if (result.status === 'unauthorized') {
           logout()
           setState('redirect')
+        } else {
+          setState('retry')
         }
       })
       .catch(() => {
-        logout()
-        setState('redirect')
+        if (!cancelled) setState('retry')
       })
+    return () => { cancelled = true }
   }, [state])
 
   // Returning session (valid token): re-probe graph periodically for scope moves,
@@ -93,7 +106,20 @@ export default function RequireAuth({ children }) {
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />
-  if (state === 'checking') return <Spinner fullPage />
+  if (state === 'checking') return <Spinner fullPage message='Restoring your session…' />
+  if (state === 'retry') {
+    return (
+      <div className='mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center'>
+        <p className='m-0 text-base font-semibold text-foreground'>Can't reach the server</p>
+        <p className='m-0 text-sm text-muted-foreground'>
+          Your session is still here — check your connection and try again. You won't be signed out for a network blip.
+        </p>
+        <Button type='button' onClick={() => setState('checking')}>
+          Try again
+        </Button>
+      </div>
+    )
+  }
   if (!getCurrentUser()) return <Navigate to='/' replace />
   // LocationPreWarmer is intentionally NOT mounted here. Most authed routes
   // (home, history, reports, biometrics, profile, etc.) never need GPS, so a

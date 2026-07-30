@@ -614,3 +614,44 @@ export const SEARCH_MEMBERS_BY_NAME = gql`
     }
   }
 `
+
+/** Lean projection for typeaheads — no hierarchy chains. Enough for
+ *  isLeaderOrAdmin filtering + displaying a name/avatar. */
+export const SEARCH_MEMBERS_BY_NAME_LEAN = gql`
+  query SearchMembersByNameLean($q: String!, $qLower: String!, $limit: Int!) {
+    members(
+      where: {
+        OR: [
+          { firstName_CONTAINS: $q }
+          { firstName_CONTAINS: $qLower }
+          { lastName_CONTAINS: $q }
+          { lastName_CONTAINS: $qLower }
+          { firstName_STARTS_WITH: $q }
+          { firstName_STARTS_WITH: $qLower }
+          { lastName_STARTS_WITH: $q }
+          { lastName_STARTS_WITH: $qLower }
+        ]
+      }
+      limit: $limit
+    ) {
+      id
+      firstName
+      lastName
+      email
+      pictureUrl
+      leadsBacenta { id }
+      leadsGovernorship { id }
+      leadsCouncil { id }
+      leadsStream { id }
+      leadsCampus { id }
+      leadsOversight { id }
+      leadsDenomination { id }
+      isAdminForGovernorship { id }
+      isAdminForCouncil { id }
+      isAdminForStream { id }
+      isAdminForCampus { id }
+      isAdminForOversight { id }
+      isAdminForDenomination { id }
+    }
+  }
+`

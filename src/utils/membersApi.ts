@@ -27,9 +27,11 @@ import {
   GET_ALL_MEMBERS_PAGE,
   SEARCH_CHURCHES,
   SEARCH_MEMBERS_BY_NAME,
+  SEARCH_MEMBERS_BY_NAME_LEAN,
 } from './membersApi.queries.js'
-import { createBoundedFetch } from './network'
+import { createBoundedFetch, isAuthFailure, isNetworkError } from './network'
 import { apiOrigin } from './apiOrigin'
+import { toast } from '../components/Toast'
 
 function graphqlEndpoint() {
   // Always use the same-origin /flc-graphql path (or VITE_API_ORIGIN on native).
@@ -70,6 +72,53 @@ function client(): GraphQLClient {
     _clientToken = token
   }
   return _client
+}
+
+/**
+ * GraphQL request with portal-aligned auth/network policy:
+ *  - On auth failure: refresh once, rebuild client, retry. Real unauthorized
+ *    clears the session; network failure toasts once (stable id) and keeps tokens.
+ *  - On transport error: one quiet retry, then a single deduped toast.
+ *  - Never retries on saturation cascades beyond that single attempt.
+ */
+async function gqlRequest<T = any>(
+  document: string,
+  variables?: Record<string, unknown>,
+): Promise<T> {
+  const run = () => client().request<T>(document, variables as any)
+
+  try {
+    return await run()
+  } catch (err) {
+    if (isAuthFailure(err)) {
+      const { refreshSessionDetailed, logout } = await import('./auth')
+      const refreshed = await refreshSessionDetailed()
+      if (refreshed.status === 'ok') {
+        _client = null
+        _clientToken = null
+        return await run()
+      }
+      if (refreshed.status === 'unauthorized') {
+        logout()
+        toast('Your session expired. Please sign in again.', 'error', { id: 'auth:expired' })
+      } else {
+        toast("The network is struggling right now. Please try again.", 'error', { id: 'gql:network' })
+      }
+      throw err
+    }
+
+    if (isNetworkError(err)) {
+      try {
+        await new Promise((r) => setTimeout(r, 300 + Math.random() * 400))
+        return await run()
+      } catch (err2) {
+        toast("The network is struggling right now. Please try again.", 'error', { id: 'gql:network' })
+        throw err2
+      }
+    }
+
+    throw err
+  }
 }
 
 // ─── Module-level caches ──────────────────────────────────────────────────
@@ -313,18 +362,18 @@ function derivedRoles(m) {
 // ─── getMemberById ─────────────────────────────────────────────────────────
 // Returns the matching Member node, or null if not found.
 export async function getMemberById(id) {
-  const data = await client().request(GET_MEMBER_BY_ID, { id })
+  const data = await gqlRequest(GET_MEMBER_BY_ID, { id })
   return data?.members?.[0] || null
 }
 
 // ─── getMemberByEmail ──────────────────────────────────────────────────────
 export async function getMemberByEmail(email) {
-  const data = await client().request(GET_MEMBER_BY_EMAIL, { email })
+  const data = await gqlRequest(GET_MEMBER_BY_EMAIL, { email })
   return data?.members?.[0] || null
 }
 
 export async function getMemberByIdOrEmail(id: string, email: string) {
-  const data = await client().request<{ members: any[] }>(
+  const data = await gqlRequest<{ members: any[] }>(
     GET_MEMBER_BY_ID_OR_EMAIL,
     { id, email },
   )
@@ -418,7 +467,7 @@ export async function getMembersInScope({ level, churchId }): Promise<any[]> {
   const query = SCOPE_QUERIES[level]
   if (!query) throw new Error(`No scope query for level: ${level}`)
 
-  const p = client().request(query, { churchId })
+  const p = gqlRequest(query, { churchId })
     .then((data: any) => {
       const result: any[] = (data?.members || []).filter(isLeaderOrAdmin)
       scopeMembersCache.set(key, { data: result, ts: Date.now() })
@@ -453,7 +502,7 @@ export async function getAllLeadersAndAdmins(
   // Hard cap to avoid runaway loops if the server ignores offset.
   const MAX_PAGES = 200
   for (let page = 0; page < MAX_PAGES; page++) {
-    const data: any = await client().request(GET_ALL_MEMBERS_PAGE, {
+    const data: any = await gqlRequest(GET_ALL_MEMBERS_PAGE, {
       limit: PAGE_SIZE, offset,
     })
     const batch: any[] = data?.members || []
@@ -645,7 +694,7 @@ export async function getChurchAncestors({ level, id }) {
   const fieldName = level === 'campus' ? 'campuses' : `${level}s`
   let data
   try {
-    data = await client().request(query, { id })
+    data = await gqlRequest(query, { id })
   } catch (err) {
     // Graph unreachable — serve whatever chain church_hierarchy has cached
     // from previous sessions (partial chains are still useful; not cached
@@ -891,7 +940,7 @@ export function childScopeLevel(level) {
 export async function countChildScopes({ level, id }: { level: string; id: string }): Promise<number> {
   const query = CHILD_COUNT_QUERIES[level as keyof typeof CHILD_COUNT_QUERIES]
   if (!query) return 0
-  const data = await client().request<Record<string, { totalCount: number }>>(query, { id })
+  const data = await gqlRequest<Record<string, { totalCount: number }>>(query, { id })
   // The response has one *Connection field — grab whatever's there.
   const entry = Object.values(data || {})[0]
   return entry?.totalCount ?? 0
@@ -905,7 +954,7 @@ export async function countChildScopes({ level, id }: { level: string; id: strin
 export async function getChildChurches({ level, id }: { level: string; id: string }): Promise<{ id: string; name: string }[]> {
   const query = CHILD_LIST_QUERIES[level as keyof typeof CHILD_LIST_QUERIES]
   if (!query) return []
-  const data = await client().request<Record<string, { id: string; name: string }[]>>(query, { id })
+  const data = await gqlRequest<Record<string, { id: string; name: string }[]>>(query, { id })
   // Response has one array field — grab whatever's there.
   const list = Object.values(data || {})[0]
   const children = Array.isArray(list) ? list : []
@@ -940,7 +989,7 @@ export async function getChildScopeLeaders(
   if (hit && Date.now() - hit.ts < SCOPE_MEMBERS_TTL) return hit.data
   if (childLeadersPending.has(key)) return childLeadersPending.get(key)!
 
-  const p = client().request<{ members: any[] }>(entry.query, { id })
+  const p = gqlRequest<{ members: any[] }>(entry.query, { id })
     .then((data) => {
       const map = new Map<string, ChildScopeLeader>()
       for (const m of data?.members || []) {
@@ -988,7 +1037,7 @@ export async function searchChurches(q: string, limit = 8): Promise<ChurchSearch
   const query = (q || '').trim()
   if (query.length < 2) return []
   const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
-  const data = await client().request<Record<string, { id: string; name: string }[]>>(
+  const data = await gqlRequest<Record<string, { id: string; name: string }[]>>(
     SEARCH_CHURCHES, { q: titleCase, qLower: query.toLowerCase(), limit },
   )
   const buckets: Array<[ChurchSearchResult['level'], { id: string; name: string }[] | undefined]> = [
@@ -1029,16 +1078,48 @@ export function isLeaderOrAdmin(member) {
 
 // ─── searchMembersByName ────────────────────────────────────────────────────
 // Case-insensitive substring search across firstName and lastName.
-// Returns full MemberFields so callers can pass results to memberToProfileRow().
-export async function searchMembersByName(q: string, limit = 10): Promise<any[]> {
+//
+// Filter-keyed cache (q + limit + lean) so typing "Sam" → "Samuel" doesn't
+// re-hit the graph for every intermediate keystroke that lands on a cached
+// prefix result after debounce. Lean mode skips hierarchy chains — use it for
+// typeaheads; full MEMBER_FIELDS when the caller will memberToProfileRow().
+
+const SEARCH_TTL = 60_000
+const searchCache = new Map<string, { data: any[]; ts: number }>()
+const searchPending = new Map<string, Promise<any[]>>()
+
+export async function searchMembersByName(
+  q: string,
+  limit = 10,
+  opts?: { lean?: boolean },
+): Promise<any[]> {
   const query = (q || '').trim()
   if (query.length < 2) return []
+  const lean = opts?.lean !== false // default lean for typeahead safety
+  const cacheKey = `${lean ? 'lean' : 'full'}:${limit}:${query.toLowerCase()}`
+  const hit = searchCache.get(cacheKey)
+  if (hit && Date.now() - hit.ts < SEARCH_TTL) return hit.data
+  if (searchPending.has(cacheKey)) return searchPending.get(cacheKey)!
+
   // Schema only has case-sensitive _CONTAINS/_STARTS_WITH, so pass both the
   // original and a title-cased version to catch "samuel" → "Samuel" mismatches.
   const titleCase = query.charAt(0).toUpperCase() + query.slice(1)
-  const data = await client().request<{ members: any[] }>(
-    SEARCH_MEMBERS_BY_NAME,
-    { q: titleCase, qLower: query.toLowerCase(), limit },
-  )
-  return (data?.members || []).filter(isLeaderOrAdmin)
+  const document = lean ? SEARCH_MEMBERS_BY_NAME_LEAN : SEARCH_MEMBERS_BY_NAME
+  const p = gqlRequest<{ members: any[] }>(document, {
+    q: titleCase,
+    qLower: query.toLowerCase(),
+    limit,
+  })
+    .then((data) => {
+      const result = (data?.members || []).filter(isLeaderOrAdmin)
+      searchCache.set(cacheKey, { data: result, ts: Date.now() })
+      searchPending.delete(cacheKey)
+      return result
+    })
+    .catch((err) => {
+      searchPending.delete(cacheKey)
+      throw err
+    })
+  searchPending.set(cacheKey, p)
+  return p
 }

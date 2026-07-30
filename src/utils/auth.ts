@@ -7,7 +7,7 @@
 // Prod   → Vercel serverless function at api/flc-auth/[...path].js forwards it.
 // Native → VITE_API_ORIGIN (set by build:mobile) points at the deployed
 //          Vercel origin, because capacitor://localhost has no proxy.
-import { fetchWithTimeout } from './network'
+import { fetchWithTimeout, isAuthHttpStatus, isNetworkError } from './network'
 import { apiOrigin } from './apiOrigin'
 
 function leadChurchesUrl() {
@@ -291,12 +291,30 @@ export function getCurrentUser() {
 }
 
 // Attempt a silent token refresh using the stored refreshToken.
-// Returns the new enriched user on success, null on failure.
+//
+// Portal policy we mirror: clear the session only on a real auth rejection
+// (401/403). A dropped mobile connection mid-service must NOT look like
+// "logged out" — callers use refreshSessionDetailed() to tell the difference.
 const REFRESH_TIMEOUT_MS = 10_000
 
-export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | null> {
+export type SessionRefreshResult =
+  | { status: 'ok'; user: ReturnType<typeof enrichUser> }
+  | { status: 'unauthorized' }
+  | { status: 'unavailable' }
+
+// Concurrent callers (RequireAuth poll + gqlRequest 401 retry + splash) must
+// share one POST — otherwise a flaky network multiplies refresh traffic.
+let refreshInflight: Promise<SessionRefreshResult> | null = null
+
+export async function refreshSessionDetailed(): Promise<SessionRefreshResult> {
+  if (refreshInflight) return refreshInflight
+  refreshInflight = doRefreshSession().finally(() => { refreshInflight = null })
+  return refreshInflight
+}
+
+async function doRefreshSession(): Promise<SessionRefreshResult> {
   const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) return null
+  if (!refreshToken) return { status: 'unauthorized' }
   try {
     // A stalled request (dropped mobile connection mid-flight) must not hang
     // forever — RequireAuth's background poll gates on this call settling to
@@ -307,15 +325,19 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
     }, { timeoutMs: REFRESH_TIMEOUT_MS })
-    if (!res.ok) return null
+    if (!res.ok) {
+      return isAuthHttpStatus(res.status)
+        ? { status: 'unauthorized' }
+        : { status: 'unavailable' }
+    }
     const data = await res.json().catch(() => null)
-    if (!data?.tokens?.accessToken) return null
+    if (!data?.tokens?.accessToken) return { status: 'unauthorized' }
     localStorage.setItem('accessToken', data.tokens.accessToken)
     if (data.tokens.refreshToken) {
       localStorage.setItem('refreshToken', data.tokens.refreshToken)
     }
     const payload = decodeJWT(data.tokens.accessToken)
-    if (!payload) return null
+    if (!payload) return { status: 'unauthorized' }
     const { id, ...userFields } = data.user ?? {}
     // Persist church refs from the refresh response so getCurrentUser() can use them.
     persistChurchContext(userFields)
@@ -324,10 +346,17 @@ export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | 
     import('./graphProfileSync').then(({ syncGraphProfileForUserBackground }) => {
       syncGraphProfileForUserBackground(user, { force: true })
     })
-    return user
-  } catch {
-    return null
+    return { status: 'ok', user }
+  } catch (err) {
+    return isNetworkError(err) ? { status: 'unavailable' } : { status: 'unauthorized' }
   }
+}
+
+/** Convenience wrapper — null on any failure. Prefer refreshSessionDetailed
+ *  when deciding whether to log the user out. */
+export async function refreshSession(): Promise<ReturnType<typeof enrichUser> | null> {
+  const result = await refreshSessionDetailed()
+  return result.status === 'ok' ? result.user : null
 }
 
 // NOTE: there is no superadmins allowlist any more.

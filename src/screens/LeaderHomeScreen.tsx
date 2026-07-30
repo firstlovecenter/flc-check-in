@@ -436,6 +436,7 @@ export default function LeaderHomeScreen() {
           if (live.length === 0 && upcoming.length === 0 && past.length === 0) {
             return (
               <EmptyState
+                kind='no-scope'
                 // An empty home used to be a dead end. Now that the list is
                 // scoped to ONE role, "nothing here" is usually "nothing here
                 // for THIS role" — so name the role and point at the switcher
@@ -443,7 +444,7 @@ export default function LeaderHomeScreen() {
                 title={focusedHat ? `No events for ${focusedHat.name}` : 'No events yet'}
                 description={
                   isMultiRole && focusedHat
-                    ? `You're acting as ${focusedHat.roleLabel}. Tap the role chip above to switch to another of your roles.`
+                    ? `You're acting as ${focusedHat.roleLabel}. Switch Church in Focus above to see another role.`
                     : isAdmin
                       ? 'Create an event to start taking check-ins.'
                       : 'Check-ins will appear here once a leader opens an event.'

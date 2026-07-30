@@ -21,6 +21,7 @@ import { childScopeLevel } from '../../utils/membersApi'
 import { getCurrentUser } from '../../utils/auth'
 import { useEventEligibility } from '../../hooks/useEventEligibility'
 import { useRefreshSignal } from '../../hooks/useRefreshSignal'
+import { EmptyState } from '../layout/EmptyState'
 import { PaginationControls, useClientPagination } from '../PaginationControls'
 
 type Status = 'present' | 'absent' | 'all'
@@ -235,9 +236,24 @@ export default function EventMembers({ eventId }: { eventId: string }) {
 
         <div>
           {filteredRows.length === 0 && (
-            <p className='mt-4 text-center text-sm text-muted-foreground'>
-              {rows.length === 0 ? 'Nobody here yet.' : 'No matches.'}
-            </p>
+            <EmptyState
+              kind={rows.length === 0 ? 'all-done' : 'no-match'}
+              title={rows.length === 0 ? 'Nobody here yet' : 'No matches'}
+              description={
+                rows.length === 0
+                  ? status === 'present'
+                    ? 'No one has checked in yet.'
+                    : 'No eligible members in this view.'
+                  : 'Try a different name or clear the search.'
+              }
+              action={
+                search.trim() ? (
+                  <Button type='button' variant='secondary' size='sm' onClick={() => setSearch('')}>
+                    Clear search
+                  </Button>
+                ) : undefined
+              }
+            />
           )}
           <div className='flex flex-col gap-2'>
             {pageItems.map((b) => (

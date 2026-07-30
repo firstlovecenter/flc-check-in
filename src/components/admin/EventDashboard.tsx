@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import Spinner from '../Spinner'
 import { formatDistanceToNowStrict } from 'date-fns'
 import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
@@ -18,9 +17,11 @@ import {
 } from '../../utils/supabaseCheckins'
 import EventLiveHeader, { AttendanceBar } from './EventLiveHeader'
 import InlineScopeRollup from './InlineScopeRollup'
+import EventDashboardSkeleton from './EventDashboardSkeleton'
 import ChurchScopeSwitcher from '../ChurchScopeSwitcher'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
+import { EmptyState } from '../layout/EmptyState'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Alert } from '../ui/alert'
@@ -245,18 +246,25 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
   if (initialLoading || !event || !viewerCaps) {
-    return <Spinner fullPage message='Loading event details.' />
+    return (
+      <PageShell>
+        <EventDashboardSkeleton />
+      </PageShell>
+    )
   }
 
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
-      <CenterCard>
-        <h2 className='text-lg font-semibold mb-2 text-warning'>Not in your scope</h2>
-        <p className='text-sm text-muted-foreground'>
-          This event isn't part of your leadership or admin scope.
-        </p>
-        <Link to='/home' className='inline-block mt-4 text-sm underline text-primary'>← Home</Link>
-      </CenterCard>
+      <PageShell>
+        <PageMain>
+          <EmptyState
+            kind='no-scope'
+            title='Not in your scope'
+            description="This event isn't part of your leadership or admin scope. Switch Church in Focus, or go home."
+            action={<Link to='/home' className='text-sm font-semibold text-primary no-underline hover:underline'>← Home</Link>}
+          />
+        </PageMain>
+      </PageShell>
     )
   }
 
@@ -280,13 +288,13 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
       <PageMain className='flex flex-col gap-4'>
         <PullToRefreshIndicator />
 
-        {/* Inline nav row — not sticky, scrolls with content */}
-        <div className='flex items-center justify-between'>
+        {/* Sticky chrome — padded for notch via .page-shell header.sticky */}
+        <header className='sticky top-0 z-10 -mx-4 mb-1 flex items-center justify-between bg-background/95 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6'>
           {scopeChurchName ? (
             <button
               type='button'
               onClick={() => navigate(-1)}
-              className='flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-xs font-medium text-primary hover:underline'
+              className='flex min-h-11 cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-xs font-medium text-primary hover:underline'
             >
               <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
                 <path d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z' />
@@ -298,7 +306,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
           )}
           <div className='flex items-center gap-1.5'>
             {viewerCaps.canManage && !scopeChurchName && (
-              <Link to={`/events/${event.id}/edit`} aria-label='Edit event' className='icon-btn'>
+              <Link to={`/events/${event.id}/edit`} aria-label='Edit event' className='icon-btn min-h-11 min-w-11'>
                 <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
                   <path d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z' />
                 </svg>
@@ -307,7 +315,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <RefreshButton />
             <NavDrawer user={user} />
           </div>
-        </div>
+        </header>
         {/* Live state, loudest element on the screen. Replaces a small status
             badge plus a separate ENDED banner. */}
         <EventLiveHeader event={event} />

@@ -8,6 +8,7 @@ import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
+import { EmptyState } from '../layout/EmptyState'
 import { Card, CardContent } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -408,9 +409,24 @@ export default function FullReport({ eventId }: { eventId: string }) {
         ) : (
           <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
             {filteredRows.length === 0 && (
-              <p className='mt-2 text-center text-sm text-muted-foreground md:col-span-2'>
-                {tabRows.length === 0 ? 'Nothing here yet.' : 'No matches.'}
-              </p>
+              <div className='md:col-span-2'>
+                <EmptyState
+                  kind={tabRows.length === 0 ? 'all-done' : 'no-match'}
+                  title={tabRows.length === 0 ? 'Nothing here yet' : 'No matches'}
+                  description={
+                    tabRows.length === 0
+                      ? 'No members in this tab for the current scope.'
+                      : 'Try a different name or clear the search.'
+                  }
+                  action={
+                    search.trim() ? (
+                      <Button type='button' variant='secondary' size='sm' onClick={() => setSearch('')}>
+                        Clear search
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              </div>
             )}
             {namesPage.pageItems.map((b) => (
               <ListRow

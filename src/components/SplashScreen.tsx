@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { getCurrentUser, isTokenExpired, refreshSession, logout } from '../utils/auth'
+import { getCurrentUser, isTokenExpired, refreshSessionDetailed, logout } from '../utils/auth'
+import { Button } from './ui/button'
 
 // Splash floor durations. SessionStorage already short-circuits the splash
 // entirely on warm intra-tab visits (line 17), so these only matter for the
@@ -19,13 +20,14 @@ const MIN_DURATION_FAST_MS = 400
 const FAST_AUTH_THRESHOLD_MS = 200
 const SPLASH_FLAG = 'flc.splashShown'
 
-type State = 'pending' | 'skip' | 'authed' | 'guest'
+type State = 'pending' | 'skip' | 'authed' | 'guest' | 'retry'
 
 export default function SplashScreen({ children }: { children: React.ReactNode }) {
   // If we've already played the splash this session, render children directly.
   const [done, setDone] = useState<State>(() =>
     sessionStorage.getItem(SPLASH_FLAG) === '1' ? 'skip' : 'pending'
   )
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (done !== 'pending') return
@@ -33,13 +35,15 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
     let cancelled = false
     const start = Date.now()
 
-    const authCheck = (async (): Promise<'authed' | 'guest'> => {
+    const authCheck = (async (): Promise<'authed' | 'guest' | 'retry'> => {
       const accessToken = localStorage.getItem('accessToken')
       if (!accessToken) return 'guest'
       if (!isTokenExpired(accessToken)) return getCurrentUser() ? 'authed' : 'guest'
-      // Token expired — try refresh
-      const user = await refreshSession()
-      if (user) return 'authed'
+      // Token expired — try refresh. Only clear the session on a real auth
+      // rejection; a network blip keeps tokens so Retry can succeed.
+      const result = await refreshSessionDetailed()
+      if (result.status === 'ok') return 'authed'
+      if (result.status === 'unavailable') return 'retry'
       logout()
       return 'guest'
     })()
@@ -56,17 +60,34 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
       const remaining = Math.max(0, floor - elapsed)
       setTimeout(() => {
         if (cancelled) return
-        sessionStorage.setItem(SPLASH_FLAG, '1')
+        if (result !== 'retry') sessionStorage.setItem(SPLASH_FLAG, '1')
         setDone(result)
       }, remaining)
     })
 
     return () => { cancelled = true }
-  }, [done])
+  }, [done, attempt])
 
   if (done === 'skip')   return <>{children}</>
   if (done === 'authed') return <Navigate to='/home' replace />
   if (done === 'guest')  return <>{children}</>
+  if (done === 'retry') {
+    return (
+      <div className='fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-brand px-6 text-center'>
+        <p className='m-0 text-lg font-semibold text-brand-foreground'>Can't reach the server</p>
+        <p className='m-0 max-w-xs text-sm text-brand-foreground/80'>
+          Check your connection. Your session is still saved — you won't need to sign in again.
+        </p>
+        <Button
+          type='button'
+          variant='secondary'
+          onClick={() => { setDone('pending'); setAttempt((n) => n + 1) }}
+        >
+          Try again
+        </Button>
+      </div>
+    )
+  }
 
   // Mirrors the FL Admin Portal splash (solid brand surface, white Synago
   // mark, soft pulse) — and matches the native launch splash generated from
