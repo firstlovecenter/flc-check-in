@@ -1,0 +1,1227 @@
+{
+  "language": {
+    "menuLabel": "Idioma",
+    "ariaLabel": "Cambiar idioma",
+    "changedToast": "Idioma cambiado a {{language}}"
+  },
+  "brand": {
+    "name": "Hineni",
+    "tagline": "Aquí estoy, ahora",
+    "checkIn": "FLC Check-In"
+  },
+  "nav": {
+    "home": "Inicio",
+    "events": "Eventos",
+    "create": "Crear",
+    "members": "Miembros",
+    "profile": "Perfil",
+    "more": "Más",
+    "moreAria": "Más opciones de navegación",
+    "closeMore": "Cerrar menú Más",
+    "closeMenu": "Cerrar menú",
+    "primaryNav": "Navegación principal",
+    "hineniHome": "Inicio de Hineni",
+    "logOut": "Cerrar sesión",
+    "navigate": "Navegar",
+    "accountAppearance": "Cuenta y apariencia",
+    "displayEventQr": "Mostrar QR del evento",
+    "reports": "Informes",
+    "specialGroups": "Grupos especiales",
+    "myProfile": "Mi perfil",
+    "theme": "Tema",
+    "searchMembers": "Buscar miembros…",
+    "searchMembersAria": "Buscar miembros",
+    "churchInFocus": "Iglesia en foco",
+    "selectChurchInFocus": "Iglesia en foco",
+    "allRolesViewOnly": "Todos los roles · solo lectura",
+    "allRoles": "Todos los roles",
+    "signedIn": "Sesión iniciada",
+    "admin": "Admin",
+    "leader": "Líder"
+  },
+  "auth": {
+    "signIn": {
+      "title": "Iniciar sesión",
+      "subtitle": "Usa las mismas credenciales que la app Synago.",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "tu@ejemplo.com",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Introduce tu contraseña",
+      "showPassword": "Mostrar contraseña",
+      "hidePassword": "Ocultar contraseña",
+      "forgotPassword": "¿Olvidaste tu contraseña?",
+      "submit": "Iniciar sesión",
+      "submitting": "Iniciando sesión…",
+      "genericError": "Error al iniciar sesión. Revisa tus credenciales.",
+      "leadersOnly": "Esta app es solo para líderes y administradores.",
+      "resetSuccess": "Contraseña actualizada — inicia sesión con tu nueva contraseña.",
+      "viewMeetings": "Ver reuniones en este lugar"
+    },
+    "session": {
+      "restoring": "Restaurando tu sesión…",
+      "cantReach": "No se puede alcanzar el servidor",
+      "cantReachBody": "Tu sesión sigue aquí — revisa tu conexión e inténtalo de nuevo. Un fallo de red no te cierra la sesión.",
+      "cantReachSplashBody": "Revisa tu conexión. Tu sesión está guardada — no necesitarás iniciar sesión de nuevo.",
+      "tryAgain": "Intentar de nuevo",
+      "expired": "Tu sesión expiró. Vuelve a iniciar sesión."
+    },
+    "forgotPassword": {
+      "backToSignIn": "Volver al inicio de sesión",
+      "title": "Restablecer contraseña",
+      "subtitle": "Introduce tu correo y te enviaremos instrucciones.",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "tu@ejemplo.com",
+      "submit": "Enviar instrucciones",
+      "submitting": "Enviando…",
+      "sending": "Enviando…",
+      "sent": "Instrucciones enviadas. Revisa tu correo.",
+      "sentSuccess": "Instrucciones enviadas. Revisa tu correo.",
+      "genericError": "Algo salió mal. Inténtalo de nuevo.",
+      "needHelp": "¿Necesitas ayuda? Contacta a tu administrador"
+    },
+    "resetPassword": {
+      "backToSignIn": "Volver al inicio de sesión",
+      "invalidTitle": "Enlace inválido",
+      "invalidBody": "Este enlace falta o es inválido. Solicita uno nuevo.",
+      "invalidLinkTitle": "Enlace inválido",
+      "invalidLinkBody": "Este enlace falta o es inválido. Solicita uno nuevo.",
+      "requestNewLink": "Solicitar nuevo enlace",
+      "title": "Elige una nueva contraseña",
+      "subtitle": "Introduce una nueva contraseña para tu cuenta.",
+      "newPasswordLabel": "Nueva contraseña",
+      "newPasswordPlaceholder": "Mín. 8 caracteres",
+      "passwordPlaceholder": "Mín. 8 caracteres",
+      "confirmPasswordLabel": "Confirmar contraseña",
+      "confirmPasswordPlaceholder": "Repite tu contraseña",
+      "confirmPlaceholder": "Repite tu contraseña",
+      "showPassword": "Mostrar contraseña",
+      "hidePassword": "Ocultar contraseña",
+      "submit": "Establecer nueva contraseña",
+      "submitting": "Guardando…",
+      "saving": "Guardando…",
+      "mismatch": "Las contraseñas no coinciden.",
+      "passwordMismatch": "Las contraseñas no coinciden.",
+      "tooShort": "La contraseña debe tener al menos 8 caracteres.",
+      "passwordTooShort": "La contraseña debe tener al menos 8 caracteres.",
+      "failed": "Error al restablecer. El enlace puede haber expirado.",
+      "resetFailed": "Error al restablecer. El enlace puede haber expirado."
+    }
+  },
+  "common": {
+    "backOnline": "De nuevo en línea",
+    "offlineBanner": "Estás sin conexión — los datos pueden estar desactualizados y los check-ins no se enviarán.",
+    "networkStruggling": "La red está fallando ahora. Actualiza o inténtalo en un momento.",
+    "somethingWrong": "Algo salió mal. Inténtalo de nuevo.",
+    "loading": "Cargando…",
+    "retry": "Intentar de nuevo",
+    "clearSearch": "Borrar búsqueda",
+    "hi": "Hola {{name}}",
+    "welcome": "Bienvenido",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Guardado.",
+    "delete": "Eliminar",
+    "remove": "Quitar",
+    "edit": "Editar",
+    "clear": "Borrar",
+    "close": "Cerrar",
+    "back": "Atrás",
+    "continue": "Continuar",
+    "export": "Exportar",
+    "exporting": "Exportando…",
+    "searching": "Buscando…",
+    "noMatches": "Sin coincidencias.",
+    "unknown": "Desconocido",
+    "unnamed": "Sin nombre",
+    "all": "Todos",
+    "yes": "Sí",
+    "no": "No",
+    "manual": "Manual",
+    "minutes": "minutos",
+    "person": "persona",
+    "people": "personas",
+    "refresh": "Actualizar",
+    "pullToRefresh": "Desliza para actualizar",
+    "loadingMore": "Cargando más…",
+    "dismiss": "Cerrar",
+    "logout": "Cerrar sesión",
+    "backToHome": "Volver al inicio",
+    "dashboard": "Panel",
+    "backToDashboard": "Volver al panel",
+    "actionFailed": "Acción fallida",
+    "present": "Presente",
+    "absent": "Ausente",
+    "status": {
+      "ACTIVE": "Activo",
+      "PAUSED": "En pausa",
+      "ENDED": "Finalizado"
+    },
+    "method": {
+      "QR": "QR",
+      "PIN": "PIN",
+      "MANUAL": "MANUAL"
+    },
+    "pagination": {
+      "showing": "Mostrando {{from}}–{{to}} de {{total}} {{noun}}",
+      "perPage": "· {{size}}/página",
+      "prev": "← Ant.",
+      "next": "Sig. →",
+      "pageOf": "Página {{current}} / {{total}}",
+      "noun": {
+        "items": "elementos",
+        "events": "eventos",
+        "names": "nombres",
+        "checkIns": "check-ins"
+      }
+    },
+    "locationBlocked": {
+      "title": "La ubicación está bloqueada.",
+      "body": "Esta app necesita tu ubicación para verificar check-ins.",
+      "hintIos": "iOS: Ajustes → Privacidad y seguridad → Servicios de ubicación → Sitios Safari → Permitir.",
+      "hintAndroid": "Android: Toca el candado en la barra de dirección → Permisos → Ubicación → Permitir.",
+      "hintDesktop": "Haz clic en el candado junto a la barra de dirección y vuelve a habilitar la ubicación para este sitio."
+    },
+    "next": "Sig. →",
+    "pageOf": "Página {{current}} / {{total}}",
+    "perPage": "· {{size}}/página",
+    "prev": "← Ant.",
+    "showingRange": "Mostrando {{from}}–{{to}} de {{total}} {{noun}}",
+    "signIn": "Iniciar sesión",
+    "themeAria": "Tema: {{preference}}. Toca para cambiar.",
+    "saveChanges": "Guardar cambios"
+  },
+  "home": {
+    "createEvent": "Crear evento",
+    "noEventsTitle": "Aún no hay eventos",
+    "noEventsFor": "No hay eventos para {{name}}",
+    "noEventsMultiRole": "Estás actuando como {{role}}. Cambia la Iglesia en foco arriba para ver otro rol.",
+    "noEventsAdmin": "Crea un evento para empezar a tomar check-ins.",
+    "noEventsLeader": "Los check-ins aparecerán aquí cuando un líder abra un evento.",
+    "liveNow": "En vivo",
+    "viewPastEvents": "Ver eventos pasados →",
+    "checkInOpenNow": "El check-in está abierto",
+    "checkInNow": "Check-in ahora",
+    "upcoming": "Próximos",
+    "recent": "Recientes",
+    "details": "Detalles",
+    "closes": "Cierra {{date}}",
+    "noAssignedScope": "Sin alcance de iglesia asignado",
+    "status": {
+      "live": "En vivo",
+      "ended": "Finalizado",
+      "upcoming": "Próximo"
+    },
+    "dateTbd": "Por definir",
+    "checkInOpen": "El check-in está abierto",
+    "statusEnded": "Finalizado",
+    "statusLive": "En vivo",
+    "tbd": "Desconocido",
+    "statusUpcoming": "Próximos"
+  },
+  "checkin": {
+    "loadingEvent": "Cargando detalles del evento.",
+    "notInScopeTitle": "Fuera de tu alcance",
+    "notInScopeBody": "Este evento no forma parte de tu liderazgo o administración. Cambia la Iglesia en foco, o vuelve al inicio.",
+    "homeLink": "← Inicio",
+    "title": "Check-in",
+    "backHome": "Volver al inicio",
+    "checkInNow": "Check-in ahora",
+    "alreadyCheckedIn": "Ya hiciste check-in",
+    "cannotWithDevice": "No se puede hacer check-in con este dispositivo",
+    "eventPausedTitle": "Evento en pausa",
+    "eventPausedBody": "{{name}} está en pausa.",
+    "eventEndedTitle": "Evento finalizado",
+    "eventEndedBody": "{{name}} ha finalizado.",
+    "notOpenYetTitle": "Aún no abierto",
+    "notOpenYetBody": "El check-in para {{name}} abre a las {{time}} (1 hora antes del inicio).",
+    "confirming": "Confirmando…",
+    "recording": "Registrando tu check-in",
+    "successTitle": "Ya hiciste check-in",
+    "checkedInAt": "Check-in a las {{time}}",
+    "submitting": "Enviando…",
+    "offline": "Estás sin conexión. Reconéctate e inténtalo de nuevo.",
+    "qrHint": "Apunta tu cámara al código QR mostrado en el lugar.",
+    "pinHint": "Introduce el PIN mostrado arriba.",
+    "pinLabel": "PIN de 6 dígitos",
+    "pinPlaceholder": "••••••",
+    "pinSubmit": "Check-in con PIN",
+    "eventPin": "PIN",
+    "rotatesIn": "· rota en {{secs}}s",
+    "cameraError": "Error de cámara: {{error}}",
+    "endsIn": "Termina en {{duration}}",
+    "eventNotFound": "Evento no encontrado.",
+    "wrongHat": {
+      "title": "No visible con este rol",
+      "belongsTo": "Este evento pertenece a {{name}}.",
+      "belongsToOther": "Este evento pertenece a otra parte de la iglesia.",
+      "actingAs": "Estás actuando como {{role}}.",
+      "switchRole": "Cambia a un rol que lo cubra:",
+      "askAdmin": "Si deberías tener acceso, pide a tu administrador que revise tu rol.",
+      "belongsElsewhere": "Este evento pertenece a otra parte de la iglesia."
+    },
+    "geofence": {
+      "acquiringGps": "Obteniendo GPS…",
+      "locationRequired": "Ubicación requerida",
+      "couldNotGet": "No pudimos obtener tu ubicación: {{error}}",
+      "enablePermissions": "Habilita los permisos de ubicación en tu navegador y recarga.",
+      "notAtVenue": "No estás en el lugar",
+      "outsideMeters": "Estás a unos {{distance}} m fuera del área de check-in.",
+      "outsideGeneric": "Estás fuera del área de check-in.",
+      "moveCloser": "Acércate y recarga.",
+      "locationError": "No pudimos obtener tu ubicación: {{error}}",
+      "outsideArea": "Estás fuera del área de check-in.",
+      "enableLocation": "Activa la ubicación en tu navegador y vuelve a cargar.",
+      "outsideDistance": "Estás a unos {{distance}} m fuera del área de check-in."
+    },
+    "errors": {
+      "outsideFence": "Estás fuera del área del lugar.",
+      "invalidQr": "Código QR inválido. Inténtalo de nuevo.",
+      "qrExpired": "QR expirado. Espera la siguiente rotación.",
+      "missingQr": "No se detectó código QR.",
+      "missingPin": "Introduce el PIN de 6 dígitos.",
+      "wrongPin": "PIN incorrecto. {{count}} intentos restantes.",
+      "lockedOut": "Demasiados intentos. Inténtalo después de {{time}}.",
+      "pinNotSet": "No hay PIN configurado para este evento.",
+      "eventPaused": "Este evento está en pausa.",
+      "eventEnded": "Este evento ha finalizado.",
+      "notStarted": "El check-in aún no ha abierto.",
+      "opensAt": "El check-in abre a las {{time}}.",
+      "notEligible": "No estás en la lista elegible para este evento.",
+      "methodNotAllowed": "Este método de check-in no está habilitado.",
+      "eventNotActive": "El evento está {{status}}.",
+      "eventNotFound": "Evento no encontrado.",
+      "deviceUsedBy": "Dispositivo ya usado por {{name}}.",
+      "deviceUsedGeneric": "Este dispositivo ya fue usado por otro líder para este evento.",
+      "alreadyCheckedIn": "Ya hiciste check-in.",
+      "unsupportedMethod": "Método de check-in no soportado.",
+      "serverError": "Error del servidor. Inténtalo de nuevo.",
+      "failed": "Check-in fallido."
+    },
+    "manual": {
+      "title": "Check-in manual",
+      "reasonLabel": "Motivo (opcional)",
+      "reasonPlaceholder": "ej. Teléfono no funciona, llegó tarde…",
+      "outsideVenueAdmin": "Estás fuera del lugar — los admins deben estar en sitio para check-in manual.",
+      "checkingIn": "Haciendo check-in…",
+      "submit": "Check-in",
+      "failed": "Check-in manual fallido",
+      "cancel": "Cancelar",
+      "outsideVenue": "Estás fuera del área del lugar."
+    },
+    "qrDisplay": {
+      "title": "Eventos activos",
+      "scanToCheckIn": "Escanea para check-in",
+      "signIn": "Iniciar sesión",
+      "allEvents": "← Todos los eventos",
+      "noActiveEvents": "No hay eventos activos ahora.",
+      "selectEvent": "Seleccionar un evento",
+      "searchPlaceholder": "Buscar eventos, lugar, iglesia…",
+      "searchAria": "Buscar eventos activos",
+      "clear": "Borrar",
+      "noMatches": "Sin eventos coincidentes.",
+      "qrDisabled": "El check-in QR no está habilitado para este evento",
+      "usePin": "Usa el PIN abajo para check-in.",
+      "useApp": "Haz check-in por la app."
+    },
+    "cannotCheckInDevice": "No se puede hacer check-in con este dispositivo",
+    "checkedIn": "Ya hiciste check-in",
+    "eventCard": {
+      "endsIn": "Termina en {{duration}}"
+    },
+    "eventEnded": "Evento finalizado",
+    "eventPaused": "Evento en pausa",
+    "location": {
+      "blocked": "La ubicación está bloqueada.",
+      "needsLocation": "Esta app necesita tu ubicación para verificar check-ins."
+    },
+    "notOpenYet": "Aún no abierto",
+    "offlineSubmit": "Estás sin conexión. Reconéctate e inténtalo de nuevo.",
+    "pin": {
+      "label": "PIN de 6 dígitos",
+      "submit": "Check-in con PIN"
+    },
+    "qr": {
+      "cameraError": "Error de cámara: {{error}}"
+    },
+    "reasons": {
+      "alreadyCheckedIn": "Ya hiciste check-in.",
+      "deviceUsedBy": "Dispositivo ya usado por {{name}}.",
+      "eventEnded": "Este evento ha finalizado.",
+      "eventNotActive": "El evento está {{status}}.",
+      "eventPaused": "Este evento está en pausa.",
+      "failed": "Check-in fallido.",
+      "invalidQrToken": "Código QR inválido. Inténtalo de nuevo.",
+      "lockedOut": "Demasiados intentos. Inténtalo después de {{time}}.",
+      "methodNotAllowed": "Este método de check-in no está habilitado.",
+      "missingPin": "Introduce el PIN de 6 dígitos.",
+      "missingQrToken": "No se detectó código QR.",
+      "notEligible": "No estás en la lista elegible para este evento.",
+      "notStartedAt": "El check-in abre a las {{time}}.",
+      "outsideFence": "Estás fuera del área del lugar.",
+      "pinNotSet": "No hay PIN configurado para este evento.",
+      "qrExpired": "QR expirado. Espera la siguiente rotación.",
+      "serverError": "Error del servidor. Inténtalo de nuevo.",
+      "unsupportedMethod": "Método de check-in no soportado.",
+      "wrongPin": "PIN incorrecto. {{count}} intentos restantes.",
+      "deviceAlreadyUsed": "Este dispositivo ya fue usado por otro líder para este evento.",
+      "notStarted": "El check-in aún no ha abierto."
+    },
+    "recordingCheckIn": "Registrando tu check-in",
+    "rotatingPin": {
+      "label": "PIN",
+      "rotatesIn": "· rota en {{seconds}}s"
+    }
+  },
+  "empty": {
+    "nobodyYet": "Nadie aquí todavía",
+    "noMatches": "Sin coincidencias",
+    "noOneCheckedIn": "Nadie ha hecho check-in todavía.",
+    "noEligible": "No hay miembros elegibles en esta vista.",
+    "tryDifferentName": "Prueba otro nombre o borra la búsqueda.",
+    "noMembersFound": "No se encontraron miembros",
+    "noMembersYet": "Aún no hay miembros",
+    "nothingMatched": "Nada coincidió con \"{{query}}\". Prueba otro nombre o correo.",
+    "syncMembersHint": "Los perfiles sincronizados aparecerán aquí. Ejecuta Sync Members si la lista está vacía.",
+    "syncMembers": "Sync Members",
+    "nothingHereYet": "Nada aquí todavía",
+    "noMembersInTab": "No hay miembros en esta pestaña para el alcance actual.",
+    "noGroupsYet": "Sin grupos.",
+    "noSpecialGroups": "Aún no hay grupos especiales."
+  },
+  "theme": {
+    "system": "Sistema",
+    "light": "Claro",
+    "dark": "Oscuro",
+    "cycleAria": "Tema: {{preference}}. Toca para cambiar."
+  },
+  "greetings": {
+    "morning": [
+      {
+        "line1": "Buenos días, {{name}}.",
+        "line2": "Los registros están abiertos."
+      },
+      {
+        "line1": "Levántate y lidera, {{name}}.",
+        "line2": "Los líderes se reúnen."
+      },
+      {
+        "line1": "Amanecer, {{name}}.",
+        "line2": "Manos firmes. Trabajo santo."
+      },
+      {
+        "line1": "Madrugada, {{name}}.",
+        "line2": "Los fieles llegan primero."
+      },
+      {
+        "line1": "Mañana, {{name}}.",
+        "line2": "Otro día de servicio fiel."
+      },
+      {
+        "line1": "Arriba y contando, {{name}}.",
+        "line2": "Los líderes se reúnen."
+      }
+    ],
+    "midday": [
+      {
+        "line1": "Buenas tardes, {{name}}.",
+        "line2": "Sigue el conteo."
+      },
+      {
+        "line1": "Mediodía, {{name}}.",
+        "line2": "La sesión está en vivo."
+      },
+      {
+        "line1": "Seguimos, {{name}}.",
+        "line2": "Los líderes siguen llegando."
+      },
+      {
+        "line1": "Adelante, {{name}}.",
+        "line2": "Cada líder contado importa."
+      },
+      {
+        "line1": "A mitad de camino, {{name}}.",
+        "line2": "Fiel también por la tarde."
+      },
+      {
+        "line1": "Tarde, {{name}}.",
+        "line2": "Los registros siguen abiertos."
+      }
+    ],
+    "evening": [
+      {
+        "line1": "Buenas noches, {{name}}.",
+        "line2": "Los líderes se reúnen."
+      },
+      {
+        "line1": "Servicio vespertino, {{name}}.",
+        "line2": "Márcalos presentes."
+      },
+      {
+        "line1": "La vigilia de la tarde, {{name}}.",
+        "line2": "Fiel hasta el final."
+      },
+      {
+        "line1": "Lista al anochecer, {{name}}.",
+        "line2": "Cada líder contabilizado."
+      },
+      {
+        "line1": "Tarde-noche, {{name}}.",
+        "line2": "El trabajo del día continúa."
+      },
+      {
+        "line1": "Último conteo, {{name}}.",
+        "line2": "Haz que valga la pena."
+      }
+    ],
+    "night": [
+      {
+        "line1": "Horas tranquilas, {{name}}.",
+        "line2": "Manos firmes. Trabajo santo."
+      },
+      {
+        "line1": "Sesión tardía, {{name}}.",
+        "line2": "Los dedicados están aquí."
+      },
+      {
+        "line1": "Vigilia nocturna, {{name}}.",
+        "line2": "Seguimos contando. Seguimos fieles."
+      },
+      {
+        "line1": "Aún despierto, {{name}}.",
+        "line2": "Fidelidad de madrugada."
+      },
+      {
+        "line1": "Las estrellas salen, {{name}}.",
+        "line2": "Tus líderes también."
+      },
+      {
+        "line1": "La última hora, {{name}}.",
+        "line2": "Márcalos presentes."
+      }
+    ],
+    "admin": [
+      {
+        "line1": "Qué bueno verte, {{name}}.",
+        "line2": "Los registros son tuyos."
+      },
+      {
+        "line1": "Supervisión firme, {{name}}.",
+        "line2": "Cada líder tiene un nombre."
+      },
+      {
+        "line1": "Registra bien, {{name}}.",
+        "line2": "Lidera bien."
+      },
+      {
+        "line1": "Los números importan, {{name}}.",
+        "line2": "Mantenlos exactos."
+      },
+      {
+        "line1": "Tus líderes te necesitan, {{name}}.",
+        "line2": "Cada check-in cuenta."
+      },
+      {
+        "line1": "Registros fieles, {{name}}.",
+        "line2": "Mejores decisiones mañana."
+      },
+      {
+        "line1": "Precisión, {{name}}.",
+        "line2": "En asistencia. En ministerio."
+      },
+      {
+        "line1": "Detrás de cada check-in, {{name}}.",
+        "line2": "Un líder en quien inviertes."
+      },
+      {
+        "line1": "Equipo fuerte, {{name}}.",
+        "line2": "Rastreas quién se presenta."
+      },
+      {
+        "line1": "Responsabilidad, {{name}}.",
+        "line2": "Empieza por quién se presenta."
+      },
+      {
+        "line1": "El registro, {{name}}.",
+        "line2": "Tu primera boleta de notas."
+      },
+      {
+        "line1": "Excelencia, {{name}}.",
+        "line2": "En check-in y liderazgo."
+      },
+      {
+        "line1": "Tu supervisión, {{name}}.",
+        "line2": "Marca toda la diferencia."
+      },
+      {
+        "line1": "Un evento bien organizado, {{name}}.",
+        "line2": "Empieza contigo."
+      },
+      {
+        "line1": "Cada líder ausente, {{name}}.",
+        "line2": "Tiene un nombre. Conócelo."
+      },
+      {
+        "line1": "Buenos registros, {{name}}.",
+        "line2": "Mejores decisiones mañana."
+      },
+      {
+        "line1": "Fidelidad, {{name}}.",
+        "line2": "Es medible. Tú la mides."
+      },
+      {
+        "line1": "La salud del equipo, {{name}}.",
+        "line2": "Se ve en la asistencia."
+      },
+      {
+        "line1": "Sosteniendo la línea, {{name}}.",
+        "line2": "Un check-in a la vez."
+      },
+      {
+        "line1": "Todos miran el registro, {{name}}.",
+        "line2": "Haz que cuente."
+      }
+    ],
+    "leader": [
+      {
+        "line1": "Presente y contado, {{name}}.",
+        "line2": "Tu fidelidad queda registrada."
+      },
+      {
+        "line1": "Te presentaste, {{name}}.",
+        "line2": "Eso ya es liderazgo."
+      },
+      {
+        "line1": "A tiempo, {{name}}.",
+        "line2": "Es una forma de liderar."
+      },
+      {
+        "line1": "Aquí estás, {{name}}.",
+        "line2": "Contado. Presente. Valorado."
+      },
+      {
+        "line1": "Qué bueno verte, {{name}}.",
+        "line2": "Tu presencia habla primero."
+      },
+      {
+        "line1": "Constante, {{name}}.",
+        "line2": "Su propia forma de excelencia."
+      },
+      {
+        "line1": "Preséntate, {{name}}.",
+        "line2": "Lidera con fuerza."
+      },
+      {
+        "line1": "Fiel, {{name}}.",
+        "line2": "En lo pequeño — como presentarse."
+      },
+      {
+        "line1": "En la sala, {{name}}.",
+        "line2": "Donde más importa."
+      },
+      {
+        "line1": "Aquí, {{name}}.",
+        "line2": "Presente y listo para servir."
+      },
+      {
+        "line1": "Liderazgo, {{name}}.",
+        "line2": "Empieza al llegar."
+      },
+      {
+        "line1": "Un líder presente, {{name}}.",
+        "line2": "Es un líder comprometido."
+      },
+      {
+        "line1": "Cada check-in, {{name}}.",
+        "line2": "Es un pequeño acto de compromiso."
+      },
+      {
+        "line1": "Tu asistencia, {{name}}.",
+        "line2": "Habla antes que tú."
+      },
+      {
+        "line1": "Estar aquí, {{name}}.",
+        "line2": "Importa más de lo que crees."
+      },
+      {
+        "line1": "Los mejores líderes, {{name}}.",
+        "line2": "Siempre están en la sala."
+      },
+      {
+        "line1": "Contado, {{name}}.",
+        "line2": "Presente. Valorado."
+      },
+      {
+        "line1": "Estás aquí, {{name}}.",
+        "line2": "Eso ya es algo."
+      },
+      {
+        "line1": "Presente, {{name}}.",
+        "line2": "Y contabilizado."
+      },
+      {
+        "line1": "Sigues presentándote, {{name}}.",
+        "line2": "Eso es todo el juego."
+      }
+    ]
+  },
+  "profile": {
+    "title": "Mi perfil",
+    "backHome": "Inicio",
+    "loadError": "No se pudo cargar el perfil.",
+    "cachedOnly": "— mostrando solo información en caché. {{error}}",
+    "contact": "Contacto",
+    "phone": "Teléfono",
+    "whatsapp": "WhatsApp",
+    "email": "Correo",
+    "churchRoles": "Roles en la iglesia",
+    "roleLeader": "Líder",
+    "roleAdmin": "Admin",
+    "roleMember": "Miembro",
+    "attendanceStats": "Estadísticas de asistencia",
+    "present": "Presente",
+    "absent": "Ausente",
+    "lastCheckIn": "Último check-in: {{date}}",
+    "directoryUnavailable": "No se pudieron cargar los detalles del directorio FLC. Tu información de cuenta sigue disponible arriba.",
+    "unknown": "Desconocido",
+    "notLoadedBody": "No se pudieron cargar los detalles del directorio FLC. Tu información de cuenta sigue disponible arriba."
+  },
+  "events": {
+    "back": "Atrás",
+    "editAria": "Editar evento",
+    "checkInNow": "Check-in ahora",
+    "checkedInBanner": "✓ Ya hiciste check-in",
+    "liveCheckIns": "Check-ins en vivo",
+    "updated": "Actualizado {{time}}",
+    "updating": "Actualizando…",
+    "present": "Presente",
+    "absent": "Ausente",
+    "totalExpected": "Total esperado",
+    "rateRecent": "{{count}} en los últimos {{minutes}} min",
+    "statsUnavailable": "Estadísticas en vivo temporalmente no disponibles.",
+    "sharedDevices": "{{count}} dispositivo compartido",
+    "sharedDevices_other": "{{count}} dispositivos compartidos",
+    "sharedDevicesHint": "Posible check-in proxy — revisa estos miembros",
+    "manualHistory": "Historial de check-ins manuales",
+    "missingEvent": "Evento faltante.",
+    "notInScope": "Este evento no forma parte de tu alcance.",
+    "notInChurch": "Este evento no forma parte de tu iglesia.",
+    "createScreenTitle": "Nuevo evento",
+    "editScreenTitle": "Editar evento",
+    "editScreenBack": "Panel",
+    "phase": {
+      "live": "En vivo",
+      "opensSoon": "Abre pronto",
+      "paused": "En pausa",
+      "ended": "Finalizado",
+      "scheduled": "Programado"
+    },
+    "timing": {
+      "remaining": "{{duration}} restantes",
+      "startsIn": "empieza en {{duration}}",
+      "checkInClosed": "Check-in cerrado",
+      "attendanceBar": "{{attended}} de {{expected}} presentes"
+    },
+    "refreshEligible": {
+      "hint": "La lista elegible se captura al crear la reunión. Actualiza si se añadieron líderes.",
+      "busy": "Consultando el directorio…",
+      "action": "Actualizar lista elegible",
+      "added": "Se añadieron {{added}} miembro(s) elegible(s) — {{total}} en total.",
+      "upToDate": "Ya actualizado — {{total}} elegibles."
+    },
+    "controls": {
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "extend30": "+30 min",
+      "extend60": "+60 min",
+      "resetPin": "Restablecer PIN",
+      "end": "Finalizar",
+      "delete": "🗑 Eliminar",
+      "newPin": "Nuevo PIN:",
+      "dismiss": "Cerrar",
+      "endConfirmTitle": "¿Finalizar este evento?",
+      "endConfirmBody": "Se cerrarán todos los check-ins abiertos. No se puede deshacer.",
+      "endConfirmBtn": "Finalizar evento",
+      "pinConfirmTitle": "¿Restablecer PIN?",
+      "pinConfirmBody": "Se generará un nuevo PIN. El anterior dejará de funcionar de inmediato.",
+      "pinConfirmBtn": "Generar nuevo PIN",
+      "deleteConfirmTitle": "¿Eliminar permanentemente este evento?",
+      "deleteConfirmBody": "Esto elimina el evento, cada check-in y todos los datos relacionados. No se puede deshacer.",
+      "deleteTypePrompt": "Escribe DELETE para confirmar:",
+      "deleteConfirmBtn": "Eliminar para siempre",
+      "deletePlaceholder": "DELETE",
+      "actionFailed": "Acción fallida",
+      "resetFailed": "Error al restablecer",
+      "deleteFailed": "Error al eliminar",
+      "newPinAlert": "Nuevo PIN: {{pin}}"
+    },
+    "history": {
+      "title": "Eventos",
+      "reportsLink": "Informes",
+      "timeframeAria": "Periodo de eventos",
+      "live": "En vivo",
+      "upcoming": "Próximos",
+      "past": "Pasados",
+      "searchPlaceholder": "Buscar eventos {{view}}…",
+      "searchAria": "Buscar eventos",
+      "clear": "Borrar",
+      "noneTitle": "Sin eventos {{view}}",
+      "noneBody": "Los eventos aparecerán aquí cuando coincidan con este periodo.",
+      "remaining": "restante"
+    },
+    "checkInClosed": "Check-in cerrado",
+    "loadingDetails": "Cargando detalles del evento.",
+    "noun": "eventos",
+    "timingRemaining": "{{duration}} restantes",
+    "timingStartsIn": "empieza en {{duration}}",
+    "activeTitle": "Eventos activos",
+    "allEvents": "Eventos",
+    "attendanceAria": "{{attended}} de {{expected}} presentes",
+    "attendanceOf": "{{attended}} de {{expected}} presentes",
+    "checkInThroughApp": "Haz check-in desde la app en su lugar.",
+    "endsIn": "Termina en {{duration}}",
+    "endsInRotates": " · rota en {{secs}}s",
+    "endsInScope": "Termina en {{duration}}",
+    "noActive": "No hay eventos activos ahora.",
+    "noMatching": "No hay eventos coincidentes.",
+    "pinLabel": "PIN",
+    "qrNotEnabled": "El check-in QR no está activado para este evento",
+    "scanToCheckIn": "Escanea para hacer check-in",
+    "searchAria": "Buscar eventos activos",
+    "searchPlaceholder": "Buscar eventos, lugar, iglesia…",
+    "selectEvent": "Seleccionar un evento",
+    "usePinBelow": "Usa el PIN de abajo para hacer check-in."
+  },
+  "createEvent": {
+    "steps": {
+      "basics": "Básicos",
+      "schedule": "Horario",
+      "rules": "Reglas",
+      "review": "Revisión",
+      "aria": "Paso {{current}} de 4"
+    },
+    "sections": {
+      "event": "Evento",
+      "scope": "Alcance",
+      "timeWindow": "Ventana horaria",
+      "methods": "Métodos de check-in",
+      "roles": "Roles permitidos",
+      "geofence": "Geocerca",
+      "recurrence": "Recurrencia",
+      "visibility": "Visibilidad",
+      "review": "Revisión",
+      "allowedRoles": "Roles permitidos",
+      "checkInMethods": "Métodos de check-in"
+    },
+    "fields": {
+      "nameLabel": "Nombre",
+      "namePlaceholder": "ej. Reunión líderes bacenta domingo",
+      "venueLabel": "Lugar / Nombre del sitio",
+      "venuePlaceholder": "ej. First Love Center, The Qodesh",
+      "startsLabel": "Inicio",
+      "durationLabel": "Duración",
+      "pinLabel": "PIN",
+      "pinRegenerate": "Regenerar",
+      "recurrenceCountLabel": "Número de ocurrencias",
+      "createForChurch": "Crear para una iglesia dentro de este alcance",
+      "duration": "Duración",
+      "duration120": "2 horas",
+      "duration30": "30 min",
+      "duration60": "1 hora",
+      "durationCustom": "Personalizado",
+      "endsAt": "Termina a las {{time}}",
+      "name": "Nombre",
+      "occurrences": "Número de ocurrencias",
+      "pin": "PIN",
+      "regenerate": "Regenerar",
+      "starts": "Inicio",
+      "venue": "Lugar / nombre del sitio"
+    },
+    "scope": {
+      "churchScopes": "Alcances de iglesia",
+      "specialGroup": "Grupo especial",
+      "removeAria": "Quitar {{name}}",
+      "searchPlaceholder": "Buscar council, stream, campus, oversight, denomination…",
+      "searching": "Buscando…",
+      "noMatches": "Sin coincidencias.",
+      "noGroups": "Sin grupos. Crea uno desde la página Grupos especiales.",
+      "groupsHint": "Selecciona uno o más grupos — sus miembros estarán en el alcance.",
+      "createForChurch": "Crear para la iglesia dentro de este alcance"
+    },
+    "duration": {
+      "min30": "30 min",
+      "hour1": "1 hora",
+      "hours2": "2 horas",
+      "custom": "Personalizado",
+      "minutes": "minutos",
+      "endsAt": "Termina a las {{time}}"
+    },
+    "roles": {
+      "noneBelow": "No hay niveles de líder debajo de este alcance.",
+      "withinScope": "Líderes dentro de este {{level}}."
+    },
+    "recurrence": {
+      "none": "Ninguna",
+      "weekly": "Semanal",
+      "biweekly": "Quincenal",
+      "monthly": "Mensual",
+      "preview": "Se crearán {{count}} eventos:"
+    },
+    "visibility": {
+      "publicTitle": "Visible en la página pública",
+      "privateTitle": "Oculto de la página pública",
+      "publicBody": "Cualquiera puede escanear el QR desde la página pública.",
+      "privateBody": "Solo miembros invitados y superadmins pueden ver este evento."
+    },
+    "review": {
+      "untitled": "Evento sin título",
+      "oneEvent": "Un evento",
+      "recurring": "{{count}} eventos {{pattern}}",
+      "checkInMethods": "Check-in {{methods}}",
+      "geofenceCircle": "Geocerca {{radius}}m",
+      "geofenceCustom": "geocerca personalizada",
+      "leaders": "{{roles}} líderes",
+      "scope": "Alcance: {{names}}",
+      "specialGroup": "Grupo especial seleccionado",
+      "multipleEvents": "{{count}} eventos {{pattern}}",
+      "selectedGroup": "Grupo especial seleccionado"
+    },
+    "actions": {
+      "back": "Atrás",
+      "continue": "Continuar",
+      "creating": "Creando…",
+      "preparingMembers": "Preparando lista de miembros…",
+      "createMultiple": "Crear {{count}} eventos",
+      "createOne": "Crear evento",
+      "progress": "Creando {{current}} de {{total}}…"
+    },
+    "validation": {
+      "nameRequired": "Ponle un nombre al evento.",
+      "scopeRequired": "Añade al menos un alcance de iglesia.",
+      "groupRequired": "Selecciona al menos un grupo.",
+      "creationScope": "Elige un alcance de creación.",
+      "invalidSchedule": "Elige una hora de inicio y duración válidas.",
+      "methodRequired": "Elige al menos un método de check-in.",
+      "roleRequired": "Elige al menos un rol permitido.",
+      "polygonVertices": "El polígono necesita al menos 3 vértices.",
+      "noScope": "No se encontró alcance de creación.",
+      "noScopeBody": "No apareces en el grafo FLC como líder/admin de alcance superior. Pide a tu stream lead que actualice tus relaciones.",
+      "createFailed": "Error al crear"
+    },
+    "creating": "Creando…",
+    "errors": {
+      "createFailed": "Error al crear",
+      "chooseScope": "Elige un alcance de creación.",
+      "groupRequired": "Selecciona al menos un grupo.",
+      "invalidSchedule": "Elige una hora de inicio y duración válidas.",
+      "methodRequired": "Elige al menos un método de check-in.",
+      "nameRequired": "Ponle un nombre al evento.",
+      "noScope": "Sin alcance de creación.",
+      "polygonVertices": "El polígono necesita al menos 3 vértices.",
+      "roleRequired": "Elige al menos un rol permitido.",
+      "scopeRequired": "Añade al menos un alcance de iglesia."
+    },
+    "previewCount": "Se crearán {{count}} eventos:",
+    "progress": {
+      "preparingMembers": "Preparando lista de miembros…",
+      "creating": "Creando {{current}} de {{total}}…"
+    },
+    "scopeModes": {
+      "churches": "Alcances de iglesia",
+      "group": "Grupo especial"
+    },
+    "stepAria": "Paso {{current}} de 4",
+    "churchSearchPlaceholder": "Buscar consejo, stream, campus, oversight, denominación…",
+    "createMultiple": "Crear {{count}} eventos",
+    "createSingle": "Crear evento",
+    "leadersWithin": "Líderes dentro de este {{level}}.",
+    "noGroupsYet": "Aún no hay grupos. Crea uno desde Grupos especiales primero.",
+    "noLeaderLevels": "No hay niveles de liderazgo bajo este alcance.",
+    "noScopeBody": "No apareces en el grafo FLC como líder/admin de mayor alcance. Pide a tu stream lead que actualice tus relaciones.",
+    "noScopeTitle": "No se encontró alcance de creación.",
+    "removeScopeAria": "Quitar {{name}}",
+    "selectGroupsHint": "Selecciona uno o más grupos — los miembros de todos los grupos elegidos estarán en el alcance."
+  },
+  "editEvent": {
+    "sectionStatus": "Estado y controles",
+    "currentStatus": "Estado actual:",
+    "sectionEligible": "Asistentes elegibles",
+    "churchReadOnly": "Iglesia (solo lectura)",
+    "newPinLabel": "Nuevo PIN (opcional)",
+    "newPinPlaceholder": "dejar en blanco para mantener el actual",
+    "resetAndShow": "Restablecer y mostrar",
+    "pauseToEdit": "Pausa el evento para editar.",
+    "geofenceReadonly": {
+      "circle": "Círculo · {{radius}} m",
+      "polygon": "Polígono · {{count}} vértices"
+    },
+    "saved": "Guardado.",
+    "cancel": "Cancelar",
+    "saving": "Guardando…",
+    "saveChanges": "Guardar cambios",
+    "saveFailed": "Error al guardar",
+    "errors": {
+      "resetFailed": "Error al restablecer",
+      "saveFailed": "Error al guardar",
+      "methodRequired": "Elige al menos un método de check-in.",
+      "polygonVertices": "El polígono necesita al menos 3 vértices.",
+      "roleRequired": "Elige al menos un rol permitido."
+    },
+    "geofenceCircle": "Círculo · {{radius}} m",
+    "geofencePolygon": "Polígono · {{count}} vértices",
+    "newPinAlert": "Nuevo PIN: {{pin}}",
+    "newPinOptional": "Nuevo PIN (opcional)",
+    "pinPlaceholder": "dejar en blanco para mantener el actual",
+    "sections": {
+      "allowedRoles": "Roles permitidos",
+      "checkInMethods": "Métodos de check-in",
+      "eligibleAttendees": "Asistentes elegibles",
+      "event": "Evento",
+      "geofence": "Geocerca",
+      "statusControls": "Estado y controles",
+      "timeWindow": "Horario"
+    }
+  },
+  "geofencePicker": {
+    "searchPlaceholder": "🔍 Buscar lugar, dirección o nombre de sitio",
+    "searching": "Buscando…",
+    "mode": {
+      "circle": "Círculo",
+      "polygon": "Polígono"
+    },
+    "useMyLocation": "📍 Usar mi ubicación",
+    "locating": "📍 Localizando…",
+    "useLocationTitle": "Usar ubicación del dispositivo (puede ser imprecisa en escritorio)",
+    "quickVenues": "Lugares rápidos:",
+    "polygonBoundary": "Límite del polígono",
+    "circleRadius": "Radio del círculo",
+    "map": {
+      "street": "Calles",
+      "satellite": "Satélite",
+      "hybrid": "Híbrido"
+    },
+    "gpsAccuracy": "📡 Precisión GPS: ±{{meters}} m",
+    "gpsRefine": "— arrastra el marcador o busca para afinar.",
+    "radiusLabel": "Radio",
+    "polygonHint": "Toca el mapa para añadir vértices ({{count}} hasta ahora). Se necesitan 3+.",
+    "clear": "Borrar",
+    "error": {
+      "notSupported": "Geolocalización no soportada",
+      "permissionDenied": "Permiso denegado — permite la ubicación para este sitio.",
+      "unavailable": "Posición no disponible — sin señal GPS.",
+      "timeout": "Tiempo de ubicación agotado.",
+      "couldNotGet": "No se pudo obtener la ubicación"
+    }
+  },
+  "reports": {
+    "title": "Informes",
+    "searchPlaceholder": "Buscar eventos…",
+    "downloadCsv": "Descargar CSV",
+    "starts": "Inicio:",
+    "ends": "Fin:",
+    "methods": "Métodos:",
+    "exportOptions": "Opciones de exportación",
+    "close": "Cerrar",
+    "presets": {
+      "label": "Preajustes",
+      "executiveFull": "Ejecutivo completo",
+      "absenteeFollowup": "Seguimiento ausentes",
+      "custom": "Personalizado"
+    },
+    "sections": {
+      "label": "Secciones a incluir",
+      "summary": "Resumen ejecutivo",
+      "snapshot": "Instantánea de asistencia",
+      "presentList": "Lista de presentes",
+      "absenteeList": "Lista de ausentes"
+    },
+    "criteria": {
+      "label": "Criterios",
+      "status": "Estado",
+      "method": "Método",
+      "geo": "Verificación geo",
+      "unit": "Unidad contiene",
+      "all": "Todos",
+      "present": "Presente",
+      "absent": "Ausente",
+      "verifiedOnly": "Solo verificados",
+      "unverifiedOnly": "Solo no verificados",
+      "unitPlaceholder": "ej. Adenta, Achimota"
+    },
+    "exporting": "Exportando…",
+    "export": "Exportar",
+    "exportFailed": "Error al exportar",
+    "full": {
+      "title": "Informe",
+      "backDashboard": "Volver al panel",
+      "exportCsv": "Exportar CSV",
+      "adminLabel": "Admin:",
+      "filterByChurch": "Filtrar por iglesia",
+      "filterAria": "Filtrar por iglesia",
+      "allScopes": "Todos los {{level}}s",
+      "tab": {
+        "present": "Presente",
+        "absent": "Ausente",
+        "timeline": "Línea de tiempo"
+      },
+      "searchPlaceholder": "Buscar nombre o unidad…",
+      "noCheckIns": "Aún no hay check-ins.",
+      "absenceTitle": "Motivo de ausencia",
+      "absencePlaceholder": "Introduce el motivo de ausencia…",
+      "saveNoteFailed": "No se pudo guardar la nota",
+      "call": "Llamar",
+      "whatsapp": "WhatsApp",
+      "checkIn": "Check-in",
+      "editNote": "Editar nota",
+      "addNote": "Añadir nota",
+      "riskyTooltip": "Huella de dispositivo compartida — posible check-in proxy"
+    },
+    "csv": {
+      "executiveSummary": "Resumen ejecutivo",
+      "eventName": "Nombre del evento",
+      "scope": "Alcance",
+      "starts": "Inicio",
+      "ends": "Fin",
+      "totalExpected": "Total esperado",
+      "present": "Presente",
+      "absent": "Ausente",
+      "attendanceRate": "Tasa de asistencia",
+      "attendanceSnapshot": "Instantánea de asistencia",
+      "presentList": "Lista de presentes",
+      "absenteeList": "Lista de ausentes",
+      "name": "Nombre",
+      "role": "Rol",
+      "unit": "Unidad",
+      "status": "Estado",
+      "checkedInAt": "Check-in a las",
+      "method": "Método",
+      "geoVerified": "Geo verificada",
+      "timeline": "Línea de tiempo",
+      "member": "Miembro",
+      "time": "Hora"
+    }
+  },
+  "members": {
+    "present": "Presente",
+    "absent": "Ausente",
+    "allExpected": "Todos esperados",
+    "title": "Miembros",
+    "dashboardBack": "Panel",
+    "export": "Exportar",
+    "countPresent": "presentes",
+    "countAbsent": "ausentes",
+    "countExpected": "esperados",
+    "filterByScope": "Filtrar por alcance",
+    "filterAria": "Filtrar por alcance",
+    "searchPlaceholder": "Buscar nombre o unidad…",
+    "call": "Llamar",
+    "callAria": "Llamar a {{name}}",
+    "manualCheckIn": "Check-in manual",
+    "checkInAria": "Check-in {{name}}",
+    "riskyTooltip": "Huella de dispositivo compartida con otro miembro",
+    "search": {
+      "title": "Miembros",
+      "placeholder": "Buscar por nombre o correo…",
+      "loadingMore": "Cargando más…",
+      "noGroups": "Aún no hay grupos especiales.",
+      "addToGroup": "Añadir a grupo especial",
+      "added": "Añadido ✓"
+    },
+    "detail": {
+      "title": "Miembro",
+      "back": "Miembros",
+      "roles": "Roles",
+      "hierarchy": "Jerarquía eclesiástica",
+      "noHierarchy": "Sin datos de jerarquía para este miembro.",
+      "noCheckIns": "Sin check-ins de eventos."
+    },
+    "searchFailed": "Error en la búsqueda",
+    "addToGroupFailed": "Error al añadir al grupo"
+  },
+  "sync": {
+    "title": "Sync Members",
+    "heading": "Poblar perfiles de miembros",
+    "description": "Recorre el grafo FLC y actualiza Supabase. Solo se conservan líderes y admins actuales. Los perfiles que ya no califican se reconcilian sin borrar el historial. Restringido a superAdmin.",
+    "fetching": "Obteniendo… ({{fetched}} escaneados, {{kept}} activos conservados)",
+    "upserting": "Escribiendo {{kept}} activos y reconciliando {{inactive}} inactivos…",
+    "submit": "Sincronizar todos los miembros",
+    "done": "Escaneados {{fetched}} miembros Graph, sincronizado {{upserted}} miembro activo, marcado {{deactivated}} perfil en caché inactivo. Historial preservado.",
+    "done_other": "Escaneados {{fetched}} miembros Graph, sincronizados {{upserted}} miembros activos, marcados {{deactivated}} perfiles en caché inactivos. Historial preservado.",
+    "failed": "Error de sincronización"
+  },
+  "groups": {
+    "title": "Grupos especiales",
+    "listIntro": "Los grupos definen un conjunto reutilizable de personas para el alcance de eventos.",
+    "newGroup": "Nuevo grupo",
+    "none": "Sin grupos.",
+    "person": "persona",
+    "people": "personas",
+    "allGroups": "← Todos los grupos",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "notFound": "Grupo no encontrado.",
+    "deleteConfirm": "¿Eliminar el grupo \"{{name}}\"? No se puede deshacer.",
+    "addPeople": "Añadir personas",
+    "searchPlaceholder": "Buscar por nombre…",
+    "searching": "Buscando…",
+    "noMatches": "Sin coincidencias.",
+    "membersTitle": "Miembros ({{count}})",
+    "noMembers": "Sin miembros. Busca arriba para añadir.",
+    "remove": "Quitar",
+    "form": {
+      "edit": "Editar grupo",
+      "new": "Nuevo grupo",
+      "details": "Detalles",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "ej. Líderes stream PIWC",
+      "descriptionLabel": "Descripción (opcional)",
+      "descriptionPlaceholder": "¿Para qué es este grupo?",
+      "saving": "Guardando…",
+      "saveChanges": "Guardar cambios",
+      "create": "Crear grupo",
+      "cancel": "Cancelar"
+    }
+  },
+  "audit": {
+    "title": "Historial check-ins manuales",
+    "backDashboard": "Panel",
+    "adminRequired": "Se requiere acceso de admin.",
+    "none": "Sin check-ins manuales.",
+    "entry": "{{actor}} hizo check-in manual a {{target}} a las {{time}}"
+  },
+  "scopeBreakdown": {
+    "title": "Desglose",
+    "backDashboard": "Panel",
+    "loadingEvent": "Cargando detalles del evento.",
+    "notInScope": "Este evento no forma parte de tu alcance.",
+    "memberCount": "{{count}} miembro",
+    "memberCount_other": "{{count}} miembros",
+    "childCount": "{{count}} {{level}}(s)",
+    "atThisLevel": "· +{{count}} en este nivel",
+    "allMembers": "Todos los miembros ↗",
+    "loadingScopes": "Cargando alcances…",
+    "noChildScopes": "Sin sub-alcances en esta vista.",
+    "levelMembers": "Nivel {{level}} · {{count}} miembro(s)",
+    "noEligible": "Sin miembros elegibles en este alcance.",
+    "present": "Presente",
+    "absent": "Ausente",
+    "viewLevel": "Ver {{level}}"
+  },
+  "fields": {
+    "attendanceTapHint": "Toca para escribir un número",
+    "attendanceTapTitle": "Asistencia",
+    "attendanceBelow": "Por debajo de {{threshold}}",
+    "namesPlaceholder": "Añadir nombres…",
+    "notePlaceholder": "Añadir una nota…",
+    "photoPreviewAlt": "Vista previa",
+    "photoRemoveAria": "Quitar foto",
+    "photoAdd": "Añadir una foto",
+    "photoHint": "Toma una foto o sube desde la galería"
+  },
+  "toasts": {
+    "reportExported": "Informe exportado",
+    "exportFailed": "Error al exportar",
+    "sessionExpired": "Tu sesión expiró. Vuelve a iniciar sesión.",
+    "networkStruggling": "La red está fallando. Inténtalo de nuevo."
+  }
+}

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import Spinner from '../components/Spinner'
 import NavDrawer from '../components/NavDrawer'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import PullToRefreshIndicator from '../components/PullToRefreshIndicator'
 import { PageShell, PageMain } from '../components/layout/PageShell'
 import { EmptyState } from '../components/layout/EmptyState'
@@ -22,88 +24,6 @@ import type { AppUser, CheckinEventRow } from '../types/app'
 
 type Greeting = { line1: string; line2: string }
 
-const MORNING_GREETINGS: Greeting[] = [
-  { line1: 'Good morning, {name}.', line2: 'The registers are open.' },
-  { line1: 'Rise and lead, {name}.', line2: 'Leaders are gathering.' },
-  { line1: 'Daybreak, {name}.', line2: 'Steady hands. Holy work.' },
-  { line1: 'Early start, {name}.', line2: 'The faithful show up first.' },
-  { line1: 'Morning, {name}.', line2: 'Another day of faithful service.' },
-  { line1: 'Up and counting, {name}.', line2: 'Leaders are assembling.' },
-]
-
-const MIDDAY_GREETINGS: Greeting[] = [
-  { line1: 'Good afternoon, {name}.', line2: 'Keep the count going.' },
-  { line1: 'Midday, {name}.', line2: 'The session is live.' },
-  { line1: 'Still going, {name}.', line2: 'Leaders are still showing up.' },
-  { line1: 'Pressing on, {name}.', line2: 'Every leader counted matters.' },
-  { line1: 'Halfway there, {name}.', line2: 'Faithful in the afternoon too.' },
-  { line1: 'Afternoon, {name}.', line2: 'The registers are open.' },
-]
-
-const EVENING_GREETINGS: Greeting[] = [
-  { line1: 'Good evening, {name}.', line2: 'Leaders are gathering.' },
-  { line1: 'Evening service, {name}.', line2: 'Mark them present.' },
-  { line1: 'The evening watch, {name}.', line2: 'Faithful to the end.' },
-  { line1: 'Twilight roll call, {name}.', line2: 'Every leader accounted for.' },
-  { line1: 'Evening, {name}.', line2: 'The day\'s work continues.' },
-  { line1: 'Last count, {name}.', line2: 'Make it a good one.' },
-]
-
-const NIGHT_GREETINGS: Greeting[] = [
-  { line1: 'Quiet hours, {name}.', line2: 'Steady hands. Holy work.' },
-  { line1: 'Late session, {name}.', line2: 'The dedicated ones are here.' },
-  { line1: 'Night watch, {name}.', line2: 'Still counting. Still faithful.' },
-  { line1: 'Burning bright, {name}.', line2: 'Late night faithfulness.' },
-  { line1: 'Stars are out, {name}.', line2: 'So are your leaders.' },
-  { line1: 'The last hour, {name}.', line2: 'Mark them present.' },
-]
-
-const ADMIN_GREETINGS: Greeting[] = [
-  { line1: 'Good to see you, {name}.', line2: 'The registers are yours.' },
-  { line1: 'Steady oversight, {name}.', line2: 'Every leader has a name.' },
-  { line1: 'Track well, {name}.', line2: 'Lead well.' },
-  { line1: 'The numbers matter, {name}.', line2: 'Keep them true.' },
-  { line1: 'Your leaders need you, {name}.', line2: 'Every check-in counts.' },
-  { line1: 'Faithful records, {name}.', line2: 'Good decisions tomorrow.' },
-  { line1: 'Precision, {name}.', line2: 'In attendance. In ministry.' },
-  { line1: 'Behind every check-in, {name}.', line2: 'A leader you\'re investing in.' },
-  { line1: 'Strong team, {name}.', line2: 'You track who shows up.' },
-  { line1: 'Accountability, {name}.', line2: 'Starts with who shows up.' },
-  { line1: 'The register, {name}.', line2: 'Is your first report card.' },
-  { line1: 'Excellence, {name}.', line2: 'In check-in and leadership.' },
-  { line1: 'Your oversight, {name}.', line2: 'Makes all the difference.' },
-  { line1: 'A well-run event, {name}.', line2: 'Starts with you.' },
-  { line1: 'Every absent leader, {name}.', line2: 'Has a name. Know it.' },
-  { line1: 'Good records, {name}.', line2: 'Better decisions tomorrow.' },
-  { line1: 'Faithfulness, {name}.', line2: 'Is measurable. You\'re measuring it.' },
-  { line1: 'The health of the team, {name}.', line2: 'Shows in attendance.' },
-  { line1: 'Holding the line, {name}.', line2: 'One check-in at a time.' },
-  { line1: 'All eyes on the register, {name}.', line2: 'Make it count.' },
-]
-
-const LEADER_GREETINGS: Greeting[] = [
-  { line1: 'Present and counted, {name}.', line2: 'Your faithfulness is noted.' },
-  { line1: 'You showed up, {name}.', line2: 'That\'s already leadership.' },
-  { line1: 'On time, {name}.', line2: 'Is a form of leadership.' },
-  { line1: 'Here you are, {name}.', line2: 'Counted. Present. Valued.' },
-  { line1: 'Good to see you, {name}.', line2: 'Your presence speaks first.' },
-  { line1: 'Consistent, {name}.', line2: 'Its own kind of excellence.' },
-  { line1: 'Show up, {name}.', line2: 'Lead up.' },
-  { line1: 'Faithful, {name}.', line2: 'In the small things — like showing up.' },
-  { line1: 'In the room, {name}.', line2: 'Where it matters most.' },
-  { line1: 'Here, {name}.', line2: 'Present and ready to serve.' },
-  { line1: 'Leadership, {name}.', line2: 'Begins the moment you arrive.' },
-  { line1: 'A present leader, {name}.', line2: 'Is an engaged leader.' },
-  { line1: 'Every check-in, {name}.', line2: 'Is a small act of commitment.' },
-  { line1: 'Your attendance, {name}.', line2: 'Speaks before you do.' },
-  { line1: 'Being here, {name}.', line2: 'Matters more than you know.' },
-  { line1: 'The best leaders, {name}.', line2: 'Are always in the room.' },
-  { line1: 'Counted, {name}.', line2: 'Present. Valued.' },
-  { line1: 'You\'re here, {name}.', line2: 'That\'s already something.' },
-  { line1: 'Present, {name}.', line2: 'And accounted for.' },
-  { line1: 'Still showing up, {name}.', line2: 'That\'s the whole game.' },
-]
-
 // 0 = morning (5–12), 1 = midday (12–17), 2 = evening (17–21), 3 = night (21–5)
 function getWatch(): number {
   const h = new Date().getHours()
@@ -113,16 +33,27 @@ function getWatch(): number {
   return 3
 }
 
-const TIME_POOLS = [MORNING_GREETINGS, MIDDAY_GREETINGS, EVENING_GREETINGS, NIGHT_GREETINGS]
+function asGreetingPool(value: unknown): Greeting[] {
+  return Array.isArray(value) ? (value as Greeting[]) : []
+}
 
-function buildPool(isAdmin: boolean): Greeting[] {
-  const timePool = TIME_POOLS[getWatch()]
-  const rolePool = isAdmin ? ADMIN_GREETINGS : LEADER_GREETINGS
+function buildPool(isAdmin: boolean, t: (key: string, opts?: { returnObjects?: boolean }) => string | object): Greeting[] {
+  const timePools = [
+    asGreetingPool(t('greetings.morning', { returnObjects: true })),
+    asGreetingPool(t('greetings.midday', { returnObjects: true })),
+    asGreetingPool(t('greetings.evening', { returnObjects: true })),
+    asGreetingPool(t('greetings.night', { returnObjects: true })),
+  ]
+  const timePool = timePools[getWatch()]
+  const rolePool = asGreetingPool(isAdmin
+    ? t('greetings.admin', { returnObjects: true })
+    : t('greetings.leader', { returnObjects: true }))
   return [...timePool, ...rolePool]
 }
 
-function getDailyGreeting(isAdmin: boolean): Greeting {
-  const pool = buildPool(isAdmin)
+function getDailyGreeting(isAdmin: boolean, t: (key: string, opts?: { returnObjects?: boolean }) => string | object): Greeting {
+  const pool = buildPool(isAdmin, t)
+  if (pool.length === 0) return { line1: t('common.welcome') as string, line2: '' }
   const today = new Date()
   const dateSeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate()
   const idx = (dateSeed * 4 + getWatch()) % pool.length
@@ -130,25 +61,26 @@ function getDailyGreeting(isAdmin: boolean): Greeting {
 }
 
 function HomeGreeting({ user }: { user: AppUser | null }) {
+  const { t } = useTranslation()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
-  const { line1, line2 } = getDailyGreeting(isAdmin)
+  const { line1, line2 } = getDailyGreeting(isAdmin, t)
   const firstName = user?.firstName || user?.email?.split('@')[0] || ''
   const dateLabel = format(new Date(), 'EEEE, d MMMM').toUpperCase()
 
-  const [before, after] = line1.split('{name}')
+  const [before, after] = line1.split('{{name}}')
 
   return (
     <div className='relative px-5 pb-6 pt-5 md:px-6'>
       <PullToRefreshIndicator />
-      {/* NavDrawer — renders the persistent desktop sidebar; hamburger is md:hidden inside */}
-      <div className='absolute right-5 top-5'>
-        <NavDrawer user={user} />
-      </div>
+      <NavDrawer user={user} />
 
       <div className='md:mx-auto md:max-w-5xl'>
-        <p className='m-0 mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
-          {dateLabel}
-        </p>
+        <div className='mb-3 flex items-start justify-between gap-3'>
+          <p className='m-0 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground'>
+            {dateLabel}
+          </p>
+          <LanguageSwitcher className='shrink-0' />
+        </div>
         <h1 className='m-0 max-w-[82%] md:max-w-none text-[1.65rem] font-bold leading-tight tracking-tight text-foreground'>
           {before}<span className='text-primary'>{firstName}</span>{after}
           <br />
@@ -163,7 +95,7 @@ function HomeGreeting({ user }: { user: AppUser | null }) {
         <div className='mt-4 flex flex-wrap items-center gap-2'>
           <ChurchScopeSwitcher fallback={
             <span className='rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-foreground'>
-              {user?.unitName || 'No assigned church scope'}
+              {user?.unitName || t('home.noAssignedScope')}
             </span>
           } />
         </div>
@@ -224,13 +156,14 @@ function isRenderableEvent(evt: Partial<CheckinEventRow> | null | undefined): ev
   )
 }
 
-function formatEventDate(value: string | null | undefined): string {
+function formatEventDate(value: string | null | undefined, tbdLabel: string): string {
   const date = new Date(value ?? '')
-  if (Number.isNaN(date.getTime())) return 'TBD'
+  if (Number.isNaN(date.getTime())) return tbdLabel
   return format(date, 'd MMM')
 }
 
 export default function LeaderHomeScreen() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const navigate = useNavigate()
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin)
@@ -421,7 +354,7 @@ export default function LeaderHomeScreen() {
               <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
                 <path d='M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z' />
               </svg>
-              Create Event
+              {t('home.createEvent')}
             </Button>
           </div>
         )}
@@ -441,13 +374,13 @@ export default function LeaderHomeScreen() {
                 // scoped to ONE role, "nothing here" is usually "nothing here
                 // for THIS role" — so name the role and point at the switcher
                 // rather than implying there are no events at all.
-                title={focusedHat ? `No events for ${focusedHat.name}` : 'No events yet'}
+                title={focusedHat ? t('home.noEventsFor', { name: focusedHat.name }) : t('home.noEventsTitle')}
                 description={
                   isMultiRole && focusedHat
-                    ? `You're acting as ${focusedHat.roleLabel}. Switch Church in Focus above to see another role.`
+                    ? t('home.noEventsMultiRole', { role: focusedHat.roleLabel })
                     : isAdmin
-                      ? 'Create an event to start taking check-ins.'
-                      : 'Check-ins will appear here once a leader opens an event.'
+                      ? t('home.noEventsAdmin')
+                      : t('home.noEventsLeader')
                 }
                 icon={
                   <svg viewBox='0 0 24 24' width='26' height='26' fill='currentColor'>
@@ -457,7 +390,7 @@ export default function LeaderHomeScreen() {
                 action={
                   canCreate ? (
                     <Button type='button' onClick={() => navigate('/admin/events/new')}>
-                      Create event
+                      {t('home.createEvent')}
                     </Button>
                   ) : undefined
                 }
@@ -471,7 +404,7 @@ export default function LeaderHomeScreen() {
               {/* Home is an action surface: emphasize what needs attention now. */}
               {live.length > 0 && (
                 <section>
-                  <p className='section-heading mb-3 text-success'>Live now</p>
+                  <p className='section-heading mb-3 text-success'>{t('home.liveNow')}</p>
                   <div className='flex flex-col gap-2.5'>
                     <LiveEventHero evt={live[0]} />
                     {live.slice(1, 3).map(evt => <EventCard key={evt.id} evt={evt} variant='live' />)}
@@ -482,7 +415,7 @@ export default function LeaderHomeScreen() {
               {/* ── Upcoming ── */}
               {upcoming.length > 0 && (
                 <section>
-                  <p className='section-heading mb-3'>Upcoming</p>
+                  <p className='section-heading mb-3'>{t('home.upcoming')}</p>
                   <div className='flex flex-col gap-2.5'>
                     {upcoming.slice(0, 1).map(evt => <EventCard key={evt.id} evt={evt} variant='upcoming' />)}
                   </div>
@@ -493,12 +426,12 @@ export default function LeaderHomeScreen() {
               {past.length > 0 && (
                 <section>
                   <div className='flex items-center justify-between mb-3'>
-                    <p className='section-heading m-0'>Recent</p>
+                    <p className='section-heading m-0'>{t('home.recent')}</p>
                     <Link
                       to='/app/events?view=past'
                       className='text-xs font-semibold text-primary no-underline hover:underline'
                     >
-                      View past events →
+                      {t('home.viewPastEvents')}
                     </Link>
                   </div>
                   <div className='flex flex-col gap-2.5'>
@@ -516,19 +449,20 @@ export default function LeaderHomeScreen() {
 }
 
 function LiveEventHero({ evt }: { evt: CheckinEventRow }) {
+  const { t } = useTranslation()
   return (
     <div className='overflow-hidden rounded-2xl border border-success/25 bg-card shadow-sm'>
       <div className='flex items-center gap-2 border-b border-border px-4 py-2.5 text-xs font-semibold text-success'>
         <span className='size-2 rounded-full bg-success' aria-hidden />
-        Check-in is open now
+        {t('home.checkInOpen')}
       </div>
       <div className='p-4 sm:p-5'>
         <h2 className='m-0 text-lg font-semibold tracking-tight text-foreground'>{evt.name}</h2>
         <p className='m-0 mt-1 text-sm text-muted-foreground'>{evt.scope_church_name}{evt.venue_name ? ` · ${evt.venue_name}` : ''}</p>
-        <p className='m-0 mt-2 text-xs text-muted-foreground'>Closes {formatEventDate(evt.ends_at)}</p>
+        <p className='m-0 mt-2 text-xs text-muted-foreground'>{t('home.closes', { date: formatEventDate(evt.ends_at, t('home.tbd')) })}</p>
         <div className='mt-4 flex gap-2'>
-          <Link to={`/checkin/${evt.id}`} className='btn-pill btn-primary flex min-h-11 flex-1 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>Check in now</Link>
-          <Link to={`/events/${evt.id}`} className='btn-pill btn-secondary flex min-h-11 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>Details</Link>
+          <Link to={`/checkin/${evt.id}`} className='btn-pill btn-primary flex min-h-11 flex-1 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>{t('home.checkInNow')}</Link>
+          <Link to={`/events/${evt.id}`} className='btn-pill btn-secondary flex min-h-11 items-center justify-center px-4 text-sm font-semibold no-underline active:scale-[0.98]'>{t('home.details')}</Link>
         </div>
       </div>
     </div>
@@ -536,9 +470,10 @@ function LiveEventHero({ evt }: { evt: CheckinEventRow }) {
 }
 
 function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | 'upcoming' | 'past' }) {
+  const { t } = useTranslation()
   const levelColor = `var(--badge-${evt.scope_level}, var(--accent))`
   const statusColor = variant === 'live' ? 'var(--present)' : variant === 'past' ? 'var(--muted)' : levelColor
-  const statusLabel = variant === 'live' ? 'Live' : variant === 'past' ? 'Ended' : 'Upcoming'
+  const statusLabel = variant === 'live' ? t('home.statusLive') : variant === 'past' ? t('home.statusEnded') : t('home.statusUpcoming')
 
   return (
     <Link
@@ -564,7 +499,7 @@ function EventCard({ evt, variant }: { evt: CheckinEventRow; variant: 'live' | '
       </div>
       <div className='shrink-0 text-right'>
         <p className='tnum m-0 text-xs font-semibold text-muted-foreground'>
-          {formatEventDate(evt.starts_at)}
+          {formatEventDate(evt.starts_at, t('home.tbd'))}
         </p>
         <span
           className='text-[11px] font-semibold uppercase tracking-wider'

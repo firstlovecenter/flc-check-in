@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import CheckInAdminControls from './CheckInAdminControls'
@@ -25,6 +26,7 @@ const DANGEROUS_FIELDS_ON_ACTIVE = new Set([
 type Patch = Partial<CheckinEventRow> & Record<string, any>
 
 export default function EventEditForm({ eventId }: { eventId: string }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [event, setEvent] = useState<CheckinEventRow | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,11 +95,11 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
     setError(null)
     setSaved(false)
     if (!event) return
-    if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
-    if (roles.length === 0)   { setError('Pick at least one allowed role.'); return }
+    if (methods.length === 0) { setError(t('editEvent.errors.methodRequired')); return }
+    if (roles.length === 0)   { setError(t('editEvent.errors.roleRequired')); return }
     if (geofence?.type === 'polygon') {
       if ((geofence.polygon || []).length < 3) {
-        setError('Polygon needs at least 3 vertices.'); return
+        setError(t('editEvent.errors.polygonVertices')); return
       }
     }
 
@@ -136,7 +138,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
     } catch (err: any) {
-      setError(err.message || 'Save failed')
+      setError(err.message || t('editEvent.errors.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -146,9 +148,9 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
     const newPin = generatePin()
     try {
       await resetPin(eventId, newPin)
-      alert(`New PIN: ${newPin}`)
+      alert(t('editEvent.newPinAlert', { pin: newPin }))
     } catch (err: any) {
-      alert(err.message || 'Reset failed')
+      alert(err.message || t('editEvent.errors.resetFailed'))
     }
   }
 
@@ -158,9 +160,9 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
       {/* Lifecycle controls — always at the top */}
-      <Section title='Status & controls'>
+      <Section title={t('editEvent.sections.statusControls')}>
         <p className='text-xs text-muted-foreground'>
-          Current status: <span className='uppercase tracking-wider text-primary'>{event.status}</span>
+          {t('editEvent.currentStatus', { status: event.status })}
         </p>
         <CheckInAdminControls event={event} onChange={(updated) => {
           setEvent(updated)
@@ -174,21 +176,21 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       {/* The sanctioned re-probe of the member graph. Replaces the old
           "add member to event scope" flow: one action that re-runs the same
           snapshot the creation path builds, rather than patching individuals. */}
-      <Section title='Eligible attendees'>
+      <Section title={t('editEvent.sections.eligibleAttendees')}>
         <RefreshEligibleList event={event} />
       </Section>
 
-      <Section title='Event'>
-        <Field label='Name'>
+      <Section title={t('editEvent.sections.event')}>
+        <Field label={t('createEvent.fields.name')}>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
             className='input-field' />
         </Field>
-        <Field label='Venue / Location name'>
+        <Field label={t('createEvent.fields.venue')}>
           <input type='text' value={venueName} onChange={(e) => setVenueName(e.target.value)}
-            placeholder='e.g. First Love Center, The Qodesh'
+            placeholder={t('createEvent.fields.venuePlaceholder')}
             className='input-field' />
         </Field>
-        <Field label='Church (read-only)'>
+        <Field label={t('editEvent.churchReadOnly')}>
           <p className='surface-card m-0 rounded-lg px-4 py-2.5 text-sm text-foreground'>
             {event.scope_church_name}
             <span className='text-border'> · </span>
@@ -197,16 +199,16 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         </Field>
       </Section>
 
-      <Section title='Time window'>
-        <Field label='Starts'>
+      <Section title={t('editEvent.sections.timeWindow')}>
+        <Field label={t('createEvent.fields.starts')}>
           <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
             className='input-field' />
         </Field>
-        <Field label='Duration'>
+        <Field label={t('createEvent.fields.duration')}>
           <div className='flex flex-wrap gap-2'>
             {(['30', '60', '120', 'custom'] as const).map((preset) => (
               <Pill key={preset} active={durationPreset === preset} onClick={() => setDurationPreset(preset)}>
-                {preset === '30' ? '30 min' : preset === '60' ? '1 hour' : preset === '120' ? '2 hours' : 'Custom'}
+                {preset === '30' ? t('createEvent.fields.duration30') : preset === '60' ? t('createEvent.fields.duration60') : preset === '120' ? t('createEvent.fields.duration120') : t('createEvent.fields.durationCustom')}
               </Pill>
             ))}
           </div>
@@ -220,18 +222,18 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
                 onChange={(e) => setCustomMinutes(e.target.value)}
                 className='input-field w-24'
               />
-              <span className='text-xs text-muted-foreground'>minutes</span>
+              <span className='text-xs text-muted-foreground'>{t('common.minutes')}</span>
             </div>
           )}
           {endsAt && (
             <p className='text-xs text-muted-foreground mt-0.5'>
-              Ends at <span className='font-semibold text-foreground'>{formatLocalTime(endsAt)}</span>
+              {t('createEvent.fields.endsAt', { time: formatLocalTime(endsAt) })}
             </p>
           )}
         </Field>
       </Section>
 
-      <Section title='Check-in methods' lockedHint={locked('allowed_check_in_methods') ? 'Pause the event to edit.' : null}>
+      <Section title={t('editEvent.sections.checkInMethods')} lockedHint={locked('allowed_check_in_methods') ? t('editEvent.pauseToEdit') : null}>
         <div className='flex flex-wrap gap-2'>
           {ALL_METHODS.map((m) => (
             <Pill key={m}
@@ -244,19 +246,19 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         </div>
         {methods.includes('PIN') && (
           <div className='mt-3 flex items-center gap-3'>
-            <label className='text-xs text-muted-foreground'>New PIN (optional)</label>
+            <label className='text-xs text-muted-foreground'>{t('editEvent.newPinOptional')}</label>
             <input type='text' inputMode='numeric' maxLength={6} value={pin}
-              placeholder='leave blank to keep current'
+              placeholder={t('editEvent.pinPlaceholder')}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
               className='input-field font-mono tracking-widest' />
             <button type='button' onClick={handleResetPin} className='btn-pill btn-secondary px-3 py-1 text-xs'>
-              Reset & show
+              {t('editEvent.resetAndShow')}
             </button>
           </div>
         )}
       </Section>
 
-      <Section title='Allowed roles' lockedHint={locked('allowed_roles') ? 'Pause the event to edit.' : null}>
+      <Section title={t('editEvent.sections.allowedRoles')} lockedHint={locked('allowed_roles') ? t('editEvent.pauseToEdit') : null}>
         <div className='flex flex-wrap gap-2'>
           {availableRoles.map((r) => (
             <Pill key={r}
@@ -269,10 +271,10 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
         </div>
       </Section>
 
-      <Section title='Geofence' lockedHint={locked('geofence') ? 'Pause the event to edit.' : null}>
+      <Section title={t('editEvent.sections.geofence')} lockedHint={locked('geofence') ? t('editEvent.pauseToEdit') : null}>
         {locked('geofence') || isEnded ? (
           <p className='surface-card m-0 rounded-lg px-4 py-2.5 text-sm text-muted-foreground'>
-            {geofence?.type === 'circle' ? `Circle · ${geofence.radiusM} m` : `Polygon · ${geofence?.polygon?.length || 0} vertices`}
+            {geofence?.type === 'circle' ? t('editEvent.geofenceCircle', { radius: geofence.radiusM }) : t('editEvent.geofencePolygon', { count: geofence?.polygon?.length || 0 })}
           </p>
         ) : (
           geofence && <GeoFencePicker value={geofence} onChange={setGeofence} />
@@ -280,7 +282,7 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
       </Section>
 
       {error && <Alert variant='destructive' className='text-center'>{error}</Alert>}
-      {saved && <Alert variant='success' className='text-center'>Saved.</Alert>}
+      {saved && <Alert variant='success' className='text-center'>{t('common.saved')}</Alert>}
 
       <div className='flex gap-2'>
         <button
@@ -288,14 +290,14 @@ export default function EventEditForm({ eventId }: { eventId: string }) {
           onClick={() => navigate(`/events/${eventId}`)}
           className='btn-pill btn-secondary flex-1 py-3 text-sm font-semibold cursor-pointer'
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type='submit'
           disabled={saving}
           className='btn-pill btn-primary flex-1 py-3 text-sm font-semibold cursor-pointer disabled:opacity-50'
         >
-          {saving ? 'Saving…' : 'Save changes'}
+          {saving ? t('common.saving') : t('common.saveChanges')}
         </button>
       </div>
     </form>

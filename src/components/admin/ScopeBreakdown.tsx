@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Spinner from '../Spinner'
 import { format } from 'date-fns'
 import ScreenHeader from '../ScreenHeader'
@@ -22,6 +23,7 @@ function membersWithId(list: any[] | null | undefined): any[] {
 }
 
 export default function ScopeBreakdown({ eventId }) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -186,39 +188,39 @@ export default function ScopeBreakdown({ eventId }) {
 
   if (error) return <CenterCard><p className='text-destructive'>{error}</p></CenterCard>
   if (initialLoading || !event || !viewerCaps) {
-    return <Spinner fullPage message='Loading event details.' />
+    return <Spinner fullPage message={t('scopeBreakdown.loadingEvent')} />
   }
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
-    return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
+    return <CenterCard><p className='text-muted-foreground'>{t('scopeBreakdown.notInScope')}</p></CenterCard>
   }
 
   return (
     <PageShell>
       <ScreenHeader
-        title={currentName || 'Breakdown'}
-        back={backTo ? { to: backTo, label: 'Dashboard' } : undefined}
+        title={currentName || t('scopeBreakdown.title')}
+        back={backTo ? { to: backTo, label: t('scopeBreakdown.backDashboard') } : undefined}
         onBack={!backTo ? () => navigate(-1) : undefined}
       />
       <PageMain className='flex flex-col gap-3 py-5'>
         <div className='flex items-center justify-between'>
           <p className='eyebrow m-0'>
             {isMemberList
-              ? `${sliceRows.length} member${sliceRows.length !== 1 ? 's' : ''}`
-              : `${groups.length} ${cap(childLevel!)}${groups.length !== 1 ? 's' : ''}${unassignedRows.length > 0 ? ` · +${unassignedRows.length} at this level` : ''}`}
+              ? t('scopeBreakdown.memberCount', { count: sliceRows.length })
+              : `${t('scopeBreakdown.childCount', { count: groups.length, level: cap(childLevel!) })}${unassignedRows.length > 0 ? t('scopeBreakdown.atThisLevel', { count: unassignedRows.length }) : ''}`}
           </p>
           {!isMemberList && (
             <Link
               to={`/events/${eventId}/members?status=all&level=${currentLevel}&churchId=${currentChurchId}&churchName=${encodeURIComponent(currentName)}`}
               className='text-xs text-primary underline'
             >
-              All members ↗
+              {t('scopeBreakdown.allMembers')}
             </Link>
           )}
         </div>
 
         {/* ── Scope accordion list ── */}
         {!isMemberList && childChurches === null && (
-          <p className='py-8 text-center text-sm text-muted-foreground'>Loading scopes…</p>
+          <p className='py-8 text-center text-sm text-muted-foreground'>{t('scopeBreakdown.loadingScopes')}</p>
         )}
         {!isMemberList && childChurches !== null && (
           <div className='flex flex-col gap-3'>
@@ -234,7 +236,7 @@ export default function ScopeBreakdown({ eventId }) {
               />
             ))}
             {groups.length === 0 && unassignedRows.length === 0 && (
-              <p className='py-6 text-center text-sm text-muted-foreground'>No child scopes in this view.</p>
+              <p className='py-6 text-center text-sm text-muted-foreground'>{t('scopeBreakdown.noChildScopes')}</p>
             )}
           </div>
         )}
@@ -243,7 +245,7 @@ export default function ScopeBreakdown({ eventId }) {
         {!isMemberList && childChurches !== null && unassignedRows.length > 0 && (
           <>
             <p className='mt-1 text-xs font-semibold text-muted-foreground'>
-              {cap(currentLevel!)} level · {unassignedRows.length} member{unassignedRows.length !== 1 ? 's' : ''}
+              {t('scopeBreakdown.levelMembers', { level: cap(currentLevel!), count: unassignedRows.length })}
             </p>
             <div className='flex flex-col gap-2'>
               {unassignedRows.map(({ member: m, record: r, status }) => (
@@ -255,7 +257,7 @@ export default function ScopeBreakdown({ eventId }) {
 
         {/* ── Member list (governorship / bottom of drill) ── */}
         {isMemberList && memberRows.length === 0 && (
-          <p className='mt-4 text-center text-sm text-muted-foreground'>No eligible members in this scope.</p>
+          <p className='mt-4 text-center text-sm text-muted-foreground'>{t('scopeBreakdown.noEligible')}</p>
         )}
         {isMemberList && memberRows.length > 0 && (
           <div className='flex flex-col gap-2'>
@@ -292,6 +294,7 @@ function ScopeCard({
   onToggle: () => void
   leader: { id: string; name: string; pictureUrl: string | null } | null
 }) {
+  const { t } = useTranslation()
   const leaderName = leader?.name ?? ''
   const initials = leaderName
     ? leaderName.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
@@ -341,15 +344,15 @@ function ScopeCard({
       {isExpanded && (
         <div className='border-t border-border px-4 pb-4 pt-3'>
           <div className='overflow-hidden rounded-xl border border-border'>
-            <ExpandedStatRow icon='present' label='Present' count={group.attended} to={presentLink} />
+            <ExpandedStatRow icon='present' label={t('scopeBreakdown.present')} count={group.attended} to={presentLink} />
             <div className='h-px bg-border' />
-            <ExpandedStatRow icon='absent'  label='Absent'  count={group.absent}   to={absentLink} />
+            <ExpandedStatRow icon='absent'  label={t('scopeBreakdown.absent')}  count={group.absent}   to={absentLink} />
           </div>
           <Link
             to={drillPath}
             className='mt-3 flex items-center justify-end gap-1 text-sm font-semibold text-primary no-underline'
           >
-            View {cap(childLevel)}
+            {t('scopeBreakdown.viewLevel', { level: cap(childLevel) })}
             <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' strokeWidth='2.5'>
               <path d='M9 6l6 6-6 6' strokeLinecap='round' strokeLinejoin='round' />
             </svg>
@@ -406,9 +409,11 @@ function ExpandedStatRow({ icon, label, count, to }: { icon: 'present' | 'absent
 // ─── MemberRow ────────────────────────────────────────────────────────────────
 
 function MemberRow({ member: m, record: r, status }: { member: any; record: any; status: string }) {
+  const { t } = useTranslation()
   const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
   const unit = m.bacenta_name || m.governorship_name || m.council_name || (m.roles || [])[0] || '—'
   const initials = [(m.first_name || '')[0], (m.last_name || '')[0]].filter(Boolean).join('').toUpperCase() || '?'
+  const statusLabel = status === 'Present' ? t('common.present') : t('common.absent')
   const statusClass = status === 'Present' ? 'text-success' : 'text-destructive'
 
   return (
@@ -425,7 +430,7 @@ function MemberRow({ member: m, record: r, status }: { member: any; record: any;
         <p className='m-0 mt-0.5 truncate text-xs text-muted-foreground'>{unit}</p>
       </div>
       <div className='shrink-0 text-right'>
-        <p className={cn('m-0 text-xs font-bold', statusClass)}>{status}</p>
+        <p className={cn('m-0 text-xs font-bold', statusClass)}>{statusLabel}</p>
         {r?.checked_in_at && (
           <p className='m-0 mt-0.5 text-[11px] text-muted-foreground'>{format(new Date(r.checked_in_at), 'HH:mm')}</p>
         )}

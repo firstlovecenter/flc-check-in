@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../components/ScreenHeader'
 import Spinner from '../components/Spinner'
 import { Skeleton } from '../components/ui/skeleton'
@@ -22,12 +23,14 @@ import { getDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
 import { vibrateSuccess } from '../utils/haptics'
 import { friendlyErrorMessage } from '../utils/network'
+import i18n from '../lib/i18n'
 
 // Submission failures that are about the DEVICE or ACCOUNT, not the attempt —
 // these get the hard error screen (with Logout) instead of an inline retry.
 const HARD_FAILURE_REASONS = new Set(['device_already_used'])
 
 export default function CheckInFormScreen() {
+  const { t } = useTranslation()
   const { eventId } = useParams()
   const user = getCurrentUser()
 
@@ -74,7 +77,7 @@ export default function CheckInFormScreen() {
         })
         if (cancelled) return
         if (!found) {
-          setHardError('Event not found.')
+          setHardError(t('checkin.eventNotFound'))
           return
         }
         setEvent(evt)
@@ -92,7 +95,7 @@ export default function CheckInFormScreen() {
   const submit = useCallback(async (method: 'QR' | 'PIN', payload: { qrToken?: string; pin?: string }, position) => {
     if (submitting) return
     if (!navigator.onLine) {
-      setSubmitError("You're offline. Reconnect and try again.")
+      setSubmitError(t('checkin.offlineSubmit'))
       return
     }
     setSubmitting(true)
@@ -129,7 +132,7 @@ export default function CheckInFormScreen() {
   if (hardError) {
     return (
       <CenterCard showLogout>
-        <h2 className='text-lg font-semibold mb-1 text-destructive'>Cannot check-in with device</h2>
+        <h2 className='text-lg font-semibold mb-1 text-destructive'>{t('checkin.cannotCheckInDevice')}</h2>
         <p className='text-sm m-0 text-muted-foreground'>{hardError}</p>
       </CenterCard>
     )
@@ -139,7 +142,7 @@ export default function CheckInFormScreen() {
   if (!event || existingRecord === undefined) {
     return (
       <PageShell>
-        <ScreenHeader title='Check in' back={{ to: '/home', label: 'Home' }} />
+        <ScreenHeader title={t('checkin.title')} back={{ to: '/home', label: t('nav.home') }} />
         <PageMainNarrow className='py-6'>
           <Skeleton className='mb-4 h-4 w-1/2' />
           <Skeleton className='mb-5 h-11 rounded-xl' />
@@ -158,15 +161,15 @@ export default function CheckInFormScreen() {
   const endsMs    = new Date(event.ends_at).getTime()
   const EARLY_MS  = 60 * 60 * 1000          // 1 hour — mirrors the server rule
   if (event.status === 'PAUSED') {
-    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-warning'>Event paused</h2><p className='text-muted-foreground'>{event.name} is currently paused.</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-warning'>{t('checkin.eventPaused')}</h2><p className='text-muted-foreground'>{t('checkin.eventPausedBody', { name: event.name })}</p></CenterCard>
   }
   if (event.status === 'ENDED' || now > endsMs) {
-    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>Event ended</h2><p className='text-muted-foreground'>{event.name} has ended.</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>{t('checkin.eventEnded')}</h2><p className='text-muted-foreground'>{t('checkin.eventEndedBody', { name: event.name })}</p></CenterCard>
   }
   if (now < startsMs - EARLY_MS) {
     const opensAt = new Date(startsMs - EARLY_MS)
     const timeStr = opensAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>Not open yet</h2><p className='text-muted-foreground'>Check-in for <strong>{event.name}</strong> opens at <strong>{timeStr}</strong> (1 hour before start).</p></CenterCard>
+    return <CenterCard><h2 className='text-lg font-semibold mb-2 text-muted-foreground'>{t('checkin.notOpenYet')}</h2><p className='text-muted-foreground'>{t('checkin.notOpenYetBody', { name: event.name, time: timeStr })}</p></CenterCard>
   }
 
   // ── Confirming: QR/PIN captured, server round-trip in flight ─────────────
@@ -175,14 +178,14 @@ export default function CheckInFormScreen() {
   if (confirming && !success) {
     return (
       <PageShell>
-        <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
+        <ScreenHeader title={event.name} back={{ to: '/home', label: t('nav.home') }} />
         <PageMainNarrow className='flex flex-col gap-4 py-8'>
           <Card>
             <CardContent className='p-6 text-center'>
               <div className='mb-3 flex justify-center'><Spinner fullPage={false} /></div>
-              <h2 className='mb-1 text-xl font-bold tracking-tight text-foreground'>Confirming…</h2>
+              <h2 className='mb-1 text-xl font-bold tracking-tight text-foreground'>{t('checkin.confirming')}</h2>
               <p className='text-sm text-muted-foreground'>{event.name}</p>
-              <p className='mt-1 text-xs text-muted-foreground'>Recording your check-in</p>
+              <p className='mt-1 text-xs text-muted-foreground'>{t('checkin.recordingCheckIn')}</p>
             </CardContent>
           </Card>
         </PageMainNarrow>
@@ -197,12 +200,12 @@ export default function CheckInFormScreen() {
   if (activeRecord) {
     return (
       <PageShell>
-        <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
+        <ScreenHeader title={event.name} back={{ to: '/home', label: t('nav.home') }} />
         <PageMainNarrow className='flex flex-col gap-4 py-8'>
           <Card>
             <CardContent className='p-6 text-center'>
               <div className='mb-3 text-4xl'>✅</div>
-              <h2 className='mb-1 text-xl font-bold tracking-tight text-success'>You&apos;re checked in</h2>
+              <h2 className='mb-1 text-xl font-bold tracking-tight text-success'>{t('checkin.checkedIn')}</h2>
               <p className='text-sm text-foreground'>{event.name}</p>
               <p className='mt-1 text-xs text-muted-foreground'>
                 {event.scope_level} · {event.scope_church_name}
@@ -213,7 +216,7 @@ export default function CheckInFormScreen() {
               <p className='mt-3 text-sm font-semibold text-foreground'>
                 {/* submit_checkin's response omits checked_in_at — a fresh
                     submit just happened, so "now" is the accurate time. */}
-                Checked in at {fmt(activeRecord.checked_in_at ?? new Date().toISOString())}
+                {t('checkin.checkedInAt', { time: fmt(activeRecord.checked_in_at ?? new Date().toISOString()) })}
               </p>
             </CardContent>
           </Card>
@@ -221,7 +224,7 @@ export default function CheckInFormScreen() {
           {submitError && <Alert variant='destructive' className='text-center'>{submitError}</Alert>}
 
           <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
-            Back to Home
+            {t('checkin.backHome')}
           </Link>
         </PageMainNarrow>
       </PageShell>
@@ -233,7 +236,7 @@ export default function CheckInFormScreen() {
       {(position) => (
         <PageShell>
           <LocationPreWarmer />
-          <ScreenHeader title={event.name} back={{ to: '/home', label: 'Home' }} />
+          <ScreenHeader title={event.name} back={{ to: '/home', label: t('nav.home') }} />
           <PageMainNarrow className='py-6'>
             <p className='section-heading mb-4'>{event.scope_level} · {event.scope_church_name}</p>
             {submitError && <Alert variant='destructive' className='mb-4 text-center'>{submitError}</Alert>}
@@ -256,10 +259,10 @@ export default function CheckInFormScreen() {
             {activeTab === 'QR' && (
               <div className='flex flex-col gap-3'>
                 <p className='text-sm text-center text-muted-foreground'>
-                  Point your camera at the QR code displayed at the venue.
+                  {t('checkin.qrHint')}
                 </p>
-                <QRScanner onDecode={(t) => handleQR(t, position)} onError={() => {}} />
-                {submitting && <p className='text-xs text-center text-muted-foreground'>Submitting…</p>}
+                <QRScanner onDecode={(token) => handleQR(token, position)} onError={() => {}} />
+                {submitting && <p className='text-xs text-center text-muted-foreground'>{t('checkin.submitting')}</p>}
               </div>
             )}
 
@@ -268,7 +271,7 @@ export default function CheckInFormScreen() {
                 <RotatingPinDisplay event={event} />
                 <PinEntry
                   disabled={submitting}
-                  hint='Enter the PIN shown above.'
+                  hint={t('checkin.pinHint')}
                   onSubmit={(pin) => handlePIN(pin, position)}
                 />
               </div>
@@ -288,34 +291,34 @@ function fmt(iso: string | null) {
 
 function reasonText(result) {
   switch (result.reason) {
-    case 'outside_fence':        return 'You are outside the venue area.'
-    case 'invalid_qr_token':     return 'QR code is invalid. Try again.'
-    case 'qr_expired':           return 'QR code has expired. Wait for the next rotation.'
-    case 'missing_qr_token':     return 'No QR code detected.'
-    case 'missing_pin':          return 'Enter the 6-digit PIN.'
-    case 'wrong_pin':            return `Wrong PIN. ${result.attempts_left ?? 0} attempts left.`
-    case 'locked_out':           return `Too many wrong attempts. Try again after ${new Date(result.lockout_until).toLocaleTimeString()}.`
-    case 'pin_not_set':          return 'No PIN configured for this event.'
-    case 'event_paused':         return 'This event is currently paused.'
-    case 'event_ended':          return 'This event has ended.'
+    case 'outside_fence':        return i18n.t('checkin.reasons.outsideFence')
+    case 'invalid_qr_token':     return i18n.t('checkin.reasons.invalidQrToken')
+    case 'qr_expired':           return i18n.t('checkin.reasons.qrExpired')
+    case 'missing_qr_token':     return i18n.t('checkin.reasons.missingQrToken')
+    case 'missing_pin':          return i18n.t('checkin.reasons.missingPin')
+    case 'wrong_pin':            return i18n.t('checkin.reasons.wrongPin', { count: result.attempts_left ?? 0 })
+    case 'locked_out':           return i18n.t('checkin.reasons.lockedOut', { time: new Date(result.lockout_until).toLocaleTimeString() })
+    case 'pin_not_set':          return i18n.t('checkin.reasons.pinNotSet')
+    case 'event_paused':         return i18n.t('checkin.reasons.eventPaused')
+    case 'event_ended':          return i18n.t('checkin.reasons.eventEnded')
     case 'not_started':          return result.opens_at
-                                   ? `Check-in opens at ${new Date(result.opens_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
-                                   : "Check-in hasn't opened yet."
+                                   ? i18n.t('checkin.reasons.notStartedAt', { time: new Date(result.opens_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+                                   : i18n.t('checkin.reasons.notStarted')
     case 'role_not_allowed':
-    case 'not_eligible':         return 'You are not on the eligible list for this event.'
-    case 'method_not_allowed':   return 'This check-in method is not enabled for this event.'
-    case 'event_not_active':     return `Event is ${result.status?.toLowerCase() || 'not active'}.`
-    case 'event_not_found':      return 'Event not found.'
+    case 'not_eligible':         return i18n.t('checkin.reasons.notEligible')
+    case 'method_not_allowed':   return i18n.t('checkin.reasons.methodNotAllowed')
+    case 'event_not_active':     return i18n.t('checkin.reasons.eventNotActive', { status: result.status?.toLowerCase() || 'not active' })
+    case 'event_not_found':      return i18n.t('checkin.eventNotFound')
     case 'device_already_used':
       return result.claimed_by_name
-        ? `Device already used by ${result.claimed_by_name}.`
-        : 'This device has already been used by another leader for this event.'
-    case 'already_checked_in':   return 'You are already checked in.'
-    case 'unsupported_method':   return 'This check-in method is not supported.'
-    case 'server_error':         return result.detail || 'Server error. Try again.'
+        ? i18n.t('checkin.reasons.deviceUsedBy', { name: result.claimed_by_name })
+        : i18n.t('checkin.reasons.deviceAlreadyUsed')
+    case 'already_checked_in':   return i18n.t('checkin.reasons.alreadyCheckedIn')
+    case 'unsupported_method':   return i18n.t('checkin.reasons.unsupportedMethod')
+    case 'server_error':         return result.detail || i18n.t('checkin.reasons.serverError')
     case 'rpc_error':
-    case 'db_error':             return result.error || 'Server error. Try again.'
-    default:                     return result.reason || 'Check-in failed.'
+    case 'db_error':             return result.error || i18n.t('checkin.reasons.serverError')
+    default:                     return result.reason || i18n.t('checkin.reasons.failed')
   }
 }
 
@@ -334,6 +337,7 @@ function CenterCard({
   children: React.ReactNode
   showLogout?: boolean
 }) {
+  const { t } = useTranslation()
   function handleLogout() {
     logout()
     window.location.assign('/')
@@ -344,11 +348,11 @@ function CenterCard({
         {children}
         {showLogout ? (
           <Button type='button' variant='outline' className='w-full border-destructive text-destructive' onClick={handleLogout}>
-            Logout
+            {t('nav.logOut')}
           </Button>
         ) : (
           <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
-            Back to Home
+            {t('checkin.backHome')}
           </Link>
         )}
       </div>

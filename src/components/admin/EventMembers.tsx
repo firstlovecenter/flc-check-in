@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useState, useDeferredValue } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Skeleton, SkeletonRows } from '../ui/skeleton'
 import { toast } from '../Toast'
 import { format } from 'date-fns'
@@ -27,10 +28,10 @@ import { PaginationControls, useClientPagination } from '../PaginationControls'
 type Status = 'present' | 'absent' | 'all'
 const NAMES_PAGE_SIZE = 50
 
-const STATUS_TITLES: Record<Status, string> = {
-  present: 'Present',
-  absent:  'Absent',
-  all:     'All Expected',
+function statusTitle(t: (key: string) => string, status: Status): string {
+  if (status === 'present') return t('members.present')
+  if (status === 'absent') return t('members.absent')
+  return t('members.allExpected')
 }
 
 function membersWithId(list: any[] | null | undefined): any[] {
@@ -42,6 +43,7 @@ function cap(s: string) {
 }
 
 export default function EventMembers({ eventId }: { eventId: string }) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const [params] = useSearchParams()
 
@@ -91,10 +93,10 @@ export default function EventMembers({ eventId }: { eventId: string }) {
       if (m[idCol] && !seen.has(m[idCol])) seen.set(m[idCol], m[nameCol] || m[idCol])
     }
     return [
-      { level: topChildLevel, id: '__all__', name: `All ${cap(topChildLevel)}s` },
+      { level: topChildLevel, id: '__all__', name: t('reports.full.allScopes', { level: cap(topChildLevel) }) },
       ...[...seen.entries()].map(([id, name]) => ({ level: topChildLevel, id, name })).sort((a, b) => a.name.localeCompare(b.name)),
     ]
-  }, [event, safeAllEligible])
+  }, [event, safeAllEligible, t])
 
   const eligible = useMemo(() => {
     const canViewWholeEvent = !!(viewerCaps?.canManage || viewerCaps?.canViewFullEvent)
@@ -148,12 +150,12 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   function exportCsv() {
     if (!event) return
     const csv = Papa.unparse(filteredRows.map(({ member: m, record: r }) => ({
-      Name:   [m.first_name, m.last_name].filter(Boolean).join(' '),
-      Unit:   m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
-      Status: r ? 'Present' : 'Absent',
-      'Checked In At':  r?.checked_in_at  ? format(new Date(r.checked_in_at),  'yyyy-MM-dd HH:mm:ss') : '',
-      Method: r?.method || '',
-      Phone:  m.phone || '',
+      [t('reports.csv.name')]:   [m.first_name, m.last_name].filter(Boolean).join(' '),
+      [t('reports.csv.unit')]:   m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
+      [t('reports.csv.status')]: r ? t('common.present') : t('common.absent'),
+      [t('reports.csv.checkedInAt')]:  r?.checked_in_at  ? format(new Date(r.checked_in_at),  'yyyy-MM-dd HH:mm:ss') : '',
+      [t('reports.csv.method')]: r?.method || '',
+      [t('profile.phone')]:  m.phone || '',
     })))
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url  = URL.createObjectURL(blob)
@@ -164,7 +166,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     a.download = `${safe}${scope}-${status}-${format(new Date(event.starts_at), 'yyyy-MM-dd')}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast('Report exported', 'success')
+    toast(t('toasts.reportExported'), 'success')
   }
 
   const displayError = error || eligibilityError
@@ -175,7 +177,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
   if (initialLoading || !event || !viewerCaps) {
     return (
       <PageShell>
-        <ScreenHeader title={STATUS_TITLES[status] || 'Members'} back={{ to: `/events/${eventId}`, label: 'Dashboard' }} />
+        <ScreenHeader title={statusTitle(t, status)} back={{ to: `/events/${eventId}`, label: t('members.dashboardBack') }} />
         <PageMain className='flex flex-col gap-4'>
           <Skeleton className='h-4 w-2/3' />
           <Skeleton className='h-11 rounded-xl' />
@@ -185,35 +187,36 @@ export default function EventMembers({ eventId }: { eventId: string }) {
     )
   }
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
-    return <CenterCard><p className='text-muted-foreground'>This event isn&apos;t part of your scope.</p></CenterCard>
+    return <CenterCard><p className='text-muted-foreground'>{t('events.notInScope')}</p></CenterCard>
   }
 
   const eventEnded = !!event.ends_at && new Date() > new Date(event.ends_at)
-  const title = STATUS_TITLES[status] || 'Members'
+  const title = statusTitle(t, status)
 
   return (
     <PageShell>
       <ScreenHeader
         title={title}
-        back={{ to: `/events/${eventId}`, label: 'Dashboard' }}
+        back={{ to: `/events/${eventId}`, label: t('members.dashboardBack') }}
         right={
           viewerCaps.canManage ? (
-            <Button type='button' variant='outline' size='sm' onClick={exportCsv}>Export</Button>
+            <Button type='button' variant='outline' size='sm' onClick={exportCsv}>{t('members.export')}</Button>
           ) : null
         }
       />
 
       <PageMain className='flex flex-col gap-4'>
         <p className='section-heading m-0 text-muted-foreground'>
-          {event.name} · <span className='text-foreground font-bold'>{filteredRows.length}</span> {status === 'present' ? 'present' : status === 'absent' ? 'absent' : 'expected'}
+          {event.name} · <span className='text-foreground font-bold'>{filteredRows.length}</span>{' '}
+          {status === 'present' ? t('members.countPresent') : status === 'absent' ? t('members.countAbsent') : t('members.countExpected')}
         </p>
 
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
-            <Label className='section-heading'>Filter by scope</Label>
+            <Label className='section-heading'>{t('members.filterByScope')}</Label>
             <Select
               value={filterChurchId || '__all__'}
-              aria-label='Filter by scope'
+              aria-label={t('members.filterAria')}
               onChange={(e) => {
                 const opt = scopeOptions.find((o) => o.id === e.target.value)
                 setFilterChurchId(opt?.id === '__all__' ? null : opt?.id || null)
@@ -230,7 +233,7 @@ export default function EventMembers({ eventId }: { eventId: string }) {
           type='search'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search name or unit…'
+          placeholder={t('members.searchPlaceholder')}
           className='input-field'
         />
 
@@ -238,18 +241,18 @@ export default function EventMembers({ eventId }: { eventId: string }) {
           {filteredRows.length === 0 && (
             <EmptyState
               kind={rows.length === 0 ? 'all-done' : 'no-match'}
-              title={rows.length === 0 ? 'Nobody here yet' : 'No matches'}
+              title={rows.length === 0 ? t('empty.nobodyYet') : t('empty.noMatches')}
               description={
                 rows.length === 0
                   ? status === 'present'
-                    ? 'No one has checked in yet.'
-                    : 'No eligible members in this view.'
-                  : 'Try a different name or clear the search.'
+                    ? t('empty.noOneCheckedIn')
+                    : t('empty.noEligible')
+                  : t('empty.tryDifferentName')
               }
               action={
                 search.trim() ? (
                   <Button type='button' variant='secondary' size='sm' onClick={() => setSearch('')}>
-                    Clear search
+                    {t('common.clearSearch')}
                   </Button>
                 ) : undefined
               }
@@ -308,6 +311,7 @@ const MemberCard = memo(function MemberCard({
   onManual: (member: any) => void
   isRisky?: boolean
 }) {
+  const { t } = useTranslation()
   const { member: m, record: r } = entry
   const name     = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.id
   const unit     = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '—'
@@ -330,7 +334,7 @@ const MemberCard = memo(function MemberCard({
             <div className='flex h-11 w-11 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground'>{initials}</div>
           )}
           {isRisky && (
-            <span className='absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-white' title='Device fingerprint shared with another member'>⚠</span>
+            <span className='absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-white' title={t('members.riskyTooltip')}>⚠</span>
           )}
         </div>
         <div className='min-w-0 flex-1'>
@@ -340,7 +344,7 @@ const MemberCard = memo(function MemberCard({
         <div className='shrink-0 text-right'>
           {status === 'all' && (
             <Badge variant={isAbsent ? 'destructive' : 'success'} className='text-[11px]'>
-              {isAbsent ? 'Absent' : 'Present'}
+              {isAbsent ? t('common.absent') : t('common.present')}
             </Badge>
           )}
           {!isAbsent && r?.checked_in_at && (
@@ -359,8 +363,8 @@ const MemberCard = memo(function MemberCard({
             <a
               href={`tel:${phone}`}
               className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground no-underline hover:bg-accent hover:text-foreground'
-              title='Call'
-              aria-label={`Call ${name}`}
+              title={t('members.call')}
+              aria-label={t('members.callAria', { name })}
             >
               <PhoneIcon />
             </a>
@@ -370,8 +374,8 @@ const MemberCard = memo(function MemberCard({
               type='button'
               onClick={() => onManual(m)}
               className='flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-success/40 text-success hover:bg-success/10'
-              title='Manual check-in'
-              aria-label={`Check in ${name}`}
+              title={t('members.manualCheckIn')}
+              aria-label={t('members.checkInAria', { name })}
             >
               <CheckInIcon />
             </button>

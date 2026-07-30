@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Label } from '../ui/label'
 import { Input } from '../ui/input'
 import { Button } from '../ui/button'
 
 export default function PinEntry({ onSubmit, disabled = false, hint = null }) {
+  const { t } = useTranslation()
   const [pin, setPin] = useState('')
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -12,7 +14,7 @@ export default function PinEntry({ onSubmit, disabled = false, hint = null }) {
   }
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-3'>
-      <Label className='text-xs font-semibold uppercase tracking-widest'>6-digit PIN</Label>
+      <Label className='text-xs font-semibold uppercase tracking-widest'>{t('checkin.pin.label')}</Label>
       <Input
         type='text'
         inputMode='numeric'
@@ -27,7 +29,7 @@ export default function PinEntry({ onSubmit, disabled = false, hint = null }) {
       />
       {hint && <p className='text-center text-xs text-muted-foreground'>{hint}</p>}
       <Button type='submit' disabled={disabled || pin.length !== 6} className='w-full' size='lg'>
-        Check in with PIN
+        {t('checkin.pin.submit')}
       </Button>
     </form>
   )

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser, formatName } from '../../utils/auth'
@@ -22,6 +23,7 @@ interface AdminScope { level: string; id: string; name: string }
 const ALL_METHODS = ['QR', 'PIN', 'MANUAL']
 
 export default function CreateEventForm() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
@@ -257,18 +259,18 @@ export default function CreateEventForm() {
   function nextStep() {
     setError(null)
     if (step === 0) {
-      if (!name.trim()) { setError('Give the event a name.'); return }
-      if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) { setError('Add at least one church scope.'); return }
-      if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) { setError('Select at least one group.'); return }
-      if (!isSuperAdmin && !selectedTargetScope) { setError('Choose a creation scope.'); return }
+      if (!name.trim()) { setError(t('createEvent.errors.nameRequired')); return }
+      if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) { setError(t('createEvent.errors.scopeRequired')); return }
+      if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) { setError(t('createEvent.errors.groupRequired')); return }
+      if (!isSuperAdmin && !selectedTargetScope) { setError(t('createEvent.errors.chooseScope')); return }
     }
     if (step === 1 && (!startsAt || !endsAt || new Date(endsAt) <= new Date(startsAt))) {
-      setError('Choose a valid start time and duration.'); return
+      setError(t('createEvent.errors.invalidSchedule')); return
     }
     if (step === 2) {
-      if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
-      if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError('Pick at least one allowed role.'); return }
-      if (geofence.type === 'polygon' && (geofence.polygon || []).length < 3) { setError('Polygon needs at least 3 vertices.'); return }
+      if (methods.length === 0) { setError(t('createEvent.errors.methodRequired')); return }
+      if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError(t('createEvent.errors.roleRequired')); return }
+      if (geofence.type === 'polygon' && (geofence.polygon || []).length < 3) { setError(t('createEvent.errors.polygonVertices')); return }
     }
     setStep((current) => Math.min(3, current + 1))
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -279,17 +281,17 @@ export default function CreateEventForm() {
     setError(null)
 
     if (isSuperAdmin && superMode === 'churches' && superScopes.length === 0) {
-      setError('Add at least one church scope.'); return
+      setError(t('createEvent.errors.scopeRequired')); return
     }
     if (isSuperAdmin && superMode === 'group' && selectedGroupIds.length === 0) {
-      setError('Select at least one group.'); return
+      setError(t('createEvent.errors.groupRequired')); return
     }
-    if (!isSuperAdmin && !selectedTargetScope) { setError('No creation scope.'); return }
-    if (methods.length === 0) { setError('Pick at least one check-in method.'); return }
-    if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError('Pick at least one allowed role.'); return }
+    if (!isSuperAdmin && !selectedTargetScope) { setError(t('createEvent.errors.noScope')); return }
+    if (methods.length === 0) { setError(t('createEvent.errors.methodRequired')); return }
+    if (roles.length === 0 && !(isSuperAdmin && superMode === 'group')) { setError(t('createEvent.errors.roleRequired')); return }
     if (geofence.type === 'polygon') {
       if ((geofence.polygon || []).length < 3) {
-        setError('Polygon needs at least 3 vertices.'); return
+        setError(t('createEvent.errors.polygonVertices')); return
       }
     }
 
@@ -305,7 +307,7 @@ export default function CreateEventForm() {
       let firstEventId: string | null = null
 
       for (let i = 0; i < occurrences.length; i++) {
-        if (occurrences.length > 1) setSubmitProgress(`Creating ${i + 1} of ${occurrences.length}…`)
+        if (occurrences.length > 1) setSubmitProgress(t('createEvent.progress.creating', { current: i + 1, total: occurrences.length }))
         const { eventId } = await createEvent({
           name,
           venueName: venueName.trim() || null,
@@ -327,7 +329,7 @@ export default function CreateEventForm() {
           firstEventId = eventId
           // Snapshot scope members + write profiles before navigating so the
           // event dashboard sees a complete member list on the very first load.
-          setSubmitProgress('Preparing member list…')
+          setSubmitProgress(t('createEvent.progress.preparingMembers'))
           try {
             // The ONE graph probe in an event's life. Shared with the edit
             // page's "Refresh eligible list" so both paths build the snapshot
@@ -346,7 +348,7 @@ export default function CreateEventForm() {
       }
       navigate(`/admin/events/${firstEventId}`, { replace: true })
     } catch (err: any) {
-      setError(err.message || 'Create failed')
+      setError(err.message || t('createEvent.errors.createFailed'))
     } finally {
       setSubmitting(false)
       setSubmitProgress('')
@@ -360,16 +362,21 @@ export default function CreateEventForm() {
   if (!isSuperAdmin && !scopesLoading && scopes.length === 0) {
     return (
       <div className='surface-card p-5 text-center text-sm text-muted-foreground'>
-        <p className='mb-2 text-destructive'>No creation scope found.</p>
-        <p>You don't appear in the FLC member graph as a higher-scope leader/admin. Ask your stream lead to update your relationships.</p>
+        <p className='mb-2 text-destructive'>{t('createEvent.noScopeTitle')}</p>
+        <p>{t('createEvent.noScopeBody')}</p>
       </div>
     )
   }
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
-      <div className='grid grid-cols-4 gap-1' aria-label={`Step ${step + 1} of 4`}>
-        {['Basics', 'Schedule', 'Rules', 'Review'].map((label, index) => (
+      <div className='grid grid-cols-4 gap-1' aria-label={t('createEvent.stepAria', { current: step + 1, total: 4 })}>
+        {([
+          t('createEvent.steps.basics'),
+          t('createEvent.steps.schedule'),
+          t('createEvent.steps.rules'),
+          t('createEvent.steps.review'),
+        ] as const).map((label, index) => (
           <div key={label} className='min-w-0'>
             <div className={cn('h-1 rounded-full', index <= step ? 'bg-primary' : 'bg-border')} />
             <p className={cn('m-0 mt-1 truncate text-center text-[11px] font-medium', index === step ? 'text-foreground' : 'text-muted-foreground')}>{label}</p>
@@ -384,21 +391,21 @@ export default function CreateEventForm() {
       )}
 
       <fieldset disabled={step !== 0} className={cn('contents', step !== 0 && 'hidden')}>
-      <Section title='Event'>
-        <Field label='Name'>
+      <Section title={t('createEvent.sections.event')}>
+        <Field label={t('createEvent.fields.name')}>
           <input type='text' required value={name} onChange={(e) => setName(e.target.value)}
             className='input-field'
-            placeholder='e.g. Sunday Bacenta Leaders Meeting' />
+            placeholder={t('createEvent.fields.namePlaceholder')} />
         </Field>
-        <Field label='Venue / Location name'>
+        <Field label={t('createEvent.fields.venue')}>
           <input type='text' value={venueName} onChange={(e) => setVenueName(e.target.value)}
             className='input-field'
-            placeholder='e.g. First Love Center, The Qodesh' />
+            placeholder={t('createEvent.fields.venuePlaceholder')} />
         </Field>
       </Section>
 
       {/* Scope: hidden if exactly 1 admin scope; dropdown if 2+ */}
-      <Section title='Scope'>
+      <Section title={t('createEvent.sections.scope')}>
         {scopesLoading && <Spinner />}
         {scopesError && <p className='text-sm text-destructive'>{scopesError}</p>}
 
@@ -407,8 +414,8 @@ export default function CreateEventForm() {
           <div className='flex flex-col gap-3'>
             {/* Mode toggle */}
             <div className='flex gap-2'>
-              <Pill active={superMode === 'churches'} onClick={() => setSuperMode('churches')}>Church scopes</Pill>
-              <Pill active={superMode === 'group'} onClick={() => setSuperMode('group')}>Special group</Pill>
+              <Pill active={superMode === 'churches'} onClick={() => setSuperMode('churches')}>{t('createEvent.scopeModes.churches')}</Pill>
+              <Pill active={superMode === 'group'} onClick={() => setSuperMode('group')}>{t('createEvent.scopeModes.group')}</Pill>
             </div>
 
             {superMode === 'churches' && (
@@ -427,7 +434,7 @@ export default function CreateEventForm() {
                           type='button'
                           onClick={() => removeSuperScope(`${s.level}:${s.id}`)}
                           className='ml-0.5 cursor-pointer border-0 bg-transparent p-0 text-sm leading-none opacity-70 hover:opacity-100'
-                          aria-label={`Remove ${s.name}`}
+                          aria-label={t('createEvent.removeScopeAria', { name: s.name })}
                         >×</button>
                       </span>
                     ))}
@@ -439,12 +446,12 @@ export default function CreateEventForm() {
                     type='text'
                     value={superSearch}
                     onChange={(e) => setSuperSearch(e.target.value)}
-                    placeholder='Search council, stream, campus, oversight, denomination…'
+                    placeholder={t('createEvent.churchSearchPlaceholder')}
                     className='input-field'
                     autoComplete='off'
                   />
                   {superSearching && (
-                    <p className='text-xs mt-1 text-muted-foreground'>Searching…</p>
+                    <p className='text-xs mt-1 text-muted-foreground'>{t('common.searching')}</p>
                   )}
                   {superResults.length > 0 && (
                     <SearchDropdown>
@@ -464,7 +471,7 @@ export default function CreateEventForm() {
                     </SearchDropdown>
                   )}
                   {!superSearching && superSearch.trim().length >= 2 && superResults.length === 0 && (
-                    <p className='text-xs mt-1 text-muted-foreground'>No matches.</p>
+                    <p className='text-xs mt-1 text-muted-foreground'>{t('empty.noMatches')}</p>
                   )}
                 </div>
               </div>
@@ -475,13 +482,13 @@ export default function CreateEventForm() {
                 {groupsLoading && <Spinner />}
                 {!groupsLoading && groups.length === 0 && (
                   <p className='text-xs text-muted-foreground'>
-                    No groups yet. Create one from the Special Groups page first.
+                    {t('createEvent.noGroupsYet')}
                   </p>
                 )}
                 {!groupsLoading && groups.length > 0 && (
                   <>
                     <p className='text-xs text-muted-foreground'>
-                      Select one or more groups — members from all selected groups will be in scope.
+                      {t('createEvent.selectGroupsHint')}
                     </p>
                     <div className='flex flex-col gap-1.5'>
                       {groups.map((g) => {
@@ -543,7 +550,7 @@ export default function CreateEventForm() {
         )}
 
         {!isSuperAdmin && selectedScope && (
-          <Field label='Create for church within this scope'>
+          <Field label={t('createEvent.fields.createForChurch')}>
             {targetScopesLoading ? (
               <Spinner />
             ) : (
@@ -566,18 +573,18 @@ export default function CreateEventForm() {
       </fieldset>
 
       <fieldset disabled={step !== 1} className={cn('contents', step !== 1 && 'hidden')}>
-      <Section title='Time window'>
-        <Field label='Starts'>
+      <Section title={t('createEvent.sections.timeWindow')}>
+        <Field label={t('createEvent.fields.starts')}>
           <input type='datetime-local' required value={startsAt} onChange={(e) => setStartsAt(e.target.value)}
             className='input-field' />
         </Field>
-        <Field label='Duration'>
+        <Field label={t('createEvent.fields.duration')}>
           <div className='flex flex-wrap gap-2'>
             {([
-              { label: '30 min', value: '30' },
-              { label: '1 hour', value: '60' },
-              { label: '2 hours', value: '120' },
-              { label: 'Custom', value: 'custom' },
+              { label: t('createEvent.fields.duration30'), value: '30' },
+              { label: t('createEvent.fields.duration60'), value: '60' },
+              { label: t('createEvent.fields.duration120'), value: '120' },
+              { label: t('createEvent.fields.durationCustom'), value: 'custom' },
             ] as const).map((opt) => (
               <Pill key={opt.value} active={durationPreset === opt.value} onClick={() => setDurationPreset(opt.value)}>
                 {opt.label}
@@ -591,12 +598,12 @@ export default function CreateEventForm() {
                 onChange={(e) => setCustomMinutes(e.target.value)}
                 className='input-field w-24'
               />
-              <span className='text-sm text-muted-foreground'>minutes</span>
+              <span className='text-sm text-muted-foreground'>{t('common.minutes')}</span>
             </div>
           )}
           {endsAt && (
             <p className='mt-1 text-xs text-muted-foreground'>
-              Ends at {formatLocalTime(endsAt)}
+              {t('createEvent.fields.endsAt', { time: formatLocalTime(endsAt) })}
             </p>
           )}
         </Field>
@@ -604,7 +611,7 @@ export default function CreateEventForm() {
       </fieldset>
 
       <fieldset disabled={step !== 2} className={cn('contents', step !== 2 && 'hidden')}>
-      <Section title='Check-in methods'>
+      <Section title={t('createEvent.sections.checkInMethods')}>
         <div className='flex flex-wrap gap-2'>
           {ALL_METHODS.map((m) => (
             <Pill key={m} active={methods.includes(m)} onClick={() => toggleArr(setMethods, methods, m)}>
@@ -614,27 +621,27 @@ export default function CreateEventForm() {
         </div>
         {methods.includes('PIN') && (
           <div className='mt-3 flex items-center gap-3'>
-            <label className='text-xs text-muted-foreground'>PIN</label>
+            <label className='text-xs text-muted-foreground'>{t('createEvent.fields.pin')}</label>
             <input type='text' inputMode='numeric' maxLength={6} value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g,'').slice(0, 6))}
               className='input-field font-mono tracking-widest flex-1' />
             <button type='button' onClick={() => setPin(generatePin())}
               className='text-xs px-3 py-1 cursor-pointer btn-pill btn-secondary'>
-              Regenerate
+              {t('createEvent.fields.regenerate')}
             </button>
           </div>
         )}
       </Section>
 
-      {!(isSuperAdmin && superMode === 'group') && <Section title='Allowed roles'>
+      {!(isSuperAdmin && superMode === 'group') && <Section title={t('createEvent.sections.allowedRoles')}>
         {availableRoles.length === 0 ? (
           <p className='text-sm text-muted-foreground'>
-            No leader levels exist below this scope.
+            {t('createEvent.noLeaderLevels')}
           </p>
         ) : (
           <>
             <p className='text-xs mb-1 text-muted-foreground'>
-              Leaders within this {selectedTargetScope?.level}.
+              {t('createEvent.leadersWithin', { level: selectedTargetScope?.level })}
             </p>
             <div className='flex flex-wrap gap-2'>
               {availableRoles.map((r) => (
@@ -647,23 +654,23 @@ export default function CreateEventForm() {
         )}
       </Section>}
 
-      <Section title='Geofence'>
+      <Section title={t('createEvent.sections.geofence')}>
         <GeoFencePicker value={geofence} onChange={setGeofence} />
       </Section>
       </fieldset>
 
       <fieldset disabled={step !== 3} className={cn('contents', step !== 3 && 'hidden')}>
-      <Section title='Recurrence'>
+      <Section title={t('createEvent.sections.recurrence')}>
         <div className='flex flex-wrap gap-2'>
           {(['none', 'weekly', 'biweekly', 'monthly'] as const).map((p) => (
             <Pill key={p} active={recurrencePattern === p} onClick={() => setRecurrencePattern(p)}>
-              {p === 'none' ? 'None' : p === 'weekly' ? 'Weekly' : p === 'biweekly' ? 'Bi-weekly' : 'Monthly'}
+              {t(`createEvent.recurrence.${p}`)}
             </Pill>
           ))}
         </div>
         {recurrencePattern !== 'none' && (
           <div className='flex flex-col gap-3 mt-1'>
-            <Field label='Number of occurrences'>
+            <Field label={t('createEvent.fields.occurrences')}>
               <input
                 type='number' min={2} max={52} value={recurrenceCount}
                 onChange={(e) => setRecurrenceCount(e.target.value)}
@@ -676,7 +683,7 @@ export default function CreateEventForm() {
       </Section>
 
       {isSuperAdmin && (
-        <Section title='Visibility'>
+        <Section title={t('createEvent.sections.visibility')}>
           <button
             type='button'
             onClick={() => setIsPublic((v) => !v)}
@@ -687,12 +694,12 @@ export default function CreateEventForm() {
           >
             <div>
               <p className='m-0 text-sm font-semibold text-foreground'>
-                {isPublic ? 'Visible on public page' : 'Hidden from public page'}
+                {isPublic ? t('createEvent.visibility.publicTitle') : t('createEvent.visibility.privateTitle')}
               </p>
               <p className='m-0 mt-0.5 text-xs text-muted-foreground'>
                 {isPublic
-                  ? 'Anyone can scan the QR code from the public events page.'
-                  : 'Only invited members and superadmins can see this event.'}
+                  ? t('createEvent.visibility.publicBody')
+                  : t('createEvent.visibility.privateBody')}
               </p>
             </div>
             <div
@@ -713,21 +720,21 @@ export default function CreateEventForm() {
         </Section>
       )}
 
-      <Section title='Review'>
+      <Section title={t('createEvent.sections.review')}>
         <div className='rounded-2xl border border-border bg-secondary p-4'>
-          <h3 className='m-0 text-base font-semibold text-foreground'>{name || 'Untitled event'}</h3>
+          <h3 className='m-0 text-base font-semibold text-foreground'>{name || t('createEvent.review.untitled')}</h3>
           <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
-            {recurrencePattern === 'none' ? 'One event' : `${Math.max(2, Number(recurrenceCount))} ${recurrencePattern} events`}
+            {recurrencePattern === 'none' ? t('createEvent.review.oneEvent') : t('createEvent.review.multipleEvents', { count: Math.max(2, Number(recurrenceCount)), pattern: recurrencePattern })}
             {' · '}{new Date(startsAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-            {' · '}{durationPreset === 'custom' ? customMinutes : durationPreset} minutes
+            {' · '}{durationPreset === 'custom' ? customMinutes : durationPreset} {t('common.minutes')}
             {venueName.trim() ? ` · ${venueName.trim()}` : ''}
           </p>
           <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
-            {methods.join(' or ')} check-in · {geofence.type === 'circle' ? `${geofence.radiusM}m geofence` : 'custom geofence'}
-            {roles.length ? ` · ${roles.map((role) => role.replace('leader', '')).join(', ')} leaders` : ''}
+            {t('createEvent.review.checkInMethods', { methods: methods.join(' or ') })} · {geofence.type === 'circle' ? t('createEvent.review.geofenceCircle', { radius: geofence.radiusM }) : t('createEvent.review.geofenceCustom')}
+            {roles.length ? ` · ${t('createEvent.review.leaders', { roles: roles.map((role) => role.replace('leader', '')).join(', ') })}` : ''}
           </p>
           <p className='m-0 mt-2 text-sm leading-6 text-muted-foreground'>
-            Scope: {isSuperAdmin && superMode === 'churches' ? superScopes.map((scope) => scope.name).join(', ') : selectedTargetScope?.name || 'Selected special group'}
+            {t('createEvent.review.scope', { scope: isSuperAdmin && superMode === 'churches' ? superScopes.map((scope) => scope.name).join(', ') : selectedTargetScope?.name || t('createEvent.review.selectedGroup') })}
           </p>
         </div>
       </Section>
@@ -744,19 +751,19 @@ export default function CreateEventForm() {
         className='btn-pill btn-primary w-full py-4 font-semibold disabled:opacity-50 cursor-pointer'
       >
         {submitting
-          ? (submitProgress || 'Creating…')
+          ? (submitProgress || t('createEvent.creating'))
           : recurrencePattern !== 'none'
-            ? `Create ${Math.max(2, Number(recurrenceCount))} events`
-            : 'Create event'}
+            ? t('createEvent.createMultiple', { count: Math.max(2, Number(recurrenceCount)) })
+            : t('createEvent.createSingle')}
       </button>
       </fieldset>
 
       <div className='sticky bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-20 flex gap-2 rounded-2xl border border-border bg-card/95 p-2 shadow-lg backdrop-blur-xl lg:bottom-4'>
         {step > 0 && (
-          <button type='button' onClick={() => { setError(null); setStep((current) => current - 1) }} className='btn-pill btn-secondary min-h-11 flex-1 px-4 font-semibold'>Back</button>
+          <button type='button' onClick={() => { setError(null); setStep((current) => current - 1) }} className='btn-pill btn-secondary min-h-11 flex-1 px-4 font-semibold'>{t('common.back')}</button>
         )}
         {step < 3 && (
-          <button type='button' onClick={nextStep} className='btn-pill btn-primary min-h-11 flex-1 px-4 font-semibold'>Continue</button>
+          <button type='button' onClick={nextStep} className='btn-pill btn-primary min-h-11 flex-1 px-4 font-semibold'>{t('common.continue')}</button>
         )}
       </div>
     </form>
@@ -864,11 +871,12 @@ function buildOccurrences(
 function RecurrencePreview({ startsAt, endsAt, pattern, count }: {
   startsAt: string; endsAt: string; pattern: RecurrencePattern; count: number
 }) {
+  const { t } = useTranslation()
   const occurrences = buildOccurrences(startsAt, endsAt, pattern, count)
   const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   return (
     <div className='flex flex-col gap-1 mt-1'>
-      <p className='text-xs text-muted-foreground'>{occurrences.length} events will be created:</p>
+      <p className='text-xs text-muted-foreground'>{t('createEvent.previewCount', { count: occurrences.length })}</p>
       <div className='flex max-h-[180px] flex-col gap-0.5 overflow-hidden overflow-y-auto rounded-md border border-border bg-secondary'>
         {occurrences.map((o, i) => (
           <div

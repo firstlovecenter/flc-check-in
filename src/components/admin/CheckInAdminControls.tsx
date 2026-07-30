@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   pauseEvent,
   resumeEvent,
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function CheckInAdminControls({ event, onChange }: Props) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const admin = getCurrentUser()
   const adminName = admin ? formatName(admin) : 'Admin'
@@ -54,7 +56,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
       onChange?.(updated)
       onSuccess?.(updated)
     } catch (err: any) {
-      setActionError(err.message || 'Action failed')
+      setActionError(err.message || t('events.controls.actionFailed'))
     } finally {
       setBusy(null)
     }
@@ -88,7 +90,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
         eventId: event.id,
       }).catch(() => {})
     } catch (err: any) {
-      setActionError(err.message || 'Reset failed')
+      setActionError(err.message || t('events.controls.resetFailed'))
     } finally {
       setBusy(null)
     }
@@ -125,7 +127,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
       }).catch(() => {})
       navigate('/app/events?view=past', { replace: true })
     } catch (err: any) {
-      setActionError(err.message || 'Delete failed')
+      setActionError(err.message || t('events.controls.deleteFailed'))
     } finally {
       setBusy(null)
     }
@@ -149,7 +151,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
               })
             }
           >
-            {busy === 'pause' ? '…' : 'Pause'}
+            {busy === 'pause' ? '…' : t('events.controls.pause')}
           </ControlBtn>
         )}
         {event.status === 'PAUSED' && (
@@ -167,16 +169,16 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
               })
             }
           >
-            {busy === 'resume' ? '…' : 'Resume'}
+            {busy === 'resume' ? '…' : t('events.controls.resume')}
           </ControlBtn>
         )}
         {event.status !== 'ENDED' && (
           <>
             <ControlBtn disabled={busy} onClick={() => handleExtend(30)}>
-              +30 min
+              {t('events.controls.extend30')}
             </ControlBtn>
             <ControlBtn disabled={busy} onClick={() => handleExtend(60)}>
-              +60 min
+              {t('events.controls.extend60')}
             </ControlBtn>
             {event.allowed_check_in_methods?.includes('PIN') && (
               <ControlBtn
@@ -186,11 +188,11 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
                   setConfirmAction('pin')
                 }}
               >
-                {busy === 'pin' ? '…' : 'Reset PIN'}
+                {busy === 'pin' ? '…' : t('events.controls.resetPin')}
               </ControlBtn>
             )}
             <ControlBtn disabled={busy} danger onClick={() => setConfirmAction('end')}>
-              {busy === 'end' ? '…' : 'End'}
+              {busy === 'end' ? '…' : t('events.controls.end')}
             </ControlBtn>
           </>
         )}
@@ -203,7 +205,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
               setConfirmAction('delete')
             }}
           >
-            {busy === 'delete' ? '…' : '🗑 Delete'}
+            {busy === 'delete' ? '…' : t('events.controls.delete')}
           </ControlBtn>
         )}
       </div>
@@ -216,13 +218,13 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
 
       {newPinDisplay && (
         <Alert variant='info' className='mt-3 flex items-center gap-3'>
-          <span className='text-xs text-muted-foreground'>New PIN:</span>
+          <span className='text-xs text-muted-foreground'>{t('events.controls.newPin')}</span>
           <span className='tnum text-lg font-bold tracking-widest text-primary'>{newPinDisplay}</span>
           <button
             type='button'
             onClick={() => setNewPinDisplay(null)}
             className='icon-btn ml-auto border-0 bg-transparent text-muted-foreground'
-            aria-label='Dismiss'
+            aria-label={t('events.controls.dismiss')}
           >
             ✕
           </button>
@@ -232,51 +234,50 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
       <Modal open={!!confirmAction} onClose={() => setConfirmAction(null)} variant='sheet'>
         {confirmAction === 'end' && (
           <>
-            <h2 className='m-0 text-base font-semibold text-foreground'>End this event?</h2>
+            <h2 className='m-0 text-base font-semibold text-foreground'>{t('events.controls.endConfirmTitle')}</h2>
             <p className='m-0 mt-1 text-sm text-muted-foreground'>
-              All open check-ins will be closed. This cannot be undone.
+              {t('events.controls.endConfirmBody')}
             </p>
             <div className='mt-4 flex gap-3'>
               <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmAction(null)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button type='button' variant='destructive' className='flex-1' onClick={doEnd}>
-                End Event
+                {t('events.controls.endConfirmBtn')}
               </Button>
             </div>
           </>
         )}
         {confirmAction === 'pin' && (
           <>
-            <h2 className='m-0 text-base font-semibold text-foreground'>Reset PIN?</h2>
+            <h2 className='m-0 text-base font-semibold text-foreground'>{t('events.controls.pinConfirmTitle')}</h2>
             <p className='m-0 mt-1 text-sm text-muted-foreground'>
-              A new PIN will be generated. The old one stops working immediately.
+              {t('events.controls.pinConfirmBody')}
             </p>
             <div className='mt-4 flex gap-3'>
               <Button type='button' variant='outline' className='flex-1' onClick={() => setConfirmAction(null)}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button type='button' className='flex-1' onClick={doResetPin}>
-                Generate New PIN
+                {t('events.controls.pinConfirmBtn')}
               </Button>
             </div>
           </>
         )}
         {confirmAction === 'delete' && (
           <>
-            <h2 className='m-0 text-base font-semibold text-destructive'>Permanently delete this event?</h2>
+            <h2 className='m-0 text-base font-semibold text-destructive'>{t('events.controls.deleteConfirmTitle')}</h2>
             <p className='m-0 mt-1 text-sm text-muted-foreground'>
-              This removes the event, every check-in record, and all related data.{' '}
-              <strong className='text-destructive'>This cannot be undone.</strong>
+              {t('events.controls.deleteConfirmBody')}
             </p>
             <p className='m-0 mt-2 text-xs text-muted-foreground'>
-              Type <code className='font-bold text-destructive'>DELETE</code> to confirm:
+              {t('events.controls.deleteTypePrompt')}
             </p>
             <Input
               type='text'
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder='DELETE'
+              placeholder={t('events.controls.deletePlaceholder')}
               autoComplete='off'
               className='my-3'
             />
@@ -290,7 +291,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
                   setDeleteConfirmText('')
                 }}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button
                 type='button'
@@ -299,7 +300,7 @@ export default function CheckInAdminControls({ event, onChange }: Props) {
                 disabled={deleteConfirmText !== 'DELETE'}
                 onClick={doDelete}
               >
-                Delete forever
+                {t('events.controls.deleteConfirmBtn')}
               </Button>
             </div>
           </>

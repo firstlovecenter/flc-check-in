@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 // Decodes QR codes from the rear camera. Prefers the native BarcodeDetector
 // API (Chrome/Edge/Android — zero JS download, hardware accelerated) and
@@ -23,6 +24,7 @@ async function createNativeDetector(): Promise<NativeDetector | null> {
 }
 
 export default function QRScanner({ onDecode, onError }) {
+  const { t } = useTranslation()
   const videoRef = useRef(null)
   const [error, setError] = useState(null)
   const onDecodeRef = useRef(onDecode)
@@ -111,7 +113,7 @@ export default function QRScanner({ onDecode, onError }) {
   if (error) {
     return (
       <div className='rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive'>
-        Camera error: {error}
+        {t('checkin.qr.cameraError', { error })}
       </div>
     )
   }

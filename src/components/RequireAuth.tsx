@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import {
   getCurrentUser, isTokenExpired, isTokenNearExpiry,
   refreshSession, refreshSessionDetailed, logout,
@@ -22,6 +23,7 @@ type State = 'checking' | 'ok' | 'redirect' | 'retry'
 const TOKEN_CHECK_INTERVAL_MS = 60_000
 
 export default function RequireAuth({ children }) {
+  const { t } = useTranslation()
   const accessToken = localStorage.getItem('accessToken')
   const needsRefresh = accessToken && isTokenExpired(accessToken)
 
@@ -106,16 +108,16 @@ export default function RequireAuth({ children }) {
   }, [state])
 
   if (state === 'redirect') return <Navigate to='/' replace />
-  if (state === 'checking') return <Spinner fullPage message='Restoring your session…' />
+  if (state === 'checking') return <Spinner fullPage message={t('auth.session.restoring')} />
   if (state === 'retry') {
     return (
       <div className='mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center'>
-        <p className='m-0 text-base font-semibold text-foreground'>Can't reach the server</p>
+        <p className='m-0 text-base font-semibold text-foreground'>{t('auth.session.cantReach')}</p>
         <p className='m-0 text-sm text-muted-foreground'>
-          Your session is still here — check your connection and try again. You won't be signed out for a network blip.
+          {t('auth.session.cantReachBody')}
         </p>
         <Button type='button' onClick={() => setState('checking')}>
-          Try again
+          {t('auth.session.tryAgain')}
         </Button>
       </div>
     )

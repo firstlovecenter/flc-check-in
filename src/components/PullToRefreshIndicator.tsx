@@ -7,10 +7,12 @@
 //      a discoverable affordance without cluttering desktop views.
 //   2. Fixed overlay spinner — floats above content while the user is pulling.
 
+import { useTranslation } from 'react-i18next'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { triggerRefresh } from '../hooks/useRefreshSignal'
 
 export default function PullToRefreshIndicator() {
+  const { t } = useTranslation()
   const { pullDistance, refreshing } = usePullToRefresh({ onRefresh: triggerRefresh })
   const isPulling = pullDistance > 0 || refreshing
 
@@ -37,7 +39,7 @@ export default function PullToRefreshIndicator() {
             <path d='M12 5v14M5 12l7 7 7-7' />
           </svg>
           <span className='text-[11px] font-medium tracking-wide text-muted-foreground/40 select-none'>
-            Pull to refresh
+            {t('common.pullToRefresh')}
           </span>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { CenterCard } from '../layout/CenterCard'
 import { useChurchFocus } from '../../contexts/ChurchFocusContext'
 import ChurchScopeSwitcher from '../ChurchScopeSwitcher'
@@ -16,6 +17,7 @@ import ChurchScopeSwitcher from '../ChurchScopeSwitcher'
  * instead of a control that would do nothing.
  */
 export default function WrongHatNotice({ scopeChurchName }: { scopeChurchName?: string | null }) {
+  const { t } = useTranslation()
   const { focusedHat, isMultiRole } = useChurchFocus()
 
   return (
@@ -23,20 +25,20 @@ export default function WrongHatNotice({ scopeChurchName }: { scopeChurchName?: 
       <div className='flex flex-col gap-4 text-center'>
         <div>
           <h2 className='mb-1 text-lg font-semibold text-foreground'>
-            Not visible with this role
+            {t('checkin.wrongHat.title')}
           </h2>
           <p className='m-0 text-sm text-muted-foreground'>
             {scopeChurchName
-              ? <>This event belongs to <strong>{scopeChurchName}</strong>.</>
-              : 'This event belongs to another part of the church.'}
-            {focusedHat && <> You&apos;re acting as <strong>{focusedHat.roleLabel}</strong>.</>}
+              ? t('checkin.wrongHat.belongsTo', { name: scopeChurchName })
+              : t('checkin.wrongHat.belongsElsewhere')}
+            {focusedHat && <> {t('checkin.wrongHat.actingAs', { role: focusedHat.roleLabel })}</>}
           </p>
         </div>
 
         {isMultiRole ? (
           <>
             <p className='m-0 text-sm text-muted-foreground'>
-              Switch to a role that covers it:
+              {t('checkin.wrongHat.switchRole')}
             </p>
             <div className='flex justify-center'>
               <ChurchScopeSwitcher />
@@ -44,12 +46,12 @@ export default function WrongHatNotice({ scopeChurchName }: { scopeChurchName?: 
           </>
         ) : (
           <p className='m-0 text-sm text-muted-foreground'>
-            If you should have access, ask your administrator to check your role.
+            {t('checkin.wrongHat.askAdmin')}
           </p>
         )}
 
         <Link to='/home' className='btn-pill btn-secondary w-full text-center no-underline'>
-          Back to Home
+          {t('checkin.backHome')}
         </Link>
       </div>
     </CenterCard>

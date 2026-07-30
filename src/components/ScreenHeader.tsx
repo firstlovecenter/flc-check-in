@@ -1,9 +1,11 @@
 // Shared header row for all screens.
-// Layout: [back or spacer] [title centered] [refresh · extras].
+// Layout: [back or spacer] [title centered] [actions · language].
 
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import NavDrawer from './NavDrawer'
+import LanguageSwitcher from './LanguageSwitcher'
 import PullToRefreshIndicator from './PullToRefreshIndicator'
 import { getCurrentUser } from '../utils/auth'
 
@@ -15,6 +17,7 @@ interface Props {
 }
 
 export default function ScreenHeader({ title, back, onBack, right }: Props) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const hasBack = !!(back || onBack)
 
@@ -45,7 +48,7 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
               <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
                 <path d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z' />
               </svg>
-              Back
+              {t('common.back')}
             </button>
           )
         ) : (
@@ -61,9 +64,10 @@ export default function ScreenHeader({ title, back, onBack, right }: Props) {
           )}
         </div>
 
-        {/* Right — screen-specific actions only. Live/home surfaces own refresh. */}
+        {/* Right — screen actions, then language (in-flow so nothing is covered). */}
         <div className='flex items-center gap-1.5'>
           {right}
+          <LanguageSwitcher />
         </div>
 
       </header>

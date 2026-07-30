@@ -4,6 +4,7 @@
 // get hydrated on those two flows.
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigate } from 'react-router-dom'
 import ScreenHeader from '../ScreenHeader'
 import { PageShell, PageMain } from '../layout/PageShell'
@@ -22,6 +23,7 @@ type SyncState =
   | { status: 'error'; message: string }
 
 export default function SyncMembersPanel() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   if (!user?.isSuperAdmin) return <Navigate to='/home' replace />
 
@@ -39,7 +41,7 @@ export default function SyncMembersPanel() {
       const deactivated = await bulkMarkMemberProfilesInactive(result.ineligibleIds)
       setState({ status: 'done', fetched: result.scanned, upserted: upserted.length, deactivated })
     } catch (err: any) {
-      setState({ status: 'error', message: err?.message || 'Sync failed' })
+      setState({ status: 'error', message: err?.message || t('sync.failed') })
     }
   }
 
@@ -47,32 +49,31 @@ export default function SyncMembersPanel() {
 
   return (
     <PageShell>
-      <ScreenHeader title='Sync Members' />
+      <ScreenHeader title={t('sync.title')} />
       <PageMain className='max-w-2xl flex flex-col gap-5'>
         <Card>
           <CardContent className='p-4'>
-            <p className='m-0 mb-2 text-sm font-semibold text-foreground'>Populate member profiles</p>
+            <p className='m-0 mb-2 text-sm font-semibold text-foreground'>{t('sync.heading')}</p>
             <p className='m-0 text-xs leading-relaxed text-muted-foreground'>
-              Pages the FLC member graph (with your login token) and upserts rows into Supabase.
-              Only current leaders and admins are kept. Graph deactivation removes those relationships,
-              so profiles that no longer qualify are reconciled without deleting attendance history.
-              This tool is restricted to <code className='text-[11px]'>superAdmin</code> because its
-              Graph visibility must be directory-wide.
+              {t('sync.description')}
             </p>
           </CardContent>
         </Card>
 
         <Button type='button' onClick={handleSync} disabled={running}>
-          {state.status === 'fetching' && `Fetching… (${state.fetched} scanned, ${state.kept} active kept)`}
-          {state.status === 'upserting' && `Writing ${state.kept} active and reconciling ${state.inactive} inactive…`}
-          {!running && 'Sync all members'}
+          {state.status === 'fetching' && t('sync.fetching', { fetched: state.fetched, kept: state.kept })}
+          {state.status === 'upserting' && t('sync.upserting', { kept: state.kept, inactive: state.inactive })}
+          {!running && t('sync.submit')}
         </Button>
 
         {state.status === 'done' && (
           <Alert variant='success'>
-            Scanned <strong>{state.fetched}</strong> Graph members, synced <strong>{state.upserted}</strong> active
-            member{state.upserted === 1 ? '' : 's'}, and marked <strong>{state.deactivated}</strong> cached
-            profile{state.deactivated === 1 ? '' : 's'} inactive. Historical attendance was preserved.
+            {t('sync.done', {
+              fetched: state.fetched,
+              upserted: state.upserted,
+              deactivated: state.deactivated,
+              count: state.upserted,
+            })}
           </Alert>
         )}
 

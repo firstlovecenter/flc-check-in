@@ -6,6 +6,7 @@
 // Only renders for state === 'denied'. 'prompt' and 'granted' show nothing.
 
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type Perm = 'unknown' | 'granted' | 'prompt' | 'denied'
 
@@ -17,18 +18,8 @@ function detectPlatform(): 'ios' | 'android' | 'desktop' {
   return 'desktop'
 }
 
-function platformHint(plat: 'ios' | 'android' | 'desktop'): string {
-  switch (plat) {
-    case 'ios':
-      return 'iOS: Settings → Privacy & Security → Location Services → Safari Websites → Allow.'
-    case 'android':
-      return 'Android: Tap the lock icon in the address bar → Permissions → Location → Allow.'
-    default:
-      return 'Click the lock/site-info icon next to the address bar and re-enable Location for this site.'
-  }
-}
-
 export default function LocationPermissionBanner() {
+  const { t } = useTranslation()
   const [perm, setPerm] = useState<Perm>('unknown')
 
   useEffect(() => {
@@ -55,14 +46,19 @@ export default function LocationPermissionBanner() {
   if (perm !== 'denied') return null
 
   const plat = detectPlatform()
+  const hintKey = plat === 'ios'
+    ? 'checkin.location.hintIos'
+    : plat === 'android'
+      ? 'checkin.location.hintAndroid'
+      : 'checkin.location.hintDesktop'
 
   return (
     <div
       role='alert'
       className='sticky top-0 z-40 border-b border-destructive/25 bg-destructive/10 px-4 py-2.5 text-center text-xs text-destructive'
     >
-      <strong>Location is blocked.</strong> This app needs your location to
-      verify check-ins. {platformHint(plat)}
+      <strong>{t('checkin.location.blocked')}</strong>{' '}
+      {t('checkin.location.needsLocation')} {t(hintKey)}
     </div>
   )
 }

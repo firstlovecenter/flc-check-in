@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getCurrentPosition, pointInGeofence } from '../../utils/geo'
 import { submitManualCheckIn, addAuditLog } from '../../utils/supabaseCheckins'
 import { getCurrentUser, formatName } from '../../utils/auth'
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function ManualCheckInModal({ event, member, onClose, onSuccess }: Props) {
+  const { t } = useTranslation()
   const [reason, setReason] = useState('')
   const [position, setPosition] = useState<LatLng | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +32,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
         const pos = await getCurrentPosition({ timeout: 15000 })
         if (cancelled) return
         if (!pointInGeofence({ lat: pos.lat, lng: pos.lng }, event)) {
-          setError('You are outside the venue area — admins must be on-site to manual check-in.')
+          setError(t('checkin.manual.outsideVenueAdmin'))
         }
         setPosition(pos)
       } catch (err: any) {
@@ -38,13 +40,13 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
       }
     })()
     return () => { cancelled = true }
-  }, [event])
+  }, [event, t])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!position) return
     if (!pointInGeofence({ lat: position.lat, lng: position.lng }, event)) {
-      setError('You are outside the venue area.')
+      setError(t('checkin.manual.outsideVenue'))
       return
     }
     setSubmitting(true)
@@ -80,7 +82,7 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
           details: reason.trim() ? { reason: reason.trim() } : undefined,
         }).catch(() => {})
         onSuccess?.(result.record)
-      } else setError(result.reason || 'Manual check-in failed')
+      } else setError(result.reason || t('checkin.manual.failed'))
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -92,28 +94,28 @@ export default function ManualCheckInModal({ event, member, onClose, onSuccess }
     <Modal open onClose={onClose}>
       <form onSubmit={handleSubmit} className='flex flex-col gap-4'>
         <div>
-          <h2 className='m-0 text-lg font-semibold text-foreground'>Manual check-in</h2>
+          <h2 className='m-0 text-lg font-semibold text-foreground'>{t('checkin.manual.title')}</h2>
           <p className='m-0 mt-1 text-xs text-muted-foreground'>
             {[member.first_name, member.last_name].filter(Boolean).join(' ')} · {member.bacenta_name || '—'}
           </p>
         </div>
         <div>
-          <Label className='text-xs font-bold uppercase tracking-widest'>Reason (optional)</Label>
+          <Label className='text-xs font-bold uppercase tracking-widest'>{t('checkin.manual.reasonLabel')}</Label>
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={3}
-            placeholder='e.g. Phone not working, arrived late…'
+            placeholder={t('checkin.manual.reasonPlaceholder')}
             className='mt-1.5 min-h-0'
           />
         </div>
         {error && <Alert variant='destructive'>{error}</Alert>}
         <div className='flex gap-2'>
           <Button type='button' variant='outline' onClick={onClose} className='flex-1'>
-            Cancel
+            {t('checkin.manual.cancel')}
           </Button>
           <Button type='submit' disabled={submitting || !position || !!error} className='flex-1'>
-            {submitting ? 'Checking in…' : 'Check in'}
+            {submitting ? t('checkin.manual.checkingIn') : t('checkin.manual.submit')}
           </Button>
         </div>
       </form>

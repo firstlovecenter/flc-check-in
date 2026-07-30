@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../ScreenHeader'
 import { format, formatDistanceToNowStrict } from 'date-fns'
 import {
@@ -21,6 +22,7 @@ type EventView = (typeof VIEWS)[number]
 const EVENTS_PAGE_SIZE = 5
 
 export default function EventHistoryList() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const { focusedScope } = useChurchFocus()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -103,20 +105,26 @@ export default function EventHistoryList() {
     )
   }
 
+  const viewLabels: Record<EventView, string> = {
+    LIVE: t('events.history.live'),
+    UPCOMING: t('events.history.upcoming'),
+    PAST: t('events.history.past'),
+  }
+
   return (
     <PageShell>
       <ScreenHeader
-        title='Events'
+        title={t('events.history.title')}
         right={
           user?.isAdmin ? (
             <Link to='/admin/reports' className='text-xs text-primary no-underline hover:underline'>
-              Reports
+              {t('events.history.reportsLink')}
             </Link>
           ) : null
         }
       />
       <PageMain className='flex flex-col gap-3'>
-        <div className='tab-bar w-full sm:w-auto' aria-label='Event timeframe'>
+        <div className='tab-bar w-full sm:w-auto' aria-label={t('events.history.timeframeAria')}>
           {VIEWS.map((item) => (
             <button
               key={item}
@@ -125,7 +133,7 @@ export default function EventHistoryList() {
               className={cn('tab-item flex-1 sm:flex-none', view === item && 'tab-item--active')}
               aria-pressed={view === item}
             >
-              {item.charAt(0) + item.slice(1).toLowerCase()}
+              {viewLabels[item]}
             </button>
           ))}
         </div>
@@ -137,21 +145,21 @@ export default function EventHistoryList() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${view.toLowerCase()} events…`}
+            placeholder={t('events.history.searchPlaceholder', { view: viewLabels[view].toLowerCase() })}
             className='w-full border-0 bg-transparent text-sm text-foreground outline-none'
-            aria-label='Search events'
+            aria-label={t('events.history.searchAria')}
           />
           {search && (
             <Button type='button' variant='ghost' size='sm' onClick={() => setSearch('')}>
-              Clear
+              {t('events.history.clear')}
             </Button>
           )}
         </div>
 
         {filtered.length === 0 && (
           <div className='mt-8 text-center'>
-            <p className='m-0 text-sm font-semibold text-foreground'>No {view.toLowerCase()} events</p>
-            <p className='m-0 mt-1 text-sm text-muted-foreground'>Events will appear here when they match this timeframe.</p>
+            <p className='m-0 text-sm font-semibold text-foreground'>{t('events.history.noneTitle', { view: viewLabels[view].toLowerCase() })}</p>
+            <p className='m-0 mt-1 text-sm text-muted-foreground'>{t('events.history.noneBody')}</p>
           </div>
         )}
 
@@ -183,13 +191,15 @@ export default function EventHistoryList() {
                     </p>
                   </div>
                   <div className='min-w-[72px] shrink-0 text-right'>
-                    <Badge variant={badgeVariant as 'success' | 'warning' | 'muted'}>{evt.status}</Badge>
+                    <Badge variant={badgeVariant as 'success' | 'warning' | 'muted'}>
+                      {t(`common.status.${evt.status}`, { defaultValue: evt.status })}
+                    </Badge>
                     <p className='m-0 mt-1.5 text-xs text-muted-foreground'>
                       {isLive
                         ? formatDistanceToNowStrict(new Date(evt.ends_at), { addSuffix: false })
                         : format(new Date(evt.starts_at), 'd MMM yy')}
                     </p>
-                    {isLive && <p className='m-0 text-[11px] opacity-70 text-muted-foreground'>remaining</p>}
+                    {isLive && <p className='m-0 text-[11px] opacity-70 text-muted-foreground'>{t('events.history.remaining')}</p>}
                   </div>
                 </div>
               </Link>

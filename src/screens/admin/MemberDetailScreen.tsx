@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import ScreenHeader from '../../components/ScreenHeader'
 import Spinner from '../../components/Spinner'
@@ -15,17 +16,10 @@ type Status = 'loading' | 'ok' | 'error'
 
 const EVENTS_PAGE_SIZE = 5
 
-const HIERARCHY: Array<{ key: string; label: string }> = [
-  { key: 'denomination', label: 'Denomination' },
-  { key: 'oversight',    label: 'Oversight' },
-  { key: 'campus',       label: 'Campus' },
-  { key: 'stream',       label: 'Stream' },
-  { key: 'council',      label: 'Council' },
-  { key: 'governorship', label: 'Governorship' },
-  { key: 'bacenta',      label: 'Bacenta' },
-]
+const HIERARCHY_KEYS = ['denomination', 'oversight', 'campus', 'stream', 'council', 'governorship', 'bacenta'] as const
 
 export default function MemberDetailScreen() {
+  const { t } = useTranslation()
   const { memberId = '' } = useParams()
   const [status, setStatus] = useState<Status>('loading')
   const [profile, setProfile] = useState<any | null>(null)
@@ -44,7 +38,7 @@ export default function MemberDetailScreen() {
       setEvents(evs || [])
       setStatus('ok')
     } catch (err: any) {
-      setError(err.message || 'Could not load member')
+      setError(err.message || t('profile.loadError'))
       setStatus('error')
     }
   }
@@ -60,7 +54,7 @@ export default function MemberDetailScreen() {
 
   return (
     <PageShell>
-      <ScreenHeader title='Member' back={{ to: '/admin/members', label: 'Members' }} />
+      <ScreenHeader title={t('members.detail.title')} back={{ to: '/admin/members', label: t('members.detail.back') }} />
       <PageMain className='max-w-3xl flex flex-col gap-4'>
 
         {status === 'loading' && <Spinner />}
@@ -94,7 +88,7 @@ export default function MemberDetailScreen() {
 
             {/* Roles */}
             {Array.isArray(profile.roles) && profile.roles.length > 0 && (
-              <Section title='Roles'>
+              <Section title={t('members.detail.roles')}>
                 <div className='flex flex-wrap gap-1.5'>
                   {profile.roles.map((r: string) => (
                     <Badge key={r} variant='muted'>
@@ -106,9 +100,9 @@ export default function MemberDetailScreen() {
             )}
 
             {/* Hierarchy */}
-            <Section title='Church hierarchy'>
+            <Section title={t('members.detail.hierarchy')}>
               <div className='flex flex-col gap-1.5'>
-                {HIERARCHY.map(({ key, label }) => {
+                {HIERARCHY_KEYS.map((key) => {
                   const id = profile[`${key}_id`]
                   const name = profile[`${key}_name`]
                   if (!id) return null
@@ -117,21 +111,21 @@ export default function MemberDetailScreen() {
                       key={key}
                       className='px-3 py-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary'
                     >
-                      <span className='eyebrow m-0'>{label}</span>
+                      <span className='eyebrow m-0'>{key.charAt(0).toUpperCase() + key.slice(1)}</span>
                       <span className='text-sm font-semibold truncate text-foreground'>{name || id}</span>
                     </div>
                   )
                 })}
-                {HIERARCHY.every(({ key }) => !profile[`${key}_id`]) && (
-                  <p className='text-sm text-muted-foreground'>No hierarchy data on this member.</p>
+                {HIERARCHY_KEYS.every((key) => !profile[`${key}_id`]) && (
+                  <p className='text-sm text-muted-foreground'>{t('members.detail.noHierarchy')}</p>
                 )}
               </div>
             </Section>
 
             {/* Attendance */}
-            <Section title={`Attendance (${events.length})`}>
+            <Section title={`${t('profile.attendanceStats')} (${events.length})`}>
               {events.length === 0 && (
-                <p className='text-sm text-muted-foreground'>No event check-ins yet.</p>
+                <p className='text-sm text-muted-foreground'>{t('members.detail.noCheckIns')}</p>
               )}
               <div className='flex flex-col gap-1.5'>
                 {eventsPage.pageItems.map((evt) => (
@@ -147,7 +141,7 @@ export default function MemberDetailScreen() {
                       </p>
                     </div>
                     <Badge variant={evt.status === 'ACTIVE' ? 'success' : 'muted'} className='shrink-0'>
-                      {evt.status}
+                      {t(`common.status.${evt.status}`, { defaultValue: evt.status })}
                     </Badge>
                   </Link>
                 ))}

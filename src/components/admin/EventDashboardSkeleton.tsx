@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../ui/skeleton'
 
 /** Layout-matching skeleton for the event dashboard — mirrors title, stats, rollup. */
 export default function EventDashboardSkeleton() {
+  const { t } = useTranslation()
   return (
-    <div className='mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-6' aria-busy='true' aria-label='Loading event details'>
+    <div className='mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-6' aria-busy='true' aria-label={t('events.loadingDetails')}>
       <div className='flex items-center justify-between'>
         <Skeleton className='h-4 w-16' />
         <div className='flex gap-2'>

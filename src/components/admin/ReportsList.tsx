@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../ScreenHeader'
 import Papa from 'papaparse'
 import { format } from 'date-fns'
@@ -56,7 +57,7 @@ const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
 const EXPORT_PRESETS: ExportPreset[] = [
   {
     id: 'executive_full',
-    label: 'Executive Full',
+    label: 'executiveFull',
     options: {
       includeSummary: true,
       includeAttendanceSnapshot: true,
@@ -70,7 +71,7 @@ const EXPORT_PRESETS: ExportPreset[] = [
   },
   {
     id: 'absentee_followup',
-    label: 'Absentee Follow-up',
+    label: 'absenteeFollowup',
     options: {
       includeSummary: true,
       includeAttendanceSnapshot: true,
@@ -103,6 +104,7 @@ function detectPresetId(options: ExportOptions): string {
 }
 
 export default function ReportsList() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const { focusedScope } = useChurchFocus()
   const [events, setEvents] = useState<any[]>([])
@@ -359,7 +361,7 @@ export default function ReportsList() {
       URL.revokeObjectURL(url)
       setExportEventId(null)
     } catch (err: any) {
-      alert(err.message || 'Export failed')
+      alert(err.message || t('reports.exportFailed'))
     } finally {
       setIsExporting(false)
     }
@@ -389,7 +391,7 @@ export default function ReportsList() {
   return (
     <PageShell>
       <ScreenHeader
-        title='Reports'
+        title={t('reports.title')}
         right={<span className='text-xs text-muted-foreground'>{filteredEvents.length}</span>}
       />
       <PageMain className='flex flex-col gap-3'>
@@ -397,13 +399,13 @@ export default function ReportsList() {
           type='search'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search events…'
+          placeholder={t('reports.searchPlaceholder')}
           className='input-field'
         />
         {filteredEvents.length === 0 && (
           <EmptyState
-            title={search ? 'No matches' : 'No events yet'}
-            description={search ? 'Try a different search term.' : 'Reports will appear when events exist in your scope.'}
+            title={search ? t('empty.noMatches') : t('home.noEventsTitle')}
+            description={search ? t('empty.tryDifferentName') : t('home.noEventsAdmin')}
           />
         )}
         <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
@@ -422,14 +424,14 @@ export default function ReportsList() {
                     </p>
                   </button>
                   <Button type='button' variant='outline' size='sm' onClick={() => openExportOptions(evt.id)}>
-                    Download CSV
+                    {t('reports.downloadCsv')}
                   </Button>
                 </div>
                 {expanded === evt.id && (
                   <div className='space-y-1 px-4 pb-4 text-xs text-muted-foreground'>
-                    <p>Starts: {format(new Date(evt.starts_at), 'PP HH:mm')}</p>
-                    <p>Ends: {format(new Date(evt.ends_at), 'PP HH:mm')}</p>
-                    <p>Methods: {(evt.allowed_check_in_methods || []).join(', ')}</p>
+                    <p>{t('reports.starts')} {format(new Date(evt.starts_at), 'PP HH:mm')}</p>
+                    <p>{t('reports.ends')} {format(new Date(evt.ends_at), 'PP HH:mm')}</p>
+                    <p>{t('reports.methods')} {(evt.allowed_check_in_methods || []).join(', ')}</p>
                   </div>
                 )}
               </CardContent>
@@ -445,12 +447,12 @@ export default function ReportsList() {
         className='flex max-h-[85dvh] flex-col p-0'
       >
         <div className='flex items-center justify-between border-b border-border px-4 py-3'>
-          <p className='m-0 text-sm font-bold text-foreground'>Export Options</p>
+          <p className='m-0 text-sm font-bold text-foreground'>{t('reports.exportOptions')}</p>
           <button
             type='button'
             onClick={() => setExportEventId(null)}
             className='icon-btn cursor-pointer border-0 bg-transparent p-1.5 text-muted-foreground'
-            aria-label='Close'
+            aria-label={t('reports.close')}
             disabled={isExporting}
           >
             <svg viewBox='0 0 24 24' width='18' height='18' fill='currentColor'>
@@ -461,7 +463,7 @@ export default function ReportsList() {
 
         <div className='flex-1 overflow-y-auto px-4 py-4'>
           <div className='flex flex-col gap-2'>
-            <Label className='section-heading'>One-click Presets</Label>
+            <Label className='section-heading'>{t('reports.presets.label')}</Label>
             <div className='flex flex-wrap gap-2'>
               {EXPORT_PRESETS.map((preset) => (
                 <Button
@@ -470,7 +472,7 @@ export default function ReportsList() {
                   variant={activePresetId === preset.id ? 'default' : 'outline'}
                   onClick={() => applyPreset(preset.id)}
                 >
-                  {preset.label}
+                  {t(`reports.presets.${preset.label}`)}
                 </Button>
               ))}
               <span
@@ -478,20 +480,20 @@ export default function ReportsList() {
                   ? 'inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground'
                   : 'inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground'}
               >
-                Custom
+                {t('reports.presets.custom')}
               </span>
             </div>
           </div>
 
           <div className='flex flex-col gap-2'>
-            <Label className='section-heading'>Include Sections</Label>
+            <Label className='section-heading'>{t('reports.sections.label')}</Label>
             <label className='check-row'>
               <input
                 type='checkbox'
                 checked={exportOptions.includeSummary}
                 onChange={(e) => patchExportOptions({ includeSummary: e.target.checked })}
               />
-              Executive summary
+              {t('reports.sections.summary')}
             </label>
             <label className='check-row'>
               <input
@@ -499,7 +501,7 @@ export default function ReportsList() {
                 checked={exportOptions.includeAttendanceSnapshot}
                 onChange={(e) => patchExportOptions({ includeAttendanceSnapshot: e.target.checked })}
               />
-              Attendance snapshot
+              {t('reports.sections.snapshot')}
             </label>
             <label className='check-row'>
               <input
@@ -507,7 +509,7 @@ export default function ReportsList() {
                 checked={exportOptions.includePresentList}
                 onChange={(e) => patchExportOptions({ includePresentList: e.target.checked })}
               />
-              Present list
+              {t('reports.sections.presentList')}
             </label>
             <label className='check-row'>
               <input
@@ -515,60 +517,60 @@ export default function ReportsList() {
                 checked={exportOptions.includeAbsenteeList}
                 onChange={(e) => patchExportOptions({ includeAbsenteeList: e.target.checked })}
               />
-              Absentee list
+              {t('reports.sections.absenteeList')}
             </label>
           </div>
 
           <div className='mt-4 flex flex-col gap-2'>
-            <Label className='section-heading'>Criteria</Label>
-            <Label>Status</Label>
+            <Label className='section-heading'>{t('reports.criteria.label')}</Label>
+            <Label>{t('reports.criteria.status')}</Label>
             <Select
               value={exportOptions.statusFilter}
               onChange={(e) => patchExportOptions({ statusFilter: e.target.value as ExportOptions['statusFilter'] })}
             >
-              <option value='all'>All</option>
-              <option value='present'>Present</option>
-              <option value='absent'>Absent</option>
+              <option value='all'>{t('reports.criteria.all')}</option>
+              <option value='present'>{t('reports.criteria.present')}</option>
+              <option value='absent'>{t('reports.criteria.absent')}</option>
             </Select>
 
-            <Label>Method</Label>
+            <Label>{t('reports.criteria.method')}</Label>
             <Select
               value={exportOptions.methodFilter}
               onChange={(e) => patchExportOptions({ methodFilter: e.target.value as ExportOptions['methodFilter'] })}
             >
-              <option value='all'>All</option>
-              <option value='QR'>QR</option>
-              <option value='PIN'>PIN</option>
-              <option value='MANUAL'>Manual</option>
+              <option value='all'>{t('reports.criteria.all')}</option>
+              <option value='QR'>{t('common.method.QR')}</option>
+              <option value='PIN'>{t('common.method.PIN')}</option>
+              <option value='MANUAL'>{t('common.manual')}</option>
             </Select>
 
-            <Label>Geo verification</Label>
+            <Label>{t('reports.criteria.geo')}</Label>
             <Select
               value={exportOptions.geoFilter}
               onChange={(e) => patchExportOptions({ geoFilter: e.target.value as ExportOptions['geoFilter'] })}
             >
-              <option value='all'>All</option>
-              <option value='verified_only'>Verified only</option>
-              <option value='unverified_only'>Unverified only</option>
+              <option value='all'>{t('reports.criteria.all')}</option>
+              <option value='verified_only'>{t('reports.criteria.verifiedOnly')}</option>
+              <option value='unverified_only'>{t('reports.criteria.unverifiedOnly')}</option>
             </Select>
 
-            <Label>Unit contains</Label>
+            <Label>{t('reports.criteria.unit')}</Label>
             <Input
               value={exportOptions.unitContains}
               onChange={(e) => patchExportOptions({ unitContains: e.target.value })}
-              placeholder='e.g. Adenta, Achimota'
+              placeholder={t('reports.criteria.unitPlaceholder')}
             />
           </div>
         </div>
 
         <div className='flex items-center justify-end gap-2 border-t border-border px-4 py-3'>
-          <Button type='button' variant='outline' onClick={() => setExportEventId(null)} disabled={isExporting}>Cancel</Button>
+          <Button type='button' variant='outline' onClick={() => setExportEventId(null)} disabled={isExporting}>{t('common.cancel')}</Button>
           <Button
             type='button'
             onClick={() => exportEventId && handleDownload(exportEventId, exportOptions)}
             disabled={isExporting || (!exportOptions.includeSummary && !exportOptions.includeAttendanceSnapshot && !exportOptions.includePresentList && !exportOptions.includeAbsenteeList)}
           >
-            {isExporting ? 'Exporting…' : 'Export'}
+            {isExporting ? t('reports.exporting') : t('reports.export')}
           </Button>
         </div>
       </Modal>

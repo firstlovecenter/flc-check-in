@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getCurrentPosition, pointInGeofence, haversineMeters } from '../../utils/geo'
 import type { LatLng, CheckinEventRow } from '../../types/app'
 import Spinner from '../Spinner'
@@ -19,6 +20,7 @@ interface Props {
 
 /** HOC: requests GPS, blocks render if outside fence. Passes `position` to children. */
 export default function GeofenceGuard({ event, initialPosition = null, children }: Props) {
+  const { t } = useTranslation()
   const [state, setState] = useState<GuardState>({ status: 'loading' })
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
         <Card className='w-full max-w-md text-center'>
           <CardContent className='flex flex-col items-center gap-3 p-6'>
             <Spinner fullPage={false} />
-            <p className='m-0 text-sm text-muted-foreground'>Acquiring GPS…</p>
+            <p className='m-0 text-sm text-muted-foreground'>{t('checkin.geofence.acquiringGps')}</p>
           </CardContent>
         </Card>
       </Centered>
@@ -68,12 +70,12 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
       <Centered>
         <Card className='w-full max-w-md text-center'>
           <CardContent className='p-6'>
-            <h2 className='mb-2 text-lg font-semibold text-destructive'>Location required</h2>
+            <h2 className='mb-2 text-lg font-semibold text-destructive'>{t('checkin.geofence.locationRequired')}</h2>
             <p className='text-sm text-muted-foreground'>
-              We couldn&apos;t get your location: {state.error}
+              {t('checkin.geofence.locationError', { error: state.error })}
             </p>
             <p className='mt-2 text-sm text-muted-foreground'>
-              Enable location permissions in your browser and reload.
+              {t('checkin.geofence.enableLocation')}
             </p>
           </CardContent>
         </Card>
@@ -85,13 +87,13 @@ export default function GeofenceGuard({ event, initialPosition = null, children 
       <Centered>
         <Card className='w-full max-w-md text-center'>
           <CardContent className='p-6'>
-            <h2 className='mb-2 text-lg font-semibold text-warning'>You&apos;re not at the venue</h2>
+            <h2 className='mb-2 text-lg font-semibold text-warning'>{t('checkin.geofence.notAtVenue')}</h2>
             <p className='text-sm text-muted-foreground'>
               {state.distance != null
-                ? `You are about ${state.distance} m outside the check-in area.`
-                : 'You are outside the check-in area.'}
+                ? t('checkin.geofence.outsideDistance', { distance: state.distance })
+                : t('checkin.geofence.outsideArea')}
               <br />
-              Move closer and reload.
+              {t('checkin.geofence.moveCloser')}
             </p>
           </CardContent>
         </Card>

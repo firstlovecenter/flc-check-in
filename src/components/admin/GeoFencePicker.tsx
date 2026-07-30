@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 import { MapContainer, TileLayer, LayersControl, Circle, Polygon, Marker, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
@@ -41,6 +42,7 @@ interface Props {
 /** Output: { type: 'circle', centerLat, centerLng, radiusM }
  *       OR { type: 'polygon', polygon: [[lat,lng], ...] } */
 export default function GeoFencePicker({ value, onChange }: Props) {
+  const { t } = useTranslation()
   const isDark = useThemeMode()
   const [mode, setMode] = useState<'circle' | 'polygon'>(value?.type || 'circle')
   const [center, setCenter] = useState<LatLngTuple>(
@@ -159,15 +161,15 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     setGpsError(null); setGpsBusy(true)
     try {
       const pos = await new Promise<{ lat: number; lng: number; accuracy: number }>((resolve, reject) => {
-        if (!('geolocation' in navigator)) { reject(new Error('Geolocation not supported')); return }
-        const timer = setTimeout(() => reject(new Error('Location request timed out after 25s')), 25000)
+        if (!('geolocation' in navigator)) { reject(new Error(t('geofencePicker.error.notSupported'))); return }
+        const timer = setTimeout(() => reject(new Error(t('geofencePicker.error.timeout'))), 25000)
         const onError = (e: GeolocationPositionError) => {
           clearTimeout(timer)
           const reason =
-            e.code === 1 ? 'Permission denied — allow location for this site.' :
-            e.code === 2 ? 'Position unavailable — no GPS signal.' :
-            e.code === 3 ? 'Location request timed out.' :
-            (e.message || 'Unknown geolocation error')
+            e.code === 1 ? t('geofencePicker.error.permissionDenied') :
+            e.code === 2 ? t('geofencePicker.error.unavailable') :
+            e.code === 3 ? t('geofencePicker.error.timeout') :
+            (e.message || t('geofencePicker.error.couldNotGet'))
           reject(new Error(reason))
         }
         const onSuccess = (p: GeolocationPosition) => {
@@ -187,7 +189,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       setCenter([pos.lat, pos.lng]); setGpsFix(pos); setSelectedVenueId(null)
     } catch (err: any) {
       console.error('[GeoFencePicker] location error:', err)
-      setGpsError(err.message || 'Could not get location')
+      setGpsError(err.message || t('geofencePicker.error.couldNotGet'))
     } finally { setGpsBusy(false) }
   }
 
@@ -226,7 +228,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
           type='text'
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={searching ? 'Searching…' : '🔍 Search for a venue, address, or place name'}
+          placeholder={searching ? t('geofencePicker.searching') : t('geofencePicker.searchPlaceholder')}
           className='input-field text-[15px]'
           autoComplete='off'
         />
@@ -257,20 +259,20 @@ export default function GeoFencePicker({ value, onChange }: Props) {
             type='button'
             onClick={() => setMode('circle')}
             className={cn('tab-item flex-none px-3 py-1.5 text-xs', mode === 'circle' && 'tab-item--active')}
-          >Circle</button>
+          >{t('geofencePicker.mode.circle')}</button>
           <button
             type='button'
             onClick={() => setMode('polygon')}
             className={cn('tab-item flex-none px-3 py-1.5 text-xs', mode === 'polygon' && 'tab-item--active')}
-          >Polygon</button>
+          >{t('geofencePicker.mode.polygon')}</button>
         </div>
         <button
           type='button'
           onClick={snapToMyLocation}
           disabled={gpsBusy}
           className='chip ml-auto cursor-pointer px-3 py-1.5 text-xs normal-case tracking-normal disabled:opacity-50'
-          title='Use device location (may be inaccurate on desktop)'
-        >{gpsBusy ? '📍 Locating…' : '📍 Use my location'}</button>
+          title={t('geofencePicker.useLocationTitle')}
+        >{gpsBusy ? t('geofencePicker.locating') : t('geofencePicker.useMyLocation')}</button>
       </div>
       {gpsError && (
         <p className='m-0 text-xs text-destructive'>{gpsError}</p>
@@ -278,7 +280,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
 
       {PRESET_VENUES.length > 0 && (
         <div className='flex flex-wrap gap-1.5'>
-          <span className='text-xs self-center mr-1 text-muted-foreground'>Quick venues:</span>
+          <span className='text-xs self-center mr-1 text-muted-foreground'>{t('geofencePicker.quickVenues')}</span>
           {PRESET_VENUES.map((v) => {
             const isSelected = selectedVenueId === v.id
             const onClick = () => {
@@ -312,7 +314,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
                   'chip cursor-pointer px-3 py-1.5 text-xs font-semibold normal-case tracking-normal',
                   isSelected && 'border-primary bg-primary text-primary-foreground',
                 )}
-                title={v.type === 'polygon' ? 'Polygon boundary' : 'Circle radius'}
+                title={v.type === 'polygon' ? t('geofencePicker.polygonBoundary') : t('geofencePicker.circleRadius')}
               >
                 <span className='mr-1 opacity-70'>
                   {v.type === 'polygon' ? '⬡' : '●'}
@@ -329,7 +331,7 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       >
         <MapContainer center={center} zoom={DEFAULT_ZOOM} scrollWheelZoom={true} className='h-full w-full'>
           <LayersControl position='topright'>
-            <LayersControl.BaseLayer checked name='Street'>
+            <LayersControl.BaseLayer checked name={t('geofencePicker.map.street')}>
               <TileLayer
                 attribution='&copy; <a href="https://carto.com/attributions">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url={isDark
@@ -339,14 +341,14 @@ export default function GeoFencePicker({ value, onChange }: Props) {
                 maxZoom={19}
               />
             </LayersControl.BaseLayer>
-            <LayersControl.BaseLayer name='Satellite'>
+            <LayersControl.BaseLayer name={t('geofencePicker.map.satellite')}>
               <TileLayer
                 attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
                 url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                 maxZoom={19}
               />
             </LayersControl.BaseLayer>
-            <LayersControl.BaseLayer name='Hybrid'>
+            <LayersControl.BaseLayer name={t('geofencePicker.map.hybrid')}>
               <TileLayer
                 attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
                 url='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
@@ -383,14 +385,14 @@ export default function GeoFencePicker({ value, onChange }: Props) {
 
       {gpsFix && (
         <p className='m-0 text-xs text-muted-foreground'>
-          📡 GPS accuracy: ±{Math.round(gpsFix.accuracy)} m
-          {gpsFix.accuracy > 100 && ' — drag the marker or search to refine.'}
+          {t('geofencePicker.gpsAccuracy', { meters: Math.round(gpsFix.accuracy) })}
+          {gpsFix.accuracy > 100 && t('geofencePicker.gpsRefine')}
         </p>
       )}
 
       {mode === 'circle' && (
         <div className='flex items-center gap-3'>
-          <label className='text-xs text-muted-foreground'>Radius</label>
+          <label className='text-xs text-muted-foreground'>{t('geofencePicker.radiusLabel')}</label>
           <input
             type='range' min={10} max={500} step={5}
             value={radius} onChange={(e) => { setRadius(Number(e.target.value)); setSelectedVenueId(null) }}
@@ -403,14 +405,14 @@ export default function GeoFencePicker({ value, onChange }: Props) {
       {mode === 'polygon' && (
         <div className='flex items-center justify-between'>
           <p className='text-xs text-muted-foreground'>
-            Tap on the map to add vertices ({polygon.length} so far). Need 3+.
+            {t('geofencePicker.polygonHint', { count: polygon.length })}
           </p>
           {polygon.length > 0 && (
             <button
               type='button'
               onClick={() => setPolygon([])}
               className='text-xs underline text-destructive'
-            >Clear</button>
+            >{t('geofencePicker.clear')}</button>
           )}
         </div>
       )}

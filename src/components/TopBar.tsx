@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import NavDrawer from './NavDrawer'
 import RefreshButton from './RefreshButton'
+import LanguageSwitcher from './LanguageSwitcher'
 import PullToRefreshIndicator from './PullToRefreshIndicator'
 import ChurchScopeSwitcher from './ChurchScopeSwitcher'
 import { useChurchFocus } from '../contexts/ChurchFocusContext'
@@ -12,10 +14,11 @@ interface Props {
 }
 
 export default function TopBar({ user, right = null }: Props) {
+  const { t } = useTranslation()
   const { focusedHat } = useChurchFocus()
   const greeting = user?.firstName
-    ? `Hi ${[user.title, user.firstName].filter(Boolean).join(' ')}`
-    : 'Welcome'
+    ? t('common.hi', { name: [user.title, user.firstName].filter(Boolean).join(' ') })
+    : t('common.welcome')
   const pictureUrl = typeof window !== 'undefined' ? localStorage.getItem('pictureUrl') : null
   const initials = [user?.firstName?.[0], user?.lastName?.[0]].filter(Boolean).join('').toUpperCase() || '?'
 
@@ -48,6 +51,7 @@ export default function TopBar({ user, right = null }: Props) {
         <div className='flex shrink-0 items-center gap-1 text-xs'>
           <RefreshButton />
           {right}
+          <LanguageSwitcher />
         </div>
       </header>
     </>

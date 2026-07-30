@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getCurrentUser, isTokenExpired, refreshSessionDetailed, logout } from '../utils/auth'
 import { Button } from './ui/button'
 
@@ -23,6 +24,7 @@ const SPLASH_FLAG = 'flc.splashShown'
 type State = 'pending' | 'skip' | 'authed' | 'guest' | 'retry'
 
 export default function SplashScreen({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
   // If we've already played the splash this session, render children directly.
   const [done, setDone] = useState<State>(() =>
     sessionStorage.getItem(SPLASH_FLAG) === '1' ? 'skip' : 'pending'
@@ -74,16 +76,16 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
   if (done === 'retry') {
     return (
       <div className='fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-brand px-6 text-center'>
-        <p className='m-0 text-lg font-semibold text-brand-foreground'>Can't reach the server</p>
+        <p className='m-0 text-lg font-semibold text-brand-foreground'>{t('auth.session.cantReach')}</p>
         <p className='m-0 max-w-xs text-sm text-brand-foreground/80'>
-          Check your connection. Your session is still saved — you won't need to sign in again.
+          {t('auth.session.cantReachSplashBody')}
         </p>
         <Button
           type='button'
           variant='secondary'
           onClick={() => { setDone('pending'); setAttempt((n) => n + 1) }}
         >
-          Try again
+          {t('auth.session.tryAgain')}
         </Button>
       </div>
     )
@@ -106,7 +108,7 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
           viewBox='0 0 24 24'
           xmlns='http://www.w3.org/2000/svg'
           role='img'
-          aria-label='Hineni'
+          aria-label={t('brand.name')}
           className='h-24 w-24 text-brand-foreground animate-[pulse_2s_ease-in-out_infinite]'
         >
           <g fill='currentColor'>
@@ -118,8 +120,8 @@ export default function SplashScreen({ children }: { children: React.ReactNode }
         </svg>
 
         <div className='animate-[flcSplashFadeIn_0.6s_ease-out_0.3s_both] text-center'>
-          <p className='m-0 text-2xl font-bold tracking-tight text-brand-foreground'>Hineni</p>
-          <p className='m-0 mt-1 text-sm font-medium text-brand-foreground/80'>Right here, right now</p>
+          <p className='m-0 text-2xl font-bold tracking-tight text-brand-foreground'>{t('brand.name')}</p>
+          <p className='m-0 mt-1 text-sm font-medium text-brand-foreground/80'>{t('brand.tagline')}</p>
         </div>
       </div>
     </div>

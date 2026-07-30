@@ -8,6 +8,7 @@
 // enforces this in every list query.
 
 import { GraphQLClient } from 'graphql-request'
+import i18n from '../lib/i18n'
 import { SCOPE_LEVELS } from './auth.js'
 import { getUserAdminScopesFromJwt } from './userScope'
 import {
@@ -100,9 +101,9 @@ async function gqlRequest<T = any>(
       }
       if (refreshed.status === 'unauthorized') {
         logout()
-        toast('Your session expired. Please sign in again.', 'error', { id: 'auth:expired' })
+        toast(i18n.t('auth.session.expired'), 'error', { id: 'auth:expired' })
       } else {
-        toast("The network is struggling right now. Please try again.", 'error', { id: 'gql:network' })
+        toast(i18n.t('common.networkStruggling'), 'error', { id: 'gql:network' })
       }
       throw err
     }
@@ -112,7 +113,7 @@ async function gqlRequest<T = any>(
         await new Promise((r) => setTimeout(r, 300 + Math.random() * 400))
         return await run()
       } catch (err2) {
-        toast("The network is struggling right now. Please try again.", 'error', { id: 'gql:network' })
+        toast(i18n.t('common.networkStruggling'), 'error', { id: 'gql:network' })
         throw err2
       }
     }

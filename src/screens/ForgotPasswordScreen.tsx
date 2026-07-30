@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { requestPasswordReset } from '../utils/auth'
 import { AuthLayout } from '../components/layout/AuthLayout'
 import { Label } from '../components/ui/label'
@@ -43,6 +44,7 @@ function CheckIcon() {
 }
 
 export default function ForgotPasswordScreen() {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -56,7 +58,7 @@ export default function ForgotPasswordScreen() {
       await requestPasswordReset(email)
       setSent(true)
     } catch (err: any) {
-      setError(err.message || 'Something went wrong. Try again.')
+      setError(err.message || t('common.somethingWrong'))
     } finally {
       setLoading(false)
     }
@@ -69,13 +71,13 @@ export default function ForgotPasswordScreen() {
         className='mb-4 flex min-h-11 items-center gap-1.5 rounded text-sm text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
       >
         <ArrowLeftIcon />
-        Back to sign in
+        {t('auth.forgotPassword.backToSignIn')}
       </Link>
 
       <div className='mb-5'>
-        <h2 className='text-lg font-semibold tracking-tight text-foreground'>Reset password</h2>
+        <h2 className='text-lg font-semibold tracking-tight text-foreground'>{t('auth.forgotPassword.title')}</h2>
         <p className='mt-0.5 text-sm text-muted-foreground'>
-          Enter your email and we&apos;ll send reset instructions.
+          {t('auth.forgotPassword.subtitle')}
         </p>
       </div>
 
@@ -94,19 +96,19 @@ export default function ForgotPasswordScreen() {
           className='mb-4 flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success'
         >
           <CheckIcon />
-          Reset instructions sent. Check your email.
+          {t('auth.forgotPassword.sentSuccess')}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className='space-y-4'>
         <div className='space-y-1.5'>
-          <Label htmlFor='forgot-email'>Email address</Label>
+          <Label htmlFor='forgot-email'>{t('auth.signIn.emailLabel')}</Label>
           <Input
             id='forgot-email'
             type='email'
             autoComplete='email'
             inputMode='email'
-            placeholder='you@example.com'
+            placeholder={t('auth.signIn.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -125,11 +127,11 @@ export default function ForgotPasswordScreen() {
           {loading ? (
             <>
               <SpinnerIcon />
-              Sending…
+              {t('auth.forgotPassword.sending')}
             </>
           ) : (
             <>
-              Send reset instructions
+              {t('auth.forgotPassword.submit')}
               <ArrowRightIcon />
             </>
           )}
@@ -137,7 +139,7 @@ export default function ForgotPasswordScreen() {
       </form>
 
       <p className='mt-5 text-center text-xs text-muted-foreground'>
-        Need help? Contact your administrator
+        {t('auth.forgotPassword.needHelp')}
       </p>
     </AuthLayout>
   )

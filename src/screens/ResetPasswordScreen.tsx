@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { confirmPasswordReset } from '../utils/auth'
 import { AuthLayout } from '../components/layout/AuthLayout'
 import { Label } from '../components/ui/label'
@@ -53,6 +54,7 @@ function EyeIcon({ open }: { open: boolean }) {
 }
 
 export default function ResetPasswordScreen() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const token = params.get('token') || ''
@@ -68,17 +70,17 @@ export default function ResetPasswordScreen() {
     return (
       <AuthLayout>
         <div className='mb-5'>
-          <h2 className='text-lg font-semibold tracking-tight text-foreground'>Invalid link</h2>
+          <h2 className='text-lg font-semibold tracking-tight text-foreground'>{t('auth.resetPassword.invalidLinkTitle')}</h2>
           <p className='mt-0.5 text-sm text-muted-foreground'>
-            This reset link is missing or invalid. Request a new one to continue.
+            {t('auth.resetPassword.invalidLinkBody')}
           </p>
         </div>
         <Button type='button' className='w-full min-h-11' onClick={() => navigate('/forgot-password')}>
-          Request a new link
+          {t('auth.resetPassword.requestNewLink')}
         </Button>
         <p className='mt-5 text-center text-xs text-muted-foreground'>
           <Link to='/' className='text-muted-foreground no-underline hover:text-primary'>
-            Back to sign in
+            {t('auth.resetPassword.backToSignIn')}
           </Link>
         </p>
       </AuthLayout>
@@ -89,11 +91,11 @@ export default function ResetPasswordScreen() {
     e.preventDefault()
     setError('')
     if (password !== confirm) {
-      setError('Passwords do not match.')
+      setError(t('auth.resetPassword.passwordMismatch'))
       return
     }
     if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
+      setError(t('auth.resetPassword.passwordTooShort'))
       return
     }
     setLoading(true)
@@ -101,7 +103,7 @@ export default function ResetPasswordScreen() {
       await confirmPasswordReset(token, password)
       navigate('/?reset=success')
     } catch (err: any) {
-      setError(err.message || 'Reset failed. The link may have expired.')
+      setError(err.message || t('auth.resetPassword.resetFailed'))
     } finally {
       setLoading(false)
     }
@@ -114,13 +116,13 @@ export default function ResetPasswordScreen() {
         className='mb-4 flex min-h-11 items-center gap-1.5 rounded text-sm text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
       >
         <ArrowLeftIcon />
-        Back to sign in
+        {t('auth.resetPassword.backToSignIn')}
       </Link>
 
       <div className='mb-5'>
-        <h2 className='text-lg font-semibold tracking-tight text-foreground'>Choose a new password</h2>
+        <h2 className='text-lg font-semibold tracking-tight text-foreground'>{t('auth.resetPassword.title')}</h2>
         <p className='mt-0.5 text-sm text-muted-foreground'>
-          Enter a new password for your account.
+          {t('auth.resetPassword.subtitle')}
         </p>
       </div>
 
@@ -135,13 +137,13 @@ export default function ResetPasswordScreen() {
 
       <form onSubmit={handleSubmit} className='space-y-4'>
         <div className='space-y-1.5'>
-          <Label htmlFor='reset-password'>New password</Label>
+          <Label htmlFor='reset-password'>{t('auth.resetPassword.newPasswordLabel')}</Label>
           <div className='relative'>
             <Input
               id='reset-password'
               type={showPassword ? 'text' : 'password'}
               autoComplete='new-password'
-              placeholder='Min. 8 characters'
+              placeholder={t('auth.resetPassword.passwordPlaceholder')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -152,7 +154,7 @@ export default function ResetPasswordScreen() {
               type='button'
               onClick={() => setShowPassword((v) => !v)}
               className='absolute right-0 top-0 flex size-11 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('auth.signIn.hidePassword') : t('auth.signIn.showPassword')}
               tabIndex={-1}
             >
               <EyeIcon open={showPassword} />
@@ -161,13 +163,13 @@ export default function ResetPasswordScreen() {
         </div>
 
         <div className='space-y-1.5'>
-          <Label htmlFor='reset-confirm'>Confirm password</Label>
+          <Label htmlFor='reset-confirm'>{t('auth.resetPassword.confirmPasswordLabel')}</Label>
           <div className='relative'>
             <Input
               id='reset-confirm'
               type={showConfirm ? 'text' : 'password'}
               autoComplete='new-password'
-              placeholder='Repeat your password'
+              placeholder={t('auth.resetPassword.confirmPlaceholder')}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
@@ -178,7 +180,7 @@ export default function ResetPasswordScreen() {
               type='button'
               onClick={() => setShowConfirm((v) => !v)}
               className='absolute right-0 top-0 flex size-11 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-              aria-label={showConfirm ? 'Hide password' : 'Show password'}
+              aria-label={showConfirm ? t('auth.signIn.hidePassword') : t('auth.signIn.showPassword')}
               tabIndex={-1}
             >
               <EyeIcon open={showConfirm} />
@@ -197,11 +199,11 @@ export default function ResetPasswordScreen() {
           {loading ? (
             <>
               <SpinnerIcon />
-              Saving…
+              {t('auth.resetPassword.saving')}
             </>
           ) : (
             <>
-              Set new password
+              {t('auth.resetPassword.submit')}
               <ArrowRightIcon />
             </>
           )}

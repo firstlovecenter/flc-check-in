@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import QRCodeDisplay from '../components/checkin/QRCodeDisplay'
 import ScreenHeader from '../components/ScreenHeader'
 import { PageShell } from '../components/layout/PageShell'
@@ -33,6 +34,7 @@ function isSignedIn() {
 const REFRESH_INTERVAL_MS = 30_000
 
 export default function QRDisplayScreen() {
+  const { t } = useTranslation()
   const [state, setState] = useState<QRState>({ status: 'loading' })
   const [selected, setSelected] = useState<CheckinEventRow | null>(null)
   const [search, setSearch] = useState('')
@@ -104,16 +106,16 @@ export default function QRDisplayScreen() {
   const eventsPage = useClientPagination(filteredEvents, EVENTS_PAGE_SIZE, search)
 
   const header = signedIn ? (
-    <ScreenHeader title='Active Events' back={{ to: '/home', label: 'Home' }} />
+    <ScreenHeader title={t('events.activeTitle')} back={{ to: '/home', label: t('nav.home') }} />
   ) : (
     <header className='border-b border-border bg-card px-3 py-3 sm:px-4'>
       <div className='flex items-center justify-between'>
         <Link to='/' className='btn-pill btn-secondary px-2.5 py-1.5 text-xs no-underline'>
-          Sign In
+          {t('common.signIn')}
         </Link>
         <button
           onClick={toggleTheme}
-          aria-label={`Theme: ${preference}. Tap to cycle.`}
+          aria-label={t('common.themeAria', { preference })}
           className='icon-btn border-0 bg-transparent p-1.5 text-muted-foreground'
         >
           <svg viewBox='0 0 24 24' width='20' height='20' fill='currentColor' aria-hidden>
@@ -126,8 +128,8 @@ export default function QRDisplayScreen() {
         </button>
       </div>
       <div className='mt-2 text-center'>
-        <h1 className='m-0 text-base font-semibold text-foreground'>Active Events</h1>
-        <p className='m-0 mt-1 text-xs text-muted-foreground'>Scan to check in</p>
+        <h1 className='m-0 text-base font-semibold text-foreground'>{t('events.activeTitle')}</h1>
+        <p className='m-0 mt-1 text-xs text-muted-foreground'>{t('events.scanToCheckIn')}</p>
       </div>
     </header>
   )
@@ -143,7 +145,7 @@ export default function QRDisplayScreen() {
               onClick={() => setSelected(null)}
               className='mb-4 flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-sm font-semibold text-primary'
             >
-              ← All events
+              {t('events.allEvents')}
             </button>
           )}
           <EventQR event={selected} tick={tick} />
@@ -164,13 +166,13 @@ export default function QRDisplayScreen() {
 
         {state.status === 'ok' && state.events.length === 0 && (
           <div className='surface-card p-8 text-center'>
-            <p className='m-0 text-sm text-muted-foreground'>No active events right now.</p>
+            <p className='m-0 text-sm text-muted-foreground'>{t('events.noActive')}</p>
           </div>
         )}
 
         {state.status === 'ok' && state.events.length > 1 && (
           <>
-            <p className='section-heading mb-4'>Select an event</p>
+            <p className='section-heading mb-4'>{t('events.selectEvent')}</p>
             <div className='surface-card mb-3 flex items-center gap-2 rounded-lg px-3 py-2'>
               <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-muted-foreground'>
                 <path d='M15.5 14h-.79l-.28-.27a6 6 0 1 0-.71.71l.27.28v.79L20 21.5 21.5 20l-6-6zm-5.5 0a4 4 0 1 1 0-8 4 4 0 0 1 0 8z' />
@@ -178,9 +180,9 @@ export default function QRDisplayScreen() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder='Search events, venue, church...'
+                placeholder={t('events.searchPlaceholder')}
                 className='w-full border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground'
-                aria-label='Search active events'
+                aria-label={t('events.searchAria')}
               />
               {search && (
                 <button
@@ -188,12 +190,12 @@ export default function QRDisplayScreen() {
                   onClick={() => setSearch('')}
                   className='chip cursor-pointer px-2 py-1 text-xs font-semibold text-muted-foreground'
                 >
-                  Clear
+                  {t('common.clear')}
                 </button>
               )}
             </div>
             {filteredEvents.length === 0 && (
-              <p className='mb-3 text-sm text-muted-foreground'>No matching events.</p>
+              <p className='mb-3 text-sm text-muted-foreground'>{t('events.noMatching')}</p>
             )}
             <div className='grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'>
               {eventsPage.pageItems.map((evt) => (
@@ -205,7 +207,10 @@ export default function QRDisplayScreen() {
                 >
                   <p className='m-0 text-sm font-semibold tracking-tight text-foreground sm:text-base'>{evt.name}</p>
                   <p className='m-0 mt-1 text-xs text-muted-foreground sm:text-sm'>
-                    {evt.scope_church_name} · ends in {formatDistanceToNowStrict(new Date(evt.ends_at))}
+                    {t('events.endsInScope', {
+                      church: evt.scope_church_name,
+                      time: formatDistanceToNowStrict(new Date(evt.ends_at)),
+                    })}
                   </p>
                 </button>
               ))}
@@ -217,7 +222,7 @@ export default function QRDisplayScreen() {
                 total={eventsPage.total}
                 pageSize={EVENTS_PAGE_SIZE}
                 onPageChange={eventsPage.setPage}
-                noun='events'
+                noun={t('events.noun')}
                 className='mt-3'
               />
             )}
@@ -229,6 +234,7 @@ export default function QRDisplayScreen() {
 }
 
 function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
+  const { t } = useTranslation()
   const [token, setToken] = useState<string | null>(null)
   const [qrSize, setQrSize] = useState(260)
   const showQr = event.allowed_check_in_methods.includes('QR')
@@ -272,22 +278,26 @@ function EventQR({ event, tick }: { event: CheckinEventRow; tick: number }) {
           style={{ maxWidth: qrSize }}
         >
           <p className='m-0 text-sm font-semibold text-foreground'>
-            QR check-in is not enabled for this event
+            {t('events.qrNotEnabled')}
           </p>
           <p className='m-0 mt-2 text-xs text-muted-foreground'>
-            {showPin ? 'Use the PIN below to check in.' : 'Check in through the app instead.'}
+            {showPin ? t('events.usePinBelow') : t('events.checkInThroughApp')}
           </p>
         </div>
       )}
       {showPin && pin && (
         <div className='mt-5 border-t border-border pt-5'>
-          <p className='section-heading m-0 mb-2 text-center'>PIN</p>
+          <p className='section-heading m-0 mb-2 text-center'>{t('events.pinLabel')}</p>
           <p className='tnum m-0 text-4xl font-bold tracking-[0.25em] text-foreground'>{pin}</p>
         </div>
       )}
       <p className='m-0 mt-4 text-xs text-muted-foreground'>
-        Ends in {formatDistanceToNowStrict(new Date(event.ends_at))}
-        {(showQr || showPin) && <> · rotates in {secsLeft}s</>}
+        {(showQr || showPin)
+          ? t('events.endsInRotates', {
+              time: formatDistanceToNowStrict(new Date(event.ends_at)),
+              seconds: secsLeft,
+            })
+          : t('events.endsIn', { time: formatDistanceToNowStrict(new Date(event.ends_at)) })}
       </p>
     </div>
   )

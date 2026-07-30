@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Badge } from '../ui/badge'
 
 export default function EventCardForLeader({ event }) {
+  const { t } = useTranslation()
   const endsIn = formatDistanceToNowStrict(new Date(event.ends_at), { addSuffix: false })
   const levelColor = `var(--badge-${event.scope_level}, var(--accent))`
 
@@ -35,7 +37,7 @@ export default function EventCardForLeader({ event }) {
 
           <div className='flex shrink-0 flex-col items-end gap-0.5'>
             <span className='text-[11px] font-bold uppercase tracking-widest text-muted-foreground'>
-              Ends in
+              {t('checkin.eventCard.endsIn')}
             </span>
             <span className='text-sm font-bold tracking-tight text-primary'>{endsIn}</span>
           </div>

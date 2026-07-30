@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 
 interface AuthLayoutProps {
@@ -15,11 +16,15 @@ interface AuthLayoutProps {
  * ambient brand glow, grain overlay, logo tile, glass card.
  */
 export function AuthLayout({
-  productName = 'Hineni',
-  tagline = 'Right here, right now',
+  productName,
+  tagline,
   children,
   className,
 }: AuthLayoutProps) {
+  const { t } = useTranslation()
+  const name = productName ?? t('brand.name')
+  const line = tagline ?? t('brand.tagline')
+
   return (
     <div
       className={cn(
@@ -83,10 +88,10 @@ export function AuthLayout({
 
           <div className='text-center'>
             <h1 className='text-[22px] font-semibold tracking-tight text-foreground'>
-              {productName}
+              {name}
             </h1>
-            {tagline && (
-              <p className='mt-1 text-sm text-muted-foreground'>{tagline}</p>
+            {line && (
+              <p className='mt-1 text-sm text-muted-foreground'>{line}</p>
             )}
           </div>
         </div>

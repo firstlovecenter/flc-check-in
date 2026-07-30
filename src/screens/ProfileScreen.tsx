@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../components/ScreenHeader'
 import Spinner from '../components/Spinner'
 import { PageShell, PageMainNarrow } from '../components/layout/PageShell'
@@ -58,6 +59,7 @@ function buildHierarchy(member) {
 }
 
 export default function ProfileScreen() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const [member, setMember] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -71,7 +73,7 @@ export default function ProfileScreen() {
         const m = await resolveCurrentMember(user)
         if (!cancelled) setMember(m)
       } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Could not load profile.')
+        if (!cancelled) setError(err.message || t('profile.loadError'))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -96,7 +98,7 @@ export default function ProfileScreen() {
 
   return (
     <PageShell>
-      <ScreenHeader title='My Profile' back={{ to: '/home', label: 'Home' }} />
+      <ScreenHeader title={t('nav.myProfile')} back={{ to: '/home', label: t('nav.home') }} />
       <PageMainNarrow className='flex flex-col gap-6'>
         <Card>
           <CardContent className='flex flex-col items-center gap-4 p-6'>
@@ -121,7 +123,7 @@ export default function ProfileScreen() {
               <>
                 <div className='text-center'>
                   <p className='m-0 text-lg font-bold tracking-tight text-foreground'>
-                    {displayName || 'Unknown'}
+                    {displayName || t('profile.unknown')}
                   </p>
                   {user?.email && (
                     <p className='m-0 mt-0.5 text-sm text-muted-foreground'>{user.email}</p>
@@ -135,7 +137,7 @@ export default function ProfileScreen() {
 
         {error && (
           <Alert variant='destructive' className='text-center'>
-            {error} — showing cached info only.
+            {error} — {t('profile.cachedOnly')}
           </Alert>
         )}
 
@@ -144,13 +146,13 @@ export default function ProfileScreen() {
             {(member.phoneNumber || member.whatsappNumber || member.email) && (
               <Card>
                 <CardContent className='flex flex-col gap-4 p-5'>
-                  <Section title='Contact'>
-                    <Row label='Phone' value={member.phoneNumber} />
+                  <Section title={t('profile.contact')}>
+                    <Row label={t('profile.phone')} value={member.phoneNumber} />
                     <Row
-                      label='WhatsApp'
+                      label={t('profile.whatsapp')}
                       value={member.whatsappNumber !== member.phoneNumber ? member.whatsappNumber : null}
                     />
-                    <Row label='Email' value={member.email} />
+                    <Row label={t('profile.email')} value={member.email} />
                   </Section>
                 </CardContent>
               </Card>
@@ -159,7 +161,7 @@ export default function ProfileScreen() {
             {hierarchy.length > 0 && (
               <Card>
                 <CardContent className='flex flex-col gap-4 p-5'>
-                  <Section title='Church Roles'>
+                  <Section title={t('profile.churchRoles')}>
                     <div className='flex flex-col gap-3'>
                       {hierarchy.map(({ level, name, role }) => (
                         <div key={level} className='flex items-center justify-between'>
@@ -167,7 +169,9 @@ export default function ProfileScreen() {
                             <p className='m-0 text-xs uppercase tracking-wider text-muted-foreground'>{level}</p>
                             <p className='m-0 text-sm font-semibold text-foreground'>{name}</p>
                           </div>
-                          <Badge variant={role === 'Leader' ? 'default' : 'muted'}>{role}</Badge>
+                          <Badge variant={role === 'Leader' ? 'default' : 'muted'}>
+                            {role === 'Leader' ? t('profile.roleLeader') : role === 'Admin' ? t('profile.roleAdmin') : t('profile.roleMember')}
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -179,18 +183,18 @@ export default function ProfileScreen() {
             {stats && (
               <Card>
                 <CardContent className='flex flex-col gap-4 p-5'>
-                  <Section title='Attendance Stats'>
+                  <Section title={t('profile.attendanceStats')}>
                     <div className='metric-grid grid-cols-2'>
-                      <StatBox label='Present' value={String(stats.presentCount)} tone='success' />
+                      <StatBox label={t('profile.present')} value={String(stats.presentCount)} tone='success' />
                       <StatBox
-                        label='Absent'
+                        label={t('profile.absent')}
                         value={String(stats.absentCount)}
                         tone={stats.absentCount > 0 ? 'destructive' : undefined}
                       />
                     </div>
                     {stats.lastCheckIn && (
                       <p className='m-0 text-xs text-muted-foreground'>
-                        Last check-in:{' '}
+                        {t('profile.lastCheckIn')}{' '}
                         <span className='text-foreground'>
                           {new Date(stats.lastCheckIn).toLocaleDateString(undefined, {
                             year: 'numeric',
@@ -211,7 +215,7 @@ export default function ProfileScreen() {
           <Card>
             <CardContent className='p-5 text-center'>
               <p className='m-0 text-sm text-muted-foreground'>
-                Profile details could not be loaded from the FLC directory. Your account information is still available above.
+                {t('profile.notLoadedBody')}
               </p>
             </CardContent>
           </Card>

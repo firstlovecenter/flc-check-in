@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 import type { CheckinEventRow } from '../../types/app'
 
@@ -44,26 +45,20 @@ const PHASE_STYLE: Record<Phase, string> = {
   scheduled:    'border-border bg-secondary text-muted-foreground',
 }
 
-const PHASE_LABEL: Record<Phase, string> = {
-  live:         'Live',
-  'opens-soon': 'Opens soon',
-  paused:       'Paused',
-  ended:        'Ended',
-  scheduled:    'Scheduled',
+const PHASE_LABEL_KEY: Record<Phase, string> = {
+  live:         'events.phase.live',
+  'opens-soon': 'events.phase.opensSoon',
+  paused:       'events.phase.paused',
+  ended:        'events.phase.ended',
+  scheduled:    'events.phase.scheduled',
 }
 
 /**
  * The event's live state, made the loudest thing on the screen.
- *
- * Status used to be a small badge among the metadata, and the only time signal
- * was "ends in about 2 hours" — rounded, and static until the next poll. On a
- * screen someone watches during a service, the two questions are "is check-in
- * open?" and "how long is left?". Both are answered here, and the countdown
- * ticks locally so it stays honest between polls.
  */
 export default function EventLiveHeader({ event }: { event: CheckinEventRow }) {
+  const { t } = useTranslation()
   const phase = phaseOf(event, Date.now())
-  // Only run a timer when a countdown is actually being displayed.
   const now = useNow(phase === 'live' || phase === 'opens-soon')
   const livePhase = phaseOf(event, now)
 
@@ -71,8 +66,8 @@ export default function EventLiveHeader({ event }: { event: CheckinEventRow }) {
   const ends = new Date(event.ends_at).getTime()
 
   let timing: string | null = null
-  if (livePhase === 'live') timing = `${formatDuration(ends - now)} remaining`
-  else if (livePhase === 'opens-soon') timing = `starts in ${formatDuration(starts - now)}`
+  if (livePhase === 'live') timing = t('events.timingRemaining', { time: formatDuration(ends - now) })
+  else if (livePhase === 'opens-soon') timing = t('events.timingStartsIn', { time: formatDuration(starts - now) })
   else if (livePhase === 'scheduled') {
     timing = new Date(starts).toLocaleString([], {
       weekday: 'short', day: 'numeric', month: 'short',
@@ -97,29 +92,28 @@ export default function EventLiveHeader({ event }: { event: CheckinEventRow }) {
         />
       </span>
       <div className='min-w-0 flex-1'>
-        <p className='m-0 text-sm font-bold tracking-tight'>{PHASE_LABEL[livePhase]}</p>
+        <p className='m-0 text-sm font-bold tracking-tight'>{t(PHASE_LABEL_KEY[livePhase])}</p>
         {timing && <p className='m-0 mt-0.5 truncate text-xs opacity-80'>{timing}</p>}
       </div>
       {livePhase === 'ended' && (
-        <span className='shrink-0 text-xs font-semibold'>Check-in closed</span>
+        <span className='shrink-0 text-xs font-semibold'>{t('events.checkInClosed')}</span>
       )}
     </div>
   )
 }
 
-/**
- * Attendance as one shape rather than three numbers.
- *
- * Three stat rows make you do the arithmetic; a bar answers "how are we doing"
- * in a glance and leaves the rows to serve as drill-down targets.
- */
 export function AttendanceBar({ attended, expected }: { attended: number; expected: number }) {
+  const { t } = useTranslation()
   const pct = expected > 0 ? Math.round((attended / expected) * 100) : 0
+  const ariaLabel = t('events.attendanceAria', { attended, expected })
   return (
     <div>
       <div className='mb-1.5 flex items-baseline justify-between gap-2'>
         <p className='m-0 text-sm font-semibold text-foreground'>
-          {attended} <span className='font-normal text-muted-foreground'>of {expected} present</span>
+          {attended}{' '}
+          <span className='font-normal text-muted-foreground'>
+            {t('events.attendanceOf', { expected })}
+          </span>
         </p>
         <p className='m-0 text-sm font-bold tabular-nums text-foreground'>{pct}%</p>
       </div>
@@ -129,7 +123,7 @@ export function AttendanceBar({ attended, expected }: { attended: number; expect
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${attended} of ${expected} present`}
+        aria-label={ariaLabel}
       >
         <div
           className='h-full rounded-full bg-success transition-[width] duration-500 ease-out'

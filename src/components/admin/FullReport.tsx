@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useState, useDeferredValue, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Skeleton, SkeletonRows } from '../ui/skeleton'
 import { toast } from '../Toast'
 import { format } from 'date-fns'
 import Papa from 'papaparse'
+import i18n from '../../lib/i18n'
 import ScreenHeader from '../ScreenHeader'
 import ManualCheckInModal from './ManualCheckInModal'
 import { PageShell, PageMain } from '../layout/PageShell'
@@ -30,9 +32,9 @@ import { PaginationControls, useClientPagination } from '../PaginationControls'
 // Only two attendance statuses exist: Present (has a record) and Absent.
 // Tab ids stay stable so old ?tab= URLs keep working.
 const TABS = [
-  { id: 'checked-in', label: 'Present' },
-  { id: 'defaulted', label: 'Absent' },
-  { id: 'timeline', label: 'Timeline' },
+  { id: 'checked-in', labelKey: 'reports.full.tab.present' },
+  { id: 'defaulted', labelKey: 'reports.full.tab.absent' },
+  { id: 'timeline', labelKey: 'reports.full.tab.timeline' },
 ] as const
 
 const NAMES_PAGE_SIZE = 50
@@ -46,6 +48,7 @@ function membersWithId(list: any[] | null | undefined): any[] {
 }
 
 export default function FullReport({ eventId }: { eventId: string }) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const [params, setParams] = useSearchParams()
   const activeTab = (TABS.find((t) => t.id === params.get('tab'))?.id || 'checked-in') as TabId
@@ -109,7 +112,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
       setAbsenceTarget(null)
       setAbsenceInput('')
     } catch (err: any) {
-      setError(err.message || 'Could not save note')
+      setError(err.message || t('reports.full.saveNoteFailed'))
     } finally {
       setAbsenceSaving(false)
     }
@@ -137,12 +140,12 @@ export default function FullReport({ eventId }: { eventId: string }) {
       if (m[idCol] && !seen.has(m[idCol])) seen.set(m[idCol], m[nameCol] || m[idCol])
     }
     return [
-      { level: topChildLevel, id: '__all__', name: `All ${cap(topChildLevel)}s` },
+      { level: topChildLevel, id: '__all__', name: t('reports.full.allScopes', { level: cap(topChildLevel) }) },
       ...[...seen.entries()]
         .map(([id, name]) => ({ level: topChildLevel, id, name }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     ]
-  }, [event, safeAllEligible])
+  }, [event, safeAllEligible, t])
 
   async function refresh() {
     try {
@@ -260,7 +263,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
   function exportCsv() {
     if (!event || activeTab === 'timeline') return
     const rows = buckets[activeTab === 'checked-in' ? 'checkedIn' : 'defaulted']
-    const statusLabel = activeTab === 'checked-in' ? 'Present' : 'Absent'
+    const statusLabel = activeTab === 'checked-in' ? t('common.present') : t('common.absent')
     const csv = Papa.unparse(rows.map((b) => csvRow(b, statusLabel)))
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -271,7 +274,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
     a.download = `${safe}${scopeSuffix}-${activeTab}-${format(new Date(event.starts_at), 'yyyy-MM-dd')}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast('Report exported', 'success')
+    toast(t('toasts.reportExported'), 'success')
   }
 
   if (displayError) {
@@ -286,7 +289,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
   if (initialLoading || !event || !viewerCaps) {
     return (
       <PageShell>
-        <ScreenHeader title='Report' back={{ to: `/events/${eventId}`, label: 'Back to Dashboard' }} />
+        <ScreenHeader title={t('reports.full.title')} back={{ to: `/events/${eventId}`, label: t('reports.full.backDashboard') }} />
         <PageMain className='flex flex-col gap-5'>
           <Skeleton className='h-4 w-3/4' />
           <Skeleton className='h-[88px] rounded-2xl' />
@@ -299,7 +302,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
   if (!viewerCaps.canManage && !viewerCaps.canCheckIn && !viewerCaps.canView) {
     return (
       <CenterCard>
-        <p className='text-muted-foreground'>This event isn&apos;t part of your church.</p>
+        <p className='text-muted-foreground'>{t('events.notInChurch')}</p>
       </CenterCard>
     )
   }
@@ -308,11 +311,11 @@ export default function FullReport({ eventId }: { eventId: string }) {
     <PageShell>
       <ScreenHeader
         title={event.name}
-        back={{ to: `/events/${eventId}`, label: 'Back to Dashboard' }}
+        back={{ to: `/events/${eventId}`, label: t('reports.full.backDashboard') }}
         right={
           viewerCaps.canManage ? (
             <Button type='button' variant='outline' size='sm' className='border-success text-success' onClick={exportCsv}>
-              Export CSV
+              {t('reports.full.exportCsv')}
             </Button>
           ) : null
         }
@@ -322,17 +325,17 @@ export default function FullReport({ eventId }: { eventId: string }) {
         <p className='section-heading m-0 flex flex-wrap items-center gap-1'>
           <StatusBadge status={event.status} />
           <span>
-            {event.scope_church_name} · {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · Admin:{' '}
+            {event.scope_church_name} · {event.scope_level} · {format(new Date(event.starts_at), 'PP')} · {t('reports.full.adminLabel')}{' '}
             {event.created_by_name || '—'}
           </span>
         </p>
 
         {scopeOptions.length > 1 && (
           <div className='flex flex-col gap-1.5'>
-            <Label className='section-heading'>Filter by church</Label>
+            <Label className='section-heading'>{t('reports.full.filterByChurch')}</Label>
             <Select
               value={filterChurchId || '__all__'}
-              aria-label='Filter by church'
+              aria-label={t('reports.full.filterAria')}
               onChange={(e) => {
                 const opt = scopeOptions.find((o) => o.id === e.target.value)
                 setFilterChurchId(opt?.id === '__all__' ? null : opt?.id || null)
@@ -351,21 +354,21 @@ export default function FullReport({ eventId }: { eventId: string }) {
 
         <Card>
           <CardContent className='metric-grid grid-cols-2 gap-2 p-4 text-center'>
-            <MetricStat value={counts['checked-in']} label='Present' tone='success' />
-            <MetricStat value={counts.defaulted} label='Absent' tone='destructive' />
+            <MetricStat value={counts['checked-in']} label={t('common.present')} tone='success' />
+            <MetricStat value={counts.defaulted} label={t('common.absent')} tone='destructive' />
           </CardContent>
         </Card>
 
         <div className='tab-bar'>
-          {TABS.map((t) => (
+          {TABS.map((tab) => (
             <button
-              key={t.id}
+              key={tab.id}
               type='button'
-              onClick={() => setTab(t.id)}
-              className={cn('tab-item flex items-center justify-center gap-1.5', activeTab === t.id && 'tab-item--active')}
+              onClick={() => setTab(tab.id)}
+              className={cn('tab-item flex items-center justify-center gap-1.5', activeTab === tab.id && 'tab-item--active')}
             >
-              {t.label}
-              <span className='chip tnum text-[11px]'>{counts[t.id]}</span>
+              {t(tab.labelKey)}
+              <span className='chip tnum text-[11px]'>{counts[tab.id]}</span>
             </button>
           ))}
         </div>
@@ -374,7 +377,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
           type='search'
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder='Search name or unit…'
+          placeholder={t('reports.full.searchPlaceholder')}
           className='input-field'
         />
 
@@ -382,7 +385,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
           <Card className='overflow-hidden p-0'>
             <CardContent className='p-0'>
               {filteredTimeline.length === 0 ? (
-                <p className='py-8 text-center text-sm text-muted-foreground'>No check-ins yet.</p>
+                <p className='py-8 text-center text-sm text-muted-foreground'>{t('reports.full.noCheckIns')}</p>
               ) : (
                 <>
                   {timelinePage.pageItems.map((b, i) => (
@@ -412,16 +415,16 @@ export default function FullReport({ eventId }: { eventId: string }) {
               <div className='md:col-span-2'>
                 <EmptyState
                   kind={tabRows.length === 0 ? 'all-done' : 'no-match'}
-                  title={tabRows.length === 0 ? 'Nothing here yet' : 'No matches'}
+                  title={tabRows.length === 0 ? t('empty.nothingHereYet') : t('empty.noMatches')}
                   description={
                     tabRows.length === 0
-                      ? 'No members in this tab for the current scope.'
-                      : 'Try a different name or clear the search.'
+                      ? t('empty.noMembersInTab')
+                      : t('empty.tryDifferentName')
                   }
                   action={
                     search.trim() ? (
                       <Button type='button' variant='secondary' size='sm' onClick={() => setSearch('')}>
-                        Clear search
+                        {t('common.clearSearch')}
                       </Button>
                     ) : undefined
                   }
@@ -469,7 +472,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
       )}
 
       <Modal open={!!absenceTarget} onClose={() => setAbsenceTarget(null)} variant='sheet'>
-        <h2 className='m-0 text-base font-semibold text-foreground'>Absence Reason</h2>
+        <h2 className='m-0 text-base font-semibold text-foreground'>{t('reports.full.absenceTitle')}</h2>
         <p className='m-0 mt-1 text-sm text-muted-foreground'>
           {absenceTarget &&
             ([absenceTarget.first_name, absenceTarget.last_name].filter(Boolean).join(' ') || absenceTarget.id)}
@@ -477,13 +480,13 @@ export default function FullReport({ eventId }: { eventId: string }) {
         <Textarea
           value={absenceInput}
           onChange={(e) => setAbsenceInput(e.target.value)}
-          placeholder='Enter absence reason…'
+          placeholder={t('reports.full.absencePlaceholder')}
           rows={3}
           className='mt-3 min-h-0'
         />
         <div className='mt-4 flex gap-3'>
           <Button type='button' variant='outline' className='flex-1' onClick={() => setAbsenceTarget(null)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             type='button'
@@ -491,7 +494,7 @@ export default function FullReport({ eventId }: { eventId: string }) {
             disabled={absenceSaving || !absenceInput.trim()}
             onClick={saveAbsenceNote}
           >
-            {absenceSaving ? 'Saving…' : 'Save'}
+            {absenceSaving ? t('common.saving') : t('common.save')}
           </Button>
         </div>
       </Modal>
@@ -558,6 +561,7 @@ const ListRow = memo(function ListRow({
   onAddNote?: (member: any) => void
   isRisky?: boolean
 }) {
+  const { t } = useTranslation()
   const { member, record } = entry
   const name = [member.first_name, member.last_name].filter(Boolean).join(' ') || member.id
   const unit = member.bacenta_name || member.governorship_name || member.council_name || member.stream_name || '—'
@@ -589,7 +593,7 @@ const ListRow = memo(function ListRow({
           {isRisky && (
             <span
               className='absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] text-white'
-              title='Device fingerprint shared with another member — possible proxy check-in'
+              title={t('reports.full.riskyTooltip')}
             >⚠</span>
           )}
         </div>
@@ -625,7 +629,7 @@ const ListRow = memo(function ListRow({
                 <svg viewBox='0 0 24 24' width='14' height='14' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'>
                   <path d='M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.37a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.91a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z' />
                 </svg>
-                Call
+                {t('reports.full.call')}
               </a>
               {waPhone && (
                 <a
@@ -637,19 +641,19 @@ const ListRow = memo(function ListRow({
                   <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
                     <path d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z' />
                   </svg>
-                  WhatsApp
+                  {t('reports.full.whatsapp')}
                 </a>
               )}
             </>
           )}
           {tab === 'defaulted' && canManuallyCheckIn && (
             <Button type='button' variant='outline' size='sm' className='flex-1 border-success text-success' onClick={() => onManual(member)}>
-              Check In
+              {t('reports.full.checkIn')}
             </Button>
           )}
           {tab === 'defaulted' && onAddNote && (
             <Button type='button' variant='outline' size='sm' className='flex-1' onClick={() => onAddNote(member)}>
-              {absenceNote ? 'Edit Note' : 'Add Note'}
+              {absenceNote ? t('reports.full.editNote') : t('reports.full.addNote')}
             </Button>
           )}
         </div>
@@ -691,11 +695,13 @@ function TimelineEntry({
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
   const variant =
     status === 'ACTIVE' ? 'success' : status === 'PAUSED' ? 'warning' : status === 'ENDED' ? 'muted' : 'outline'
+  const label = t(`common.status.${status}`, { defaultValue: status })
   return (
     <Badge variant={variant as 'success' | 'warning' | 'muted' | 'outline'} className='text-[11px]'>
-      {status}
+      {label}
     </Badge>
   )
 }
@@ -716,12 +722,12 @@ function csvRow(b: { member: any; record: any }, status: string) {
   const m = b.member
   const r = b.record
   return {
-    Name: [m.first_name, m.last_name].filter(Boolean).join(' '),
-    Role: (m.roles || [])[0] || '',
-    Unit: m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
-    Status: status,
-    'Checked In At': r?.checked_in_at ? format(new Date(r.checked_in_at), 'yyyy-MM-dd HH:mm:ss') : '',
-    Method: r?.method || '',
-    'Geo Verified': r ? (r.geo_verified ? 'Yes' : 'No') : '',
+    [i18n.t('reports.csv.name')]: [m.first_name, m.last_name].filter(Boolean).join(' '),
+    [i18n.t('reports.csv.role')]: (m.roles || [])[0] || '',
+    [i18n.t('reports.csv.unit')]: m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || '',
+    [i18n.t('reports.csv.status')]: status,
+    [i18n.t('reports.csv.checkedInAt')]: r?.checked_in_at ? format(new Date(r.checked_in_at), 'yyyy-MM-dd HH:mm:ss') : '',
+    [i18n.t('reports.csv.method')]: r?.method || '',
+    [i18n.t('reports.csv.geoVerified')]: r ? (r.geo_verified ? i18n.t('common.yes') : i18n.t('common.no')) : '',
   }
 }

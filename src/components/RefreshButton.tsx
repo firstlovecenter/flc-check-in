@@ -7,6 +7,7 @@
 // feedback even when the underlying fetch is fast.
 
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { triggerRefresh } from '../hooks/useRefreshSignal'
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function RefreshButton({ onClick }: Props) {
+  const { t } = useTranslation()
   const [spinning, setSpinning] = useState(false)
   function handleClick() {
     setSpinning(true)
@@ -28,8 +30,8 @@ export default function RefreshButton({ onClick }: Props) {
     <button
       type='button'
       onClick={handleClick}
-      aria-label='Refresh'
-      title='Refresh'
+      aria-label={t('common.refresh')}
+      title={t('common.refresh')}
       className='icon-btn inline-flex shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-1.5 text-muted-foreground leading-none'
     >
       <svg

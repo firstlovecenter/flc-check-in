@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../../components/ScreenHeader'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
 import { EmptyState } from '../../components/layout/EmptyState'
@@ -27,6 +28,7 @@ export default function MemberSearchScreen() {
 }
 
 function MemberSearch() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const isSuperAdmin = !!user?.isSuperAdmin
   const canSyncMembers = !!user?.level && user.level !== 'bacenta'
@@ -93,7 +95,7 @@ function MemberSearch() {
     setError(null)
     searchMemberProfiles(debouncedQuery.trim(), 100)
       .then((data) => { if (!cancelled) setSearchResults(data) })
-      .catch((err: any) => { if (!cancelled) setError(err.message || 'Search failed') })
+      .catch((err: any) => { if (!cancelled) setError(err.message || t('members.searchFailed')) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [debouncedQuery, isSearchMode])
@@ -129,7 +131,7 @@ function MemberSearch() {
         setAddedGroupId(null)
       }, 800)
     } catch (err: any) {
-      setAddError(err.message || 'Failed to add to group')
+      setAddError(err.message || t('members.addToGroupFailed'))
     } finally {
       setAdding(false)
     }
@@ -139,7 +141,7 @@ function MemberSearch() {
 
   return (
     <PageShell>
-      <ScreenHeader title='Members' />
+      <ScreenHeader title={t('members.search.title')} />
       <PageMain className='flex flex-col gap-4'>
         {canSyncMembers && (
           <button
@@ -147,14 +149,14 @@ function MemberSearch() {
             onClick={() => navigate('/admin/sync-members')}
             className='btn-pill btn-secondary self-end px-4 py-2 text-sm cursor-pointer'
           >
-            Sync Members
+            {t('empty.syncMembers')}
           </button>
         )}
         <input
           type='search'
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder='Search by name or email…'
+          placeholder={t('members.search.placeholder')}
           className='input-field'
         />
 
@@ -164,11 +166,11 @@ function MemberSearch() {
         {!loading && isSearchMode && searchResults.length === 0 && (
           <EmptyState
             kind='no-match'
-            title='No members found'
-            description={`Nothing matched “${debouncedQuery.trim()}”. Try another name or email.`}
+            title={t('empty.noMembersFound')}
+            description={t('empty.nothingMatched', { query: debouncedQuery.trim() })}
             action={
               <Button type='button' variant='secondary' size='sm' onClick={() => setQuery('')}>
-                Clear search
+                {t('common.clearSearch')}
               </Button>
             }
           />
@@ -177,12 +179,12 @@ function MemberSearch() {
         {!loading && !isSearchMode && members.length === 0 && (
           <EmptyState
             kind='no-scope'
-            title='No members yet'
-            description='Synced leader profiles will appear here. Run Sync Members if this looks empty.'
+            title={t('empty.noMembersYet')}
+            description={t('empty.syncMembersHint')}
             action={
               canSyncMembers ? (
                 <Button type='button' onClick={() => navigate('/admin/sync-members')}>
-                  Sync Members
+                  {t('empty.syncMembers')}
                 </Button>
               ) : undefined
             }
@@ -202,11 +204,16 @@ function MemberSearch() {
 
         {!isSearchMode && <div ref={sentinelRef} className='h-4' aria-hidden />}
         {loadingMore && (
-          <p className='text-center text-xs text-muted-foreground'>Loading more…</p>
+          <p className='text-center text-xs text-muted-foreground'>{t('members.search.loadingMore')}</p>
         )}
         {!isSearchMode && !loading && total > 0 && (
           <p className='text-center text-xs text-muted-foreground'>
-            Showing {members.length} of {total}
+            {t('common.pagination.showing', {
+              from: 1,
+              to: members.length,
+              total,
+              noun: t('common.pagination.noun.items'),
+            })}
           </p>
         )}
       </PageMain>
@@ -220,11 +227,11 @@ function MemberSearch() {
           {addTarget && (
             <>
               <h2 className='m-0 text-base font-semibold text-foreground'>
-                Add {[addTarget.first_name, addTarget.last_name].filter(Boolean).join(' ') || 'member'} to a group
+                {t('members.search.addToGroup')}
               </h2>
               {addError && <p className='mt-2 text-sm text-destructive'>{addError}</p>}
               {groups.length === 0 ? (
-                <p className='mt-3 text-sm text-muted-foreground'>No special groups exist yet.</p>
+                <p className='mt-3 text-sm text-muted-foreground'>{t('members.search.noGroups')}</p>
               ) : (
                 <div className='mt-3 flex flex-col gap-2'>
                   {groups.map((g) => {
@@ -239,7 +246,7 @@ function MemberSearch() {
                       >
                         <span>{g.name}</span>
                         {done ? (
-                          <span className='text-xs font-semibold text-success'>Added ✓</span>
+                          <span className='text-xs font-semibold text-success'>{t('members.search.added')}</span>
                         ) : (
                           <span className='chip px-2 py-0.5 text-xs'>{g.member_count ?? 0}</span>
                         )}
@@ -254,7 +261,7 @@ function MemberSearch() {
                 className='mt-4 w-full'
                 onClick={() => { setAddTarget(null); setAddError(null); setAddedGroupId(null) }}
               >
-                Done
+                {t('common.close')}
               </Button>
             </>
           )}
@@ -271,6 +278,7 @@ function MemberRow({
   isSuperAdmin: boolean
   onAddToGroup: () => void
 }) {
+  const { t } = useTranslation()
   const name = [m.title, m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || m.id
   const unit = m.bacenta_name || m.governorship_name || m.council_name || m.stream_name || m.campus_name || ''
   const initials = [(m.first_name || '')[0], (m.last_name || '')[0]].filter(Boolean).join('').toUpperCase() || '?'
@@ -304,8 +312,8 @@ function MemberRow({
           type='button'
           onClick={onAddToGroup}
           className='mr-3 flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-primary/30 text-primary hover:bg-primary/10'
-          title='Add to special group'
-          aria-label='Add to special group'
+          title={t('members.search.addToGroup')}
+          aria-label={t('members.search.addToGroup')}
         >
           <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
             <path d='M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' />

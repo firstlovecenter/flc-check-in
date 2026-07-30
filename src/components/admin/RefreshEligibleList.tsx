@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { Alert } from '../ui/alert'
 import { snapshotEventScopeFromGraph } from '../../utils/eventScopeSnapshot'
@@ -25,6 +26,7 @@ import type { CheckinEventRow } from '../../types/app'
  * Additive only — see snapshotEventScopeFromGraph for why nobody is removed.
  */
 export default function RefreshEligibleList({ event }: { event: CheckinEventRow }) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ added: number; total: number } | null>(null)
@@ -66,9 +68,7 @@ export default function RefreshEligibleList({ event }: { event: CheckinEventRow 
   return (
     <div className='flex flex-col gap-2'>
       <p className='m-0 text-xs leading-relaxed text-muted-foreground'>
-        The eligible list is captured when the meeting is created, so check-in
-        never depends on the member directory being reachable. Refresh it if
-        someone has been given a role since then.
+        {t('events.refreshEligible.hint')}
       </p>
       <Button
         type='button'
@@ -77,14 +77,14 @@ export default function RefreshEligibleList({ event }: { event: CheckinEventRow 
         onClick={handleRefresh}
         className='w-full'
       >
-        {busy ? 'Checking the directory…' : 'Refresh eligible list'}
+        {busy ? t('events.refreshEligible.busy') : t('events.refreshEligible.action')}
       </Button>
 
       {result && (
         <Alert variant={result.added > 0 ? 'success' : 'default'}>
           {result.added > 0
-            ? `Added ${result.added} newly eligible member${result.added > 1 ? 's' : ''} — ${result.total} in total.`
-            : `Already up to date — ${result.total} eligible.`}
+            ? t('events.refreshEligible.added', { added: result.added, total: result.total })
+            : t('events.refreshEligible.upToDate', { total: result.total })}
         </Alert>
       )}
       {error && <Alert variant='destructive'>{error}</Alert>}

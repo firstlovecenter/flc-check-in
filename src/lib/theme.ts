@@ -1,5 +1,7 @@
 /** Theme preference + DOM application (DESIGN-new.md / portal parity). */
 
+import i18n from './i18n'
+
 export type ThemePreference = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
@@ -56,8 +58,8 @@ export function cyclePreference(current: ThemePreference): ThemePreference {
 }
 
 export function preferenceLabel(preference: ThemePreference): string {
-  if (preference === 'system') return 'System'
-  return preference === 'dark' ? 'Dark' : 'Light'
+  if (preference === 'system') return i18n.t('theme.system')
+  return preference === 'dark' ? i18n.t('theme.dark') : i18n.t('theme.light')
 }
 
 export function initThemeListeners(onChange: (resolved: ResolvedTheme) => void) {

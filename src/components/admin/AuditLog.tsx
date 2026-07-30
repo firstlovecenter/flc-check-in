@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../ScreenHeader'
 import Spinner from '../Spinner'
 import { PageShell, PageMain } from '../layout/PageShell'
@@ -11,6 +12,7 @@ import { useRefreshSignal } from '../../hooks/useRefreshSignal'
 import { getCurrentUser } from '../../utils/auth'
 
 export default function AuditLog({ eventId }: { eventId: string }) {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const [refreshKey, setRefreshKey] = useState(0)
   useRefreshSignal(() => setRefreshKey((k) => k + 1))
@@ -33,14 +35,14 @@ export default function AuditLog({ eventId }: { eventId: string }) {
   if (viewerCaps && !viewerCaps.canManage) {
     return (
       <PageShell className='items-center justify-center'>
-        <p className='text-muted-foreground'>Admin access required.</p>
+        <p className='text-muted-foreground'>{t('audit.adminRequired')}</p>
       </PageShell>
     )
   }
 
   return (
     <PageShell>
-      <ScreenHeader title='Manual Check-in History' back={{ to: `/events/${eventId}`, label: 'Dashboard' }} />
+      <ScreenHeader title={t('audit.title')} back={{ to: `/events/${eventId}`, label: t('audit.backDashboard') }} />
       <PageMain className='max-w-2xl flex flex-col gap-4'>
         <p className='section-heading m-0'>{event.name}</p>
 
@@ -49,7 +51,7 @@ export default function AuditLog({ eventId }: { eventId: string }) {
         {loading ? (
           <Spinner fullPage={false} />
         ) : entries.length === 0 ? (
-          <p className='text-muted-foreground'>No manual check-ins yet.</p>
+          <p className='text-muted-foreground'>{t('audit.none')}</p>
         ) : (
           <Card className='overflow-hidden p-0'>
             <CardContent className='p-0'>
@@ -61,11 +63,11 @@ export default function AuditLog({ eventId }: { eventId: string }) {
                     className={`px-4 py-3 text-sm ${i < entries.length - 1 ? 'border-b border-border' : ''}`}
                   >
                     <p className='m-0 text-foreground'>
-                      <span className='font-semibold'>{e.actor_name || e.actor_id}</span>
-                      {' has manually checked-in '}
-                      <span className='font-semibold text-primary'>{e.target_name || '—'}</span>
-                      {' at '}
-                      <span className='text-muted-foreground'>{format(ts, 'PPpp')}</span>
+                      {t('audit.entry', {
+                        actor: e.actor_name || e.actor_id,
+                        target: e.target_name || '—',
+                        time: format(ts, 'PPpp'),
+                      })}
                     </p>
                   </div>
                 )

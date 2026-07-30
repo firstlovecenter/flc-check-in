@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import ScreenHeader from '../../components/ScreenHeader'
 import { PageShell, PageMain } from '../../components/layout/PageShell'
 import Spinner from '../../components/Spinner'
@@ -18,6 +19,7 @@ type View =
   | { kind: 'form'; groupId: string | null }   // null = create, string = edit
 
 export default function SpecialGroupsScreen() {
+  const { t } = useTranslation()
   const user = getCurrentUser()
   const navigate = useNavigate()
 
@@ -31,7 +33,7 @@ export default function SpecialGroupsScreen() {
   return (
     <PageShell>
       <ScreenHeader
-        title='Special Groups'
+        title={t('groups.title')}
         back={view.kind !== 'list' ? undefined : undefined}
         onBack={view.kind !== 'list' ? () => {
           if (view.kind === 'detail') setView({ kind: 'list' })
@@ -49,6 +51,7 @@ export default function SpecialGroupsScreen() {
 
 // ─── GroupList ────────────────────────────────────────────────────────────────
 function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (id: string) => void; onCreate: () => void }) {
+  const { t } = useTranslation()
   const [groups, setGroups] = useState<SpecialGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +70,7 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
     <div className='flex flex-col gap-5'>
       <div className='flex items-center justify-between'>
         <p className='text-xs m-0 text-muted-foreground'>
-          Groups let you define a reusable set of people that cuts across church scopes, for use when creating special meetings.
+          {t('groups.listIntro')}
         </p>
       </div>
       <button
@@ -76,12 +79,12 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
         className='btn-pill btn-primary flex items-center gap-2 px-4 py-2.5 font-semibold text-sm cursor-pointer w-full justify-center'
       >
         <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'><path d='M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z' /></svg>
-        New group
+        {t('groups.newGroup')}
       </button>
 
       {groups.length === 0 && (
         <div className='p-8 text-center surface-card'>
-          <p className='text-sm m-0 text-muted-foreground'>No groups yet.</p>
+          <p className='text-sm m-0 text-muted-foreground'>{t('groups.none')}</p>
         </div>
       )}
 
@@ -101,7 +104,7 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
                 )}
               </div>
               <span className='chip shrink-0 px-2 py-0.5 text-xs font-semibold'>
-                {g.member_count ?? 0} {g.member_count === 1 ? 'person' : 'people'}
+                {g.member_count ?? 0} {g.member_count === 1 ? t('groups.person') : t('groups.people')}
               </span>
             </div>
           </button>
@@ -113,6 +116,7 @@ function GroupList({ userId, onSelect, onCreate }: { userId: string; onSelect: (
 
 // ─── GroupDetail ──────────────────────────────────────────────────────────────
 function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () => void; onEdit: (id: string) => void }) {
+  const { t } = useTranslation()
   const [group, setGroup] = useState<SpecialGroup | null>(null)
   const [members, setMembers] = useState<SpecialGroupMember[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,7 +185,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete group "${group?.name}"? This cannot be undone.`)) return
+    if (!confirm(t('groups.deleteConfirm', { name: group?.name }))) return
     setDeleting(true)
     try {
       await deleteSpecialGroup(groupId)
@@ -190,7 +194,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
   }
 
   if (loading) return <Spinner />
-  if (!group) return <ErrorBox>Group not found.</ErrorBox>
+  if (!group) return <ErrorBox>{t('groups.notFound')}</ErrorBox>
 
   const memberSet = new Set(members.map((m) => m.member_id))
 
@@ -200,41 +204,41 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
       <div className='px-4 py-4 flex flex-col gap-3 surface-card'>
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
-            <button type='button' onClick={onBack} className='text-xs cursor-pointer mb-1 border-0 bg-transparent p-0 text-primary'>← All groups</button>
+            <button type='button' onClick={onBack} className='text-xs cursor-pointer mb-1 border-0 bg-transparent p-0 text-primary'>{t('groups.allGroups')}</button>
             <h2 className='text-lg font-bold m-0 tracking-tight text-foreground'>{group.name}</h2>
             {group.description && <p className='text-sm m-0 mt-1 text-muted-foreground'>{group.description}</p>}
           </div>
           <div className='flex gap-2 shrink-0'>
             <button type='button' onClick={() => onEdit(groupId)}
               className='text-xs px-3 py-1.5 cursor-pointer font-semibold btn-pill btn-secondary'>
-              Edit
+              {t('groups.edit')}
             </button>
             <button type='button' onClick={handleDelete} disabled={deleting}
               className='btn-destructive-outline cursor-pointer px-3 py-1.5 text-xs font-semibold disabled:opacity-50'>
-              {deleting ? '…' : 'Delete'}
+              {deleting ? '…' : t('groups.delete')}
             </button>
           </div>
         </div>
         <p className='text-xs m-0 text-muted-foreground'>
-          {members.length} {members.length === 1 ? 'person' : 'people'}
+          {members.length} {members.length === 1 ? t('groups.person') : t('groups.people')}
         </p>
       </div>
 
       {error && <ErrorBox>{error}</ErrorBox>}
 
       {/* Add people search */}
-      <Section title='Add people'>
+      <Section title={t('groups.addPeople')}>
         <div className='relative'>
           <input
             type='text'
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search by name…'
+            placeholder={t('groups.searchPlaceholder')}
             className='input-field'
             autoComplete='off'
             disabled={adding}
           />
-          {searching && <p className='text-xs mt-1 text-muted-foreground'>Searching…</p>}
+          {searching && <p className='text-xs mt-1 text-muted-foreground'>{t('groups.searching')}</p>}
           {searchResults.length > 0 && (
             <SearchDropdown>
               {searchResults.map((m) => {
@@ -255,15 +259,15 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
             </SearchDropdown>
           )}
           {!searching && search.trim().length >= 2 && searchResults.length === 0 && (
-            <p className='text-xs mt-1 text-muted-foreground'>No matches.</p>
+            <p className='text-xs mt-1 text-muted-foreground'>{t('groups.noMatches')}</p>
           )}
         </div>
       </Section>
 
       {/* Member list */}
-      <Section title={`Members (${members.length})`}>
+      <Section title={t('groups.membersTitle', { count: members.length })}>
         {members.length === 0 && (
-          <p className='text-sm text-center py-4 text-muted-foreground'>No members yet. Search above to add people.</p>
+          <p className='text-sm text-center py-4 text-muted-foreground'>{t('groups.noMembers')}</p>
         )}
         <div className='flex flex-col gap-1.5'>
           {members.map((m) => {
@@ -291,7 +295,7 @@ function GroupDetail({ groupId, onBack, onEdit }: { groupId: string; onBack: () 
                 disabled={removing === m.member_id}
                 className='chip shrink-0 cursor-pointer px-2.5 py-1 text-xs disabled:opacity-50'
               >
-                {removing === m.member_id ? '…' : 'Remove'}
+                {removing === m.member_id ? '…' : t('groups.remove')}
               </button>
             </div>
           )})}
@@ -308,6 +312,7 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
   onSaved: (id: string) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(!!groupId)
@@ -346,26 +351,26 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-5'>
-      <p className='eyebrow m-0'>{groupId ? 'Edit group' : 'New group'}</p>
+      <p className='eyebrow m-0'>{groupId ? t('groups.form.edit') : t('groups.form.new')}</p>
 
-      <Section title='Details'>
-        <Field label='Name'>
+      <Section title={t('groups.form.details')}>
+        <Field label={t('groups.form.nameLabel')}>
           <input
             type='text'
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
             className='input-field'
-            placeholder='e.g. PIWC Stream Leaders'
+            placeholder={t('groups.form.namePlaceholder')}
             autoFocus
           />
         </Field>
-        <Field label='Description (optional)'>
+        <Field label={t('groups.form.descriptionLabel')}>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className='input-field resize-y'
-            placeholder='What is this group for?'
+            placeholder={t('groups.form.descriptionPlaceholder')}
             rows={3}
           />
         </Field>
@@ -376,11 +381,11 @@ function GroupForm({ groupId, userId, onSaved, onCancel }: {
       <div className='flex gap-3'>
         <button type='button' onClick={onCancel}
           className='flex-1 py-3 font-semibold text-sm cursor-pointer btn-pill btn-secondary'>
-          Cancel
+          {t('groups.form.cancel')}
         </button>
         <button type='submit' disabled={saving || !name.trim()}
           className='flex-1 btn-pill btn-primary py-3 font-semibold text-sm cursor-pointer disabled:opacity-50'>
-          {saving ? 'Saving…' : groupId ? 'Save changes' : 'Create group'}
+          {saving ? t('groups.form.saving') : groupId ? t('groups.form.saveChanges') : t('groups.form.create')}
         </button>
       </div>
     </form>

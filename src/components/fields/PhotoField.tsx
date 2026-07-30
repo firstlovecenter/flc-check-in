@@ -1,8 +1,10 @@
 import { useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Label } from '../ui/label'
 import { Button } from '../ui/button'
 
 export default function PhotoField({ field, value, onChange }) {
+  const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -25,14 +27,14 @@ export default function PhotoField({ field, value, onChange }) {
 
       {value?.dataUrl ? (
         <div className='surface-card relative overflow-hidden rounded-lg p-0'>
-          <img src={value.dataUrl} alt='Preview' className='max-h-[220px] w-full object-cover' />
+          <img src={value.dataUrl} alt={t('fields.photoPreviewAlt')} className='max-h-[220px] w-full object-cover' />
           <Button
             type='button'
             variant='secondary'
             size='icon-sm'
             onClick={handleClear}
             className='absolute right-2 top-2 size-7 rounded-full bg-foreground/60 text-primary-foreground hover:bg-foreground/70'
-            aria-label='Remove photo'
+            aria-label={t('fields.photoRemoveAria')}
           >
             ✕
           </Button>
@@ -47,9 +49,9 @@ export default function PhotoField({ field, value, onChange }) {
             📷
           </div>
           <div>
-            <p className='m-0 text-sm font-semibold text-foreground'>Add a photo</p>
+            <p className='m-0 text-sm font-semibold text-foreground'>{t('fields.photoAdd')}</p>
             <p className='m-0 mt-0.5 text-xs text-muted-foreground'>
-              Take a photo or upload from gallery
+              {t('fields.photoHint')}
             </p>
           </div>
         </button>

@@ -1,3 +1,5 @@
+import i18n from '../lib/i18n'
+
 const DEFAULT_TIMEOUT_MS = 12_000
 const DEFAULT_RETRIES = 1
 
@@ -50,13 +52,13 @@ export function isAuthFailure(error: unknown): boolean {
 
 export function friendlyErrorMessage(error: unknown): string {
   if (isNetworkError(error)) {
-    return "The network is struggling right now. Please refresh or try again in a moment."
+    return i18n.t('common.networkStruggling')
   }
   if (isAuthFailure(error)) {
-    return 'Your session expired. Please sign in again.'
+    return i18n.t('auth.session.expired')
   }
   const message = error instanceof Error ? error.message : String(error || '')
-  return message || 'Something went wrong. Please try again.'
+  return message || i18n.t('common.somethingWrong')
 }
 
 export async function fetchWithTimeout(

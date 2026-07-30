@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../lib/utils'
 
 export function useClientPagination<T>(
@@ -51,17 +52,19 @@ export function PaginationControls({
   noun?: string
   className?: string
 }) {
+  const { t } = useTranslation()
   if (total === 0) return null
 
   const from = page * pageSize + 1
   const to = Math.min(total, (page + 1) * pageSize)
   const showPager = total > pageSize
+  const nounLabel = t(`pagination.nouns.${noun}`, { defaultValue: noun })
 
   return (
     <div className={cn('flex flex-col items-center gap-2 border-t border-border pt-3', className)}>
       <p className='m-0 text-xs font-medium text-muted-foreground'>
-        Showing {from}–{to} of {total} {noun}
-        {showPager ? ` · ${pageSize}/page` : ''}
+        {t('common.showingRange', { from, to, total, noun: nounLabel })}
+        {showPager ? t('common.perPage', { size: pageSize }) : ''}
       </p>
       {showPager && (
         <div className='flex w-full max-w-sm items-center justify-between gap-3'>
@@ -71,10 +74,10 @@ export function PaginationControls({
             onClick={() => onPageChange(page - 1)}
             className='btn-pill btn-secondary px-4 py-2 text-sm disabled:opacity-40 cursor-pointer'
           >
-            ← Prev
+            {t('common.prev')}
           </button>
           <span className='text-xs font-semibold text-foreground'>
-            Page {page + 1} / {totalPages}
+            {t('common.pageOf', { current: page + 1, total: totalPages })}
           </span>
           <button
             type='button'
@@ -82,7 +85,7 @@ export function PaginationControls({
             onClick={() => onPageChange(page + 1)}
             className='btn-pill btn-secondary px-4 py-2 text-sm disabled:opacity-40 cursor-pointer'
           >
-            Next →
+            {t('common.next')}
           </button>
         </div>
       )}

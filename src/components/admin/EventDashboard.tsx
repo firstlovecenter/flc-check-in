@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { formatDistanceToNowStrict } from 'date-fns'
 import NavDrawer from '../NavDrawer'
 import RefreshButton from '../RefreshButton'
@@ -19,6 +20,7 @@ import EventLiveHeader, { AttendanceBar } from './EventLiveHeader'
 import InlineScopeRollup from './InlineScopeRollup'
 import EventDashboardSkeleton from './EventDashboardSkeleton'
 import ChurchScopeSwitcher from '../ChurchScopeSwitcher'
+import LanguageSwitcher from '../LanguageSwitcher'
 import { PageShell, PageMain } from '../layout/PageShell'
 import { CenterCard } from '../layout/CenterCard'
 import { EmptyState } from '../layout/EmptyState'
@@ -60,6 +62,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
    *  Neo4j calls that only existed to feed it. */
   capsOverride?: ViewerCaps | null
 }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const user = getCurrentUser()
   const [searchParams] = useSearchParams()
@@ -215,7 +218,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
       setDashboardStatsError(null)
     } catch {
       // Keep showing the last good numbers; surface a quiet notice.
-      setDashboardStatsError('Live stats are temporarily unavailable.')
+      setDashboardStatsError(t('events.statsUnavailable'))
     }
   }, [eventId, statsInputs, user?.userId, user?.graphMemberId])
 
@@ -259,9 +262,9 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
         <PageMain>
           <EmptyState
             kind='no-scope'
-            title='Not in your scope'
-            description="This event isn't part of your leadership or admin scope. Switch Church in Focus, or go home."
-            action={<Link to='/home' className='text-sm font-semibold text-primary no-underline hover:underline'>← Home</Link>}
+            title={t('checkin.notInScopeTitle')}
+            description={t('checkin.notInScopeBody')}
+            action={<Link to='/home' className='text-sm font-semibold text-primary no-underline hover:underline'>{t('checkin.homeLink')}</Link>}
           />
         </PageMain>
       </PageShell>
@@ -285,6 +288,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
 
   return (
     <PageShell>
+      <NavDrawer user={user} />
       <PageMain className='flex flex-col gap-4'>
         <PullToRefreshIndicator />
 
@@ -299,21 +303,21 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
               <svg viewBox='0 0 24 24' width='14' height='14' fill='currentColor'>
                 <path d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z' />
               </svg>
-              Back
+              {t('events.back')}
             </button>
           ) : (
             <span />
           )}
           <div className='flex items-center gap-1.5'>
             {viewerCaps.canManage && !scopeChurchName && (
-              <Link to={`/events/${event.id}/edit`} aria-label='Edit event' className='icon-btn min-h-11 min-w-11'>
+              <Link to={`/events/${event.id}/edit`} aria-label={t('events.editAria')} className='icon-btn min-h-11 min-w-11'>
                 <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor'>
                   <path d='M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z' />
                 </svg>
               </Link>
             )}
             <RefreshButton />
-            <NavDrawer user={user} />
+            <LanguageSwitcher />
           </div>
         </header>
         {/* Live state, loudest element on the screen. Replaces a small status
@@ -344,28 +348,30 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
 
         {viewerCaps.canCheckIn && !isCheckedIn && event.status === 'ACTIVE' && (
           <Button size='lg' className='w-full' onClick={() => navigate(`/checkin/${event.id}`, { viewTransition: true })}>
-            Check in now
+            {t('events.checkInNow')}
           </Button>
         )}
         {viewerCaps.canCheckIn && isCheckedIn && (
           <Alert variant='success' className='text-center font-semibold'>
-            ✓ You&apos;re checked in
+            {t('events.checkedInBanner')}
           </Alert>
         )}
 
 
         <div>
           <div className='mb-2 flex items-center justify-between'>
-            <p className='section-heading m-0 text-xs uppercase tracking-widest'>Live Check-Ins</p>
+            <p className='section-heading m-0 text-xs uppercase tracking-widest'>{t('events.liveCheckIns')}</p>
             <span className='text-[11px] text-muted-foreground'>
               {dashboardStats
                 // Clamp the server timestamp to the past so client clock skew
                 // can never render "in 5 seconds".
-                ? `Updated ${formatDistanceToNowStrict(
-                    new Date(Math.min(Date.now(), new Date(dashboardStats.updated_at).getTime())),
-                    { addSuffix: true },
-                  )}`
-                : 'Updating…'}
+                ? t('events.updated', {
+                    time: formatDistanceToNowStrict(
+                      new Date(Math.min(Date.now(), new Date(dashboardStats.updated_at).getTime())),
+                      { addSuffix: true },
+                    ),
+                  })
+                : t('events.updating')}
             </span>
           </div>
           {dashboardStats && (
@@ -379,7 +385,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
                   <svg viewBox='0 0 24 24' width='13' height='13' fill='currentColor' aria-hidden>
                     <path d='M3.5 18.5l6-6 4 4L22 8l-1.5-1.5-7 7-4-4-7.5 7.5z' />
                   </svg>
-                  {rate.recent} in the last {rate.windowMin} min
+                  {t('events.rateRecent', { count: rate.recent, minutes: rate.windowMin })}
                 </p>
               )}
             </div>
@@ -387,14 +393,14 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
           <div className='overflow-hidden rounded-2xl border border-border bg-card'>
             <LiveRow
               icon='present'
-              label='Present'
+              label={t('events.present')}
               count={dashboardStats?.attended ?? '—'}
               to={`/events/${event.id}/members?status=present${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
             <div className='h-px bg-border' />
             <LiveRow
               icon='absent'
-              label='Absent'
+              label={t('events.absent')}
               count={dashboardStats?.absent ?? '—'}
               to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
@@ -410,7 +416,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
                 three rows fail to add up on screen. */}
             <LiveRow
               icon='expected'
-              label='Total Expected'
+              label={t('events.totalExpected')}
               count={dashboardStats ? dashboardStats.attended + dashboardStats.absent : '—'}
               to={`/events/${event.id}/members?status=all${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
@@ -431,10 +437,10 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
                 </span>
                 <div className='min-w-0 flex-1'>
                   <p className='m-0 text-sm font-bold text-destructive'>
-                    {riskyCount} shared device{riskyCount > 1 ? 's' : ''} detected
+                    {t('events.sharedDevices', { count: riskyCount })}
                   </p>
                   <p className='m-0 mt-0.5 text-xs text-destructive/80'>
-                    Possible proxy check-in — review these members
+                    {t('events.sharedDevicesHint')}
                   </p>
                 </div>
                 <svg viewBox='0 0 24 24' width='16' height='16' fill='currentColor' className='shrink-0 text-destructive' aria-hidden>
@@ -465,7 +471,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
                   <polyline points='12 6 12 12 16 14' />
                 </svg>
               </div>
-              <span className='flex-1 text-sm font-semibold text-foreground'>Manual check-in history</span>
+              <span className='flex-1 text-sm font-semibold text-foreground'>{t('events.manualHistory')}</span>
               <svg viewBox='0 0 24 24' width='16' height='16' className='shrink-0 text-muted-foreground/40' fill='none' stroke='currentColor' strokeWidth='2'>
                 <path d='M9 6l6 6-6 6' strokeLinecap='round' strokeLinejoin='round' />
               </svg>

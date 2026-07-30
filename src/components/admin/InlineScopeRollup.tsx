@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getEventScopeRollup, type ScopeRollupRow } from '../../utils/supabaseCheckins'
 
 const TOP_N = 5
@@ -27,6 +28,7 @@ export default function InlineScopeRollup({
   allowedRoles?: string[] | null
   fullListTo: string
 }) {
+  const { t } = useTranslation()
   const [rows, setRows] = useState<ScopeRollupRow[] | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -47,9 +49,9 @@ export default function InlineScopeRollup({
   return (
     <div>
       <div className='mb-2 flex items-center justify-between'>
-        <p className='section-heading m-0 text-xs uppercase tracking-widest'>By {childLevel}</p>
+        <p className='section-heading m-0 text-xs uppercase tracking-widest'>{cap(childLevel)}</p>
         <Link to={fullListTo} className='text-[11px] font-semibold text-primary no-underline hover:underline'>
-          See all
+          {t('scopeBreakdown.allMembers')}
         </Link>
       </div>
 
@@ -69,7 +71,7 @@ export default function InlineScopeRollup({
                 <div className='flex items-center gap-3 px-4 py-2.5'>
                   <div className='min-w-0 flex-1'>
                     <p className='m-0 truncate text-sm font-semibold text-foreground'>
-                      {row.church_name || 'Unnamed'}
+                      {row.church_name || t('common.unnamed')}
                     </p>
                     <div className='mt-1 h-1.5 overflow-hidden rounded-full bg-secondary'>
                       <div
@@ -89,4 +91,8 @@ export default function InlineScopeRollup({
       )}
     </div>
   )
+}
+
+function cap(s: string) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AuthLayout } from '../components/layout/AuthLayout'
 import { Label } from '../components/ui/label'
 import { Input } from '../components/ui/input'
@@ -46,6 +47,7 @@ function SpinnerIcon() {
 }
 
 export default function LoginScreen() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const resetSuccess = params.get('reset') === 'success'
@@ -55,7 +57,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(
-    notLeader ? 'This app is for leaders and admins only.' : '',
+    notLeader ? t('auth.signIn.leadersOnly') : '',
   )
 
   async function handleSubmit(e: { preventDefault: () => void }) {
@@ -67,14 +69,14 @@ export default function LoginScreen() {
       const eligibility = await verifyLoginEligibility(user)
       if (!eligibility.eligible) {
         logout()
-        setError('This app is for leaders and admins only.')
+        setError(t('auth.signIn.leadersOnly'))
         return
       }
 
       navigate('/home')
     } catch (err: any) {
       logout()
-      setError(friendlyErrorMessage(err) || 'Login failed. Check your credentials.')
+      setError(friendlyErrorMessage(err) || t('auth.signIn.genericError'))
     } finally {
       setLoading(false)
     }
@@ -83,9 +85,9 @@ export default function LoginScreen() {
   return (
     <AuthLayout>
       <div className='mb-5'>
-        <h2 className='text-lg font-semibold tracking-tight text-foreground'>Sign in</h2>
+        <h2 className='text-lg font-semibold tracking-tight text-foreground'>{t('auth.signIn.title')}</h2>
         <p className='mt-0.5 text-sm text-muted-foreground'>
-          Use the same credentials as the Synago App.
+          {t('auth.signIn.subtitle')}
         </p>
       </div>
 
@@ -94,7 +96,7 @@ export default function LoginScreen() {
           role='status'
           className='mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success'
         >
-          Password updated — sign in with your new password.
+          {t('auth.signIn.resetSuccess')}
         </div>
       )}
 
@@ -109,13 +111,13 @@ export default function LoginScreen() {
 
       <form onSubmit={handleSubmit} className='space-y-4' noValidate>
         <div className='space-y-1.5'>
-          <Label htmlFor='login-email'>Email address</Label>
+          <Label htmlFor='login-email'>{t('auth.signIn.emailLabel')}</Label>
           <Input
             id='login-email'
             type='email'
             autoComplete='email'
             inputMode='email'
-            placeholder='you@example.com'
+            placeholder={t('auth.signIn.emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -124,13 +126,13 @@ export default function LoginScreen() {
         </div>
 
         <div className='space-y-1.5'>
-          <Label htmlFor='login-password'>Password</Label>
+          <Label htmlFor='login-password'>{t('auth.signIn.passwordLabel')}</Label>
           <div className='relative'>
             <Input
               id='login-password'
               type={showPassword ? 'text' : 'password'}
               autoComplete='current-password'
-              placeholder='Enter your password'
+              placeholder={t('auth.signIn.passwordPlaceholder')}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -141,7 +143,7 @@ export default function LoginScreen() {
               type='button'
               onClick={() => setShowPassword((v) => !v)}
               className='absolute right-0 top-0 flex size-11 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? t('auth.signIn.hidePassword') : t('auth.signIn.showPassword')}
               tabIndex={-1}
             >
               <EyeIcon open={showPassword} />
@@ -154,7 +156,7 @@ export default function LoginScreen() {
             to='/forgot-password'
             className='min-h-11 rounded px-1 text-sm text-primary no-underline hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
           >
-            Forgot password?
+            {t('auth.signIn.forgotPassword')}
           </Link>
         </div>
 
@@ -169,11 +171,11 @@ export default function LoginScreen() {
           {loading ? (
             <>
               <SpinnerIcon />
-              Signing in…
+              {t('auth.signIn.submitting')}
             </>
           ) : (
             <>
-              Sign in
+              {t('auth.signIn.submit')}
               <ArrowRightIcon />
             </>
           )}
@@ -182,7 +184,7 @@ export default function LoginScreen() {
 
       <p className='mt-5 text-center text-xs text-muted-foreground'>
         <Link to='/events' className='text-muted-foreground no-underline hover:text-primary'>
-          View meetings at this location
+          {t('auth.signIn.viewMeetings')}
         </Link>
       </p>
     </AuthLayout>

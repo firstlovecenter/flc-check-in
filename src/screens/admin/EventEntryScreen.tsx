@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import Spinner from '../../components/Spinner'
 import { Alert } from '../../components/ui/alert'
 import { getCurrentUser } from '../../utils/auth'
@@ -30,6 +31,7 @@ type GateState =
  *  distinction is the whole point. Switching hats re-runs the gate, so a user
  *  who lands somewhere unexpected can correct it without leaving the screen. */
 export default function EventEntryScreen() {
+  const { t } = useTranslation()
   const { eventId } = useParams()
   const [searchParams] = useSearchParams()
   const user = getCurrentUser()
@@ -77,10 +79,10 @@ export default function EventEntryScreen() {
   }, [eventId, user?.userId, user?.email, hasScopeDrilldown, focusedHat?.key])
 
   if (!user) return null
-  if (!eventId) return <Alert variant='destructive'>Missing event.</Alert>
+  if (!eventId) return <Alert variant='destructive'>{t('events.missingEvent')}</Alert>
 
   if (state.status === 'loading') {
-    return <Spinner fullPage message='Loading event details.' />
+    return <Spinner fullPage message={t('checkin.loadingEvent')} />
   }
 
   if (state.status === 'error') {

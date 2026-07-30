@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Label } from '../ui/label'
 import { cn } from '../../lib/utils'
 
 export default function AttendanceField({ field, value, onChange, error }) {
+  const { t } = useTranslation()
   const count = value ?? 0
   const [editing, setEditing] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -76,7 +78,7 @@ export default function AttendanceField({ field, value, onChange, error }) {
             <button
               type='button'
               onClick={handleTapNumber}
-              title='Tap to type a number'
+              title={t('fields.attendanceTapHint')}
               className='flex h-full w-full cursor-text select-none items-center justify-center border-0 bg-transparent p-0'
             >
               <span
@@ -99,10 +101,10 @@ export default function AttendanceField({ field, value, onChange, error }) {
           +
         </button>
       </div>
-      <p className='-mt-1 text-xs text-muted-foreground'>Tap the number to type it directly</p>
+      <p className='-mt-1 text-xs text-muted-foreground'>{t('fields.attendanceTapHint')}</p>
       {isBelowThreshold && !error && (
         <p className='m-0 mt-0.5 text-xs text-warning'>
-          Target is {threshold} — you&apos;re below the minimum
+          {t('fields.attendanceBelow', { threshold })}
         </p>
       )}
       {error && <p className='field-error'>{error}</p>}
