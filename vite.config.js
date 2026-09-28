@@ -158,6 +158,10 @@ export default defineConfig(({ mode }) => {
             target: authOrigin,
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api\/flc-auth/, '/auth'),
+            // Mirror api/flc-auth's first-party relay of the httpOnly refresh
+            // cookie (SYN-173): drop the Lambda's Domain, scope to the proxy.
+            cookieDomainRewrite: '',
+            cookiePathRewrite: '/api/flc-auth',
           },
         }),
       },

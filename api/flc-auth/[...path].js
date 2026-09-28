@@ -40,6 +40,27 @@ function normaliseTarget(raw) {
 const TARGET = normaliseTarget(RAW)
 const UPSTREAM_TIMEOUT_MS = 12_000
 
+// The auth service keeps the refresh token in an httpOnly cookie (SYN-173):
+// set on /login, read by /refresh-token, cleared by /logout. The browser only
+// ever talks to THIS origin, so the cookie must be relayed first-party:
+//   - request:  forward the browser's Cookie header upstream;
+//   - response: pass Set-Cookie back, with Domain dropped (a cookie scoped to
+//     the Lambda's host would be rejected here) and Path pinned to this proxy
+//     so the browser returns it on /api/flc-auth/* and nowhere else.
+const PROXY_PATH = '/api/flc-auth'
+
+export function rewriteSetCookie(cookie) {
+  const parts = cookie.split(';').map((p) => p.trim()).filter(Boolean)
+  const kept = parts.filter((p, i) => i === 0 || !/^(domain|path)=/i.test(p))
+  return [...kept, `Path=${PROXY_PATH}`].join('; ')
+}
+
+function upstreamSetCookies(headers) {
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie()
+  const single = headers.get('set-cookie')
+  return single ? [single] : []
+}
+
 if (!TARGET) {
   console.error('[flc-auth] VITE_AUTH_API_URL is not set or invalid — add a full URL to the Vercel project env vars')
 }
@@ -61,10 +82,15 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/json',
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        ...(req.headers.cookie ? { Cookie: req.headers.cookie } : {}),
       },
-      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body),
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body ?? {}),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     })
+    const cookies = upstreamSetCookies(upstreamRes.headers)
+    if (cookies.length) res.setHeader('Set-Cookie', cookies.map(rewriteSetCookie))
+    // Token responses are per-user credentials — never cache them anywhere.
+    res.setHeader('Cache-Control', 'no-store')
     const data = await upstreamRes.json().catch(() => ({}))
     res.status(upstreamRes.status).json(data)
   } catch (err) {

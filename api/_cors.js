@@ -17,6 +17,10 @@ export function applyCors(req, res) {
   const origin = req.headers.origin
   if (origin && ALLOWED_ORIGINS.has(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
+    // The auth proxy relays the httpOnly refresh cookie; native shells call
+    // cross-origin with `credentials: 'include'`, which needs this to be
+    // allowed. Safe: the origin is echoed only for the two native origins.
+    res.setHeader('Access-Control-Allow-Credentials', 'true')
     res.setHeader('Vary', 'Origin')
   }
   if (req.method === 'OPTIONS') {

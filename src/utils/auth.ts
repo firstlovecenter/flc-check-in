@@ -301,7 +301,7 @@ export function getCurrentUser() {
   return null;
 }
 
-// Attempt a silent token refresh using the stored refreshToken.
+// Attempt a silent token refresh using the httpOnly refresh cookie.
 //
 // Portal policy we mirror: clear the session only on a real auth rejection
 // (401/403). A dropped mobile connection mid-service must NOT look like
@@ -323,31 +323,43 @@ export async function refreshSessionDetailed(): Promise<SessionRefreshResult> {
   return refreshInflight
 }
 
+// Refresh failures that mean "this session can't be renewed — sign in again".
+// 404 is included on purpose: when the auth service retired POST /auth/refresh
+// (SYN-173) every refresh 404'd, and treating that as a network blip parked
+// every returning user on "Can't reach the server" with no way forward.
+// Only timeouts, rate limits and 5xx are worth a Retry.
+function isDeadSessionStatus(status: number): boolean {
+  return isAuthHttpStatus(status) || status === 400 || status === 404
+}
+
 async function doRefreshSession(): Promise<SessionRefreshResult> {
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) return { status: 'unauthorized' }
   try {
+    // The refresh token is an httpOnly cookie set by the auth service at login
+    // (SYN-173), relayed first-party by api/flc-auth. JS never sees it, so there
+    // is nothing to send in the body — `credentials: 'include'` carries the
+    // cookie, including on the cross-origin native shells.
+    //
     // A stalled request (dropped mobile connection mid-flight) must not hang
     // forever — RequireAuth's background poll gates on this call settling to
     // release its in-flight guard, so an unbounded hang would silently
     // disable proactive refresh for the rest of the session.
-    const res = await fetchWithTimeout(`${authApiUrl()}/refresh`, {
+    const res = await fetchWithTimeout(`${authApiUrl()}/refresh-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
+      body: '{}',
     }, { timeoutMs: REFRESH_TIMEOUT_MS })
     if (!res.ok) {
-      return isAuthHttpStatus(res.status)
+      return isDeadSessionStatus(res.status)
         ? { status: 'unauthorized' }
         : { status: 'unavailable' }
     }
     const data = await res.json().catch(() => null)
-    if (!data?.tokens?.accessToken) return { status: 'unauthorized' }
-    localStorage.setItem('accessToken', data.tokens.accessToken)
-    if (data.tokens.refreshToken) {
-      localStorage.setItem('refreshToken', data.tokens.refreshToken)
-    }
-    const payload = decodeJWT(data.tokens.accessToken)
+    // Flat on the current endpoint; nested on older auth-service versions.
+    const accessToken = data?.accessToken || data?.tokens?.accessToken
+    if (!accessToken) return { status: 'unauthorized' }
+    localStorage.setItem('accessToken', accessToken)
+    const payload = decodeJWT(accessToken)
     if (!payload) return { status: 'unauthorized' }
     const { id, ...userFields } = data.user ?? {}
     // Persist church refs from the refresh response so getCurrentUser() can use them.
@@ -573,16 +585,24 @@ export async function loginWithCredentials(email, password) {
   const res = await fetchWithTimeout(`${authApiUrl()}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    // Lets the browser store the httpOnly refresh cookie the auth service sets
+    // on success (SYN-173). Same-origin on web; required on native.
+    credentials: 'include',
     body: JSON.stringify({ email, password }),
   }, { timeoutMs: 12_000 });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || 'Login failed');
 
-  localStorage.setItem('accessToken',  data.tokens.accessToken);
-  localStorage.setItem('refreshToken', data.tokens.refreshToken);
+  const accessToken = data.accessToken || data.tokens?.accessToken
+  if (!accessToken) throw new Error('Login failed')
+  localStorage.setItem('accessToken', accessToken);
+  // Refresh tokens now live only in the httpOnly cookie. Clear any value an
+  // older build stored (including the literal "undefined" it wrote once the
+  // auth service stopped returning one).
+  localStorage.removeItem('refreshToken');
 
-  const payload = decodeJWT(data.tokens.accessToken);
-  const { id, ...userFields } = data.user;
+  const payload = decodeJWT(accessToken);
+  const { id, ...userFields } = data.user ?? {};
 
   // Persist church refs so getCurrentUser() can fill in IDs not in the JWT.
   persistChurchContext(userFields)
@@ -614,6 +634,14 @@ export async function loginWithCredentials(email, password) {
 
 export function logout() {
   const uid = decodeJWT(localStorage.getItem('accessToken') || '')?.userId
+  // Ask the auth service to clear the httpOnly refresh cookie. Best-effort:
+  // local logout must not wait on the network, and the cookie expires anyway.
+  fetch(`${authApiUrl()}/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: '{}',
+  }).catch(() => {})
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('pictureUrl');

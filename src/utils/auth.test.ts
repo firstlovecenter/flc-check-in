@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { mergeRoleLists, loginWithCredentials, refreshSession, enrichUser } from './auth'
+import { mergeRoleLists, loginWithCredentials, refreshSession, refreshSessionDetailed, enrichUser } from './auth'
 
 vi.mock('./supabase', () => ({
   supabase: {
@@ -110,7 +110,6 @@ describe('auth role merge wiring', () => {
   it('refreshSession merges refreshed JWT + refresh-response roles into final user.roles', async () => {
     installMemoryStorage()
     installWindow()
-    globalThis.localStorage.setItem('refreshToken', 'rt-1')
 
     const refreshedToken = makeToken({
       userId: 'u-2',
@@ -119,11 +118,11 @@ describe('auth role merge wiring', () => {
     })
 
     setGlobal('fetch', async (url: string) => {
-      if (url.endsWith('/refresh')) {
+      if (url.endsWith('/refresh-token')) {
         return {
           ok: true,
           json: async () => ({
-            tokens: { accessToken: refreshedToken, refreshToken: 'rt-2' },
+            tokens: { accessToken: refreshedToken },
             user: { id: 'u-2', roles: ['adminGovernorship', 'arrivalsAdminGovernorship'] },
           }),
         } as Response
@@ -133,6 +132,59 @@ describe('auth role merge wiring', () => {
 
     const user = await refreshSession()
     expect(user?.roles).toEqual(['leaderBacenta', 'adminGovernorship', 'arrivalsAdminGovernorship'])
+  })
+})
+
+describe('cookie-based session refresh (SYN-173)', () => {
+  const token = () => makeToken({ userId: 'u-3', exp: Math.floor(Date.now() / 1000) + 3600, roles: ['leaderBacenta'] })
+
+  it('posts to /refresh-token with credentials and no token in the body', async () => {
+    installMemoryStorage()
+    installWindow()
+    const calls: Array<{ url: string; init: RequestInit }> = []
+    const access = token()
+    setGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, init })
+      return { ok: true, status: 200, json: async () => ({ accessToken: access }) } as Response
+    })
+
+    const result = await refreshSessionDetailed()
+    expect(result.status).toBe('ok')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toMatch(/\/api\/flc-auth\/refresh-token$/)
+    expect(calls[0].init.credentials).toBe('include')
+    expect(calls[0].init.body).toBe('{}')
+    // Flat `accessToken` (current endpoint shape) is accepted and stored.
+    expect(globalThis.localStorage.getItem('accessToken')).toBe(access)
+  })
+
+  it.each([401, 403, 404, 400])('treats HTTP %i as a dead session, not a network blip', async (status) => {
+    installMemoryStorage()
+    installWindow()
+    setGlobal('fetch', async () => ({ ok: false, status, json: async () => ({}) }) as Response)
+    expect((await refreshSessionDetailed()).status).toBe('unauthorized')
+  })
+
+  it('treats 5xx as unavailable so the user can retry', async () => {
+    installMemoryStorage()
+    installWindow()
+    setGlobal('fetch', async () => ({ ok: false, status: 503, json: async () => ({}) }) as Response)
+    expect((await refreshSessionDetailed()).status).toBe('unavailable')
+  })
+
+  it('login stores the access token and never a missing refresh token', async () => {
+    installMemoryStorage()
+    installWindow()
+    globalThis.localStorage.setItem('refreshToken', 'undefined')
+    const access = token()
+    setGlobal('fetch', async (_url: string, init: RequestInit) => {
+      expect(init.credentials).toBe('include')
+      return { ok: true, json: async () => ({ accessToken: access, user: { id: 'u-3' } }) } as Response
+    })
+
+    await loginWithCredentials('x@test.com', 'pw')
+    expect(globalThis.localStorage.getItem('accessToken')).toBe(access)
+    expect(globalThis.localStorage.getItem('refreshToken')).toBeNull()
   })
 
   it('enrichUser preserves distinct admin/leader scopes from different hierarchies', () => {
