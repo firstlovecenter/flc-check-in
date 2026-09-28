@@ -86,7 +86,9 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
     scopeMemberCount, error, initialLoading,
   } = useEventEligibility(eventId, user, { pollMs: POLL_MS, refreshKey, loadRecords: false, capsOverride })
 
-  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  // notYetPresent = expected minus attended, always real; `absent` is only
+  // shown as such once the event has started (see fetchDashboardStats).
+  const [dashboardStats, setDashboardStats] = useState<(DashboardStats & { notYetPresent: number; notStarted: boolean }) | null>(null)
   const [dashboardStatsError, setDashboardStatsError] = useState<string | null>(null)
 
   // Slow the stats poll right down while the tab is hidden.
@@ -202,19 +204,24 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
     // Empty slice — nobody to count. Don't call the RPC: an empty memberIds
     // array means "no filter" in Postgres and would count the whole event.
     if (statsInputs.memberIds && statsInputs.memberIds.length === 0) {
-      setDashboardStats({ attended: 0, absent: 0, viewer_checked_in: false, updated_at: new Date().toISOString() })
+      setDashboardStats({ attended: 0, absent: 0, notYetPresent: 0, notStarted, viewer_checked_in: false, updated_at: new Date().toISOString() })
       setDashboardStatsError(null)
       return
     }
     try {
+      // Always ask for the real not-yet-present count. Passing notStarted to
+      // the RPC zeroed `absent`, and since Total Expected is attended + absent,
+      // every upcoming event showed "0 expected" while its breakdown showed
+      // hundreds. Before start the not-present count is shown as Expected, and
+      // Absent is displayed as 0 below.
       const stats = await getEventDashboardStats({
         eventId,
         memberIds: statsInputs.memberIds,
         allowedRoles: statsInputs.allowedRoles,
-        notStarted,
+        notStarted: false,
         viewerMemberIds: uniqueIds([user?.userId, user?.graphMemberId]),
       })
-      setDashboardStats(stats)
+      setDashboardStats({ ...stats, notYetPresent: stats.absent, notStarted })
       setDashboardStatsError(null)
     } catch {
       // Keep showing the last good numbers; surface a quiet notice.
@@ -378,7 +385,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <div className='mb-3 flex flex-col gap-2'>
               <AttendanceBar
                 attended={dashboardStats.attended}
-                expected={dashboardStats.attended + dashboardStats.absent}
+                expected={dashboardStats.attended + dashboardStats.notYetPresent}
               />
               {rate && rate.recent > 0 && (
                 <p className='m-0 flex items-center gap-1.5 text-xs font-semibold text-success'>
@@ -401,7 +408,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <LiveRow
               icon='absent'
               label={t('events.absent')}
-              count={dashboardStats?.absent ?? '—'}
+              count={dashboardStats ? (dashboardStats.notStarted ? 0 : dashboardStats.absent) : '—'}
               to={`/events/${event.id}/members?status=absent${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
             <div className='h-px bg-border' />
@@ -417,7 +424,7 @@ export default function EventDashboard({ eventId, capsOverride = null }: {
             <LiveRow
               icon='expected'
               label={t('events.totalExpected')}
-              count={dashboardStats ? dashboardStats.attended + dashboardStats.absent : '—'}
+              count={dashboardStats ? dashboardStats.attended + dashboardStats.notYetPresent : '—'}
               to={`/events/${event.id}/members?status=all${scopeFilter ? `&${scopeFilter}` : ''}`}
             />
           </div>
