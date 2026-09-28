@@ -64,10 +64,22 @@ const MEMBER_LOOKUP_QUERY = `
   }
 `
 
-function json(body: unknown, status = 200): Response {
+// The portal API is the verifier, so a slow portal must not pin this function
+// (and every waiting phone) for the platform's full wall-clock limit. The
+// client gives up at 5s and falls back to anon; stop working shortly before.
+const GRAPH_TIMEOUT_MS = 4_500
+
+function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    headers: {
+      ...CORS_HEADERS,
+      'Content-Type': 'application/json',
+      // Minted tokens are per-user credentials — never cacheable.
+      'Cache-Control': 'no-store',
+      // Read by the logging wrapper below; not part of the contract.
+      'X-Exchange-Outcome': typeof body.error === 'string' ? body.error : 'ok',
+    },
   })
 }
 
@@ -108,7 +120,30 @@ function rolesFromMember(member: Member): string[] {
   return [...roles]
 }
 
+// One structured line per exchange: outcome + latency, no identity. Query the
+// function's logs for these to see the ok / invalid_token / graph_* split and
+// how long the portal takes under the arrival rush.
 Deno.serve(async (req) => {
+  const started = performance.now()
+  let res: Response
+  try {
+    res = await handle(req)
+  } catch (err) {
+    console.error('[flc-token-exchange] unhandled:', err instanceof Error ? err.message : err)
+    res = json({ error: 'internal' }, 500)
+  }
+  if (req.method === 'POST') {
+    console.log(JSON.stringify({
+      fn: 'flc-token-exchange',
+      status: res.status,
+      outcome: res.headers.get('X-Exchange-Outcome'),
+      ms: Math.round(performance.now() - started),
+    }))
+  }
+  return res
+})
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
 
@@ -149,11 +184,13 @@ Deno.serve(async (req) => {
         query: MEMBER_LOOKUP_QUERY,
         variables: { id: userId, email: payloadEmail },
       }),
+      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
     })
     if (!res.ok) return json({ error: 'graph_unavailable' }, 503)
     gqlBody = await res.json()
-  } catch {
-    return json({ error: 'graph_unavailable' }, 503)
+  } catch (err) {
+    const timedOut = err instanceof DOMException && err.name === 'TimeoutError'
+    return json({ error: timedOut ? 'graph_timeout' : 'graph_unavailable' }, 503)
   }
 
   if (gqlBody.errors?.length && !gqlBody.data) {
@@ -175,7 +212,7 @@ Deno.serve(async (req) => {
 
   const member = gqlBody.data?.byId?.[0] ?? gqlBody.data?.byEmail?.[0] ?? null
 
-  // Token accepted but no graph node (e.g. Supabase-table-only superadmin):
+  // Token accepted but no graph node matched (auth id and email both miss):
   // still verified — mint with payload-derived identity and empty scopes.
   const flcScopes = member ? scopesFromMember(member) : {}
   const flcRoles = member
@@ -207,4 +244,4 @@ Deno.serve(async (req) => {
     .sign(new TextEncoder().encode(exchangeSecret))
 
   return json({ access_token: minted, expires_at: exp })
-})
+}

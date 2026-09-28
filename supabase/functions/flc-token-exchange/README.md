@@ -71,21 +71,59 @@ so tightened tables become read/write-able only through the exchange.
    - `FLC_GRAPHQL_URL` is the URL the frontend proxies to as `/flc-graphql`
      (the `VITE_MEMBER_GRAPHQL_URL` value / Vercel rewrite target).
    - Project JWT secret: Dashboard → Settings → API → JWT Secret.
-2. `supabase functions deploy flc-token-exchange`
+2. `supabase functions deploy flc-token-exchange --no-verify-jwt`
+   - The function authenticates the caller itself (via the graph), so the
+     platform's JWT gate adds nothing — and it rejects non-JWT
+     `sb_publishable_…` keys, which would break every exchange.
 3. Set `VITE_USE_SUPABASE_TOKEN_EXCHANGE=1` in the frontend env and deploy.
 4. Verify: log in, check a PostgREST request in devtools — the `Authorization`
    bearer should be the minted token (issuer `flc-token-exchange`), and app
    behavior should be unchanged.
-5. Only then start landing claim-aware policies (one table per migration).
+5. Watch the logs (below) through at least one full service. Only once
+   failures are near zero, start landing claim-aware policies (one table per
+   migration). From that point a failed exchange means a locked-out user, not
+   an anonymous one.
+
+## Monitoring
+
+Every POST logs one JSON line with `outcome` (`ok`, `invalid_token`,
+`graph_unavailable`, `graph_timeout`, `graph_error`, `not_configured`, …),
+HTTP `status` and `ms`. No identity is logged. Dashboard → Edge Functions →
+flc-token-exchange → Logs, filter on `flc-token-exchange`. What to look for:
+
+- `ok` share of all outcomes — the adoption signal.
+- `graph_timeout` / `graph_unavailable` — the portal API is struggling; those
+  clients are on the anon fallback until their backoff expires.
+- `ms` p95 during the arrival rush — the portal round trip dominates it.
+
+## Load (≈2,000 leaders arriving together)
+
+Designed so the exchange never sits on the check-in path:
+
+- One exchange per user per token lifetime (≤ 1 h). The minted token is
+  persisted client-side and keyed to the FLC user, so reloads, PWA relaunches
+  and FLC session refreshes don't trigger new exchanges.
+- A valid token is always served immediately; renewal runs in the background
+  at a random point 5–15 min before expiry, so renewals from a crowd that
+  logged in together are spread over ~10 min instead of landing at once.
+- Failures back off per client (15 s → 5 min, jittered) rather than retrying
+  on every request, and the graph call times out at 4.5 s (client: 5 s).
+- Worst case is therefore ~2,000 portal lookups spread across the arrival
+  window — about one per user, on top of the graph queries the app already
+  makes at login.
 
 ## Notes
 
-- A valid token whose holder has no graph node (e.g. a Supabase-table-only
-  superadmin) still exchanges successfully — identity from the payload, empty
-  `flc_scopes`. Superadmin powers stay table-driven (`is_super_admin` RPC),
-  not claim-driven.
+- A valid token whose holder has no graph node still exchanges successfully —
+  identity from the payload, empty `flc_scopes`. Superadmin is graph-derived
+  (`adminDenomination`, migration 041), so it arrives in `flc_roles` like any
+  other role.
 - Exchange cost: one graph round trip per client per token lifetime (~1 h,
-  cached in `supabaseTokenExchange.ts`).
+  cached and persisted in `supabaseTokenExchange.ts`).
+- `EXCHANGE_JWT_SECRET` must be the project's **legacy** HS256 JWT secret. If
+  the project has moved to asymmetric JWT signing keys, PostgREST keeps
+  accepting HS256 tokens only while the legacy secret is still active — do
+  not revoke it while the exchange depends on it.
 - If the FLC signing secret (or an RS256 public key) ever becomes available,
   signature verification can replace the graph call — swap the introspection
   block for `jose.jwtVerify` and drop `FLC_GRAPHQL_URL`.

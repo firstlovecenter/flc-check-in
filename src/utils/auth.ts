@@ -14,8 +14,19 @@ function leadChurchesUrl() {
   return `${apiOrigin()}/api/flc-auth/churches`
 }
 
+// JWT segments are base64url, not base64: plain atob() throws on '-' / '_'
+// (which appear whenever the payload bytes happen to produce them) and
+// mangles non-ASCII names. Either failure read as "no session" → logged out.
 export function decodeJWT(token) {
-  try { return JSON.parse(atob(token.split('.')[1])); } catch { return null; }
+  try {
+    const part = token.split('.')[1]
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+      .padEnd(Math.ceil(part.length / 4) * 4, '=')
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+    return JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return null
+  }
 }
 
 // Church levels that may carry an { id, name } ref in the JWT payload or
@@ -610,6 +621,8 @@ export function logout() {
   localStorage.removeItem('superAdminOverride');
   localStorage.removeItem('superViewerOverride');
   localStorage.removeItem('churchContext');
+  // Minted Supabase token (MINTED_TOKEN_STORAGE_KEY in supabaseTokenExchange.ts).
+  localStorage.removeItem('flc:sbAccessToken');
   import('./graphProfileSync').then(({ clearGraphProfileSyncMarker }) => {
     clearGraphProfileSyncMarker(uid)
   })
