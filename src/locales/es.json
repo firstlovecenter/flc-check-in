@@ -1150,7 +1150,8 @@
     "failed": "Error de sincronización",
     "tree": {
       "heading": "Sincronizar el árbol de iglesias desde el FL Admin Portal",
-      "description": "Copia cada iglesia y cada asignación de líder, adjunto y admin del portal, exactamente como están en el portal. Requiere un inicio de sesión de nivel Denominación, el único que ve todo el árbol. Un resultado parcial se rechaza automáticamente, así que nunca puede quitar a nadie que todavía sirve.",
+      "description": "Copia cada iglesia y cada asignación de líder, adjunto y admin del portal, exactamente como están en el portal, y luego reconstruye los perfiles de miembros — todo en el servidor. Requiere un inicio de sesión de nivel Denominación, el único que ve todo el árbol. Un resultado parcial se rechaza automáticamente, así que nunca puede quitar a nadie que todavía sirve.",
+      "profiles": "Perfiles de miembros reconstruidos desde el árbol: {{upserted}} actualizados, {{deactivated}} que ya no sirven marcados como inactivos (historial conservado).",
       "submit": "Sincronizar árbol de iglesias",
       "running": "Sincronizando el árbol… puede tardar un minuto",
       "done": "Árbol sincronizado: {{churches}} iglesias, {{members}} servidores, {{edges}} asignaciones. {{ended}} asignaciones terminadas y {{removed}} iglesias retiradas desde la última sincronización. {{orphans}} iglesias no tienen padre en el portal.",

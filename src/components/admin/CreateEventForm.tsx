@@ -5,7 +5,7 @@ import Spinner from '../Spinner'
 import GeoFencePicker from './GeoFencePicker'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import {
-  createEvent,
+  createEvent, setEventScopes,
   listSpecialGroups, listSpecialGroupMembers, type SpecialGroup,
 } from '../../utils/supabaseCheckins'
 import { generatePin } from '../../utils/checkinsCrypto'
@@ -325,25 +325,32 @@ export default function CreateEventForm() {
           seriesIndex: i + 1,
           isPublic: isSuperAdmin ? isPublic : true,
         })
-        if (i === 0) {
-          firstEventId = eventId
-          // Snapshot scope members + write profiles before navigating so the
-          // event dashboard sees a complete member list on the very first load.
-          setSubmitProgress(t('createEvent.progress.preparingMembers'))
-          try {
-            // The ONE graph probe in an event's life. Shared with the edit
-            // page's "Refresh eligible list" so both paths build the snapshot
-            // identically. See utils/eventScopeSnapshot.ts.
-            const useGroups = isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0
-            await snapshotEventScopeFromGraph({
-              eventId,
-              groupIds: useGroups ? selectedGroupIds : [],
-              scopes: useGroups ? [] : (isSuperAdmin ? superScopes : [anchorScope]),
-            })
-          } catch {
-            // Non-critical here: the event still exists, and an admin can run
-            // "Refresh eligible list" from the edit page to build the snapshot.
-          }
+        if (i === 0) firstEventId = eventId
+        const useGroups = isSuperAdmin && superMode === 'group' && selectedGroupIds.length > 0
+        const eventScopes = useGroups ? [] : (isSuperAdmin ? superScopes : [anchorScope])
+        // Multi-church event: record EVERY church, not just the anchor on the
+        // event row. Without this the other churches' leaders were on the
+        // roster but could not find the event (migration 047).
+        if (eventScopes.length > 1) {
+          await setEventScopes(eventId, eventScopes).catch(() => {})
+        }
+        // Snapshot scope members + write profiles before navigating so the
+        // event dashboard sees a complete member list on the very first load.
+        // Every occurrence of a series gets its own roster — previously only
+        // the first did, leaving later occurrences with nobody eligible.
+        // Repeat probes hit getMembersInScope's cache, so this stays cheap.
+        setSubmitProgress(t('createEvent.progress.preparingMembers'))
+        try {
+          // Shared with the edit page's "Refresh eligible list" so both paths
+          // build the snapshot identically. See utils/eventScopeSnapshot.ts.
+          await snapshotEventScopeFromGraph({
+            eventId,
+            groupIds: useGroups ? selectedGroupIds : [],
+            scopes: eventScopes,
+          })
+        } catch {
+          // Non-critical here: the event still exists, and an admin can run
+          // "Refresh eligible list" from the edit page to build the snapshot.
         }
       }
       navigate(`/admin/events/${firstEventId}`, { replace: true })

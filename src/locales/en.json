@@ -1150,7 +1150,8 @@
     "failed": "Sync failed",
     "tree": {
       "heading": "Sync church tree from FL Admin Portal",
-      "description": "Copies every church and every leader, deputy and admin assignment from the portal, exactly as the portal has them. Needs a Denomination-level login, because only that sees the whole tree. A partial result is refused automatically, so this can never remove anyone who still serves.",
+      "description": "Copies every church and every leader, deputy and admin assignment from the portal exactly as the portal has them, then rebuilds member profiles from it — all on the server. Needs a Denomination-level login, because only that sees the whole tree. A partial result is refused automatically, so this can never remove anyone who still serves.",
+      "profiles": "Member profiles rebuilt from the tree: {{upserted}} updated, {{deactivated}} no longer serving marked inactive (history kept).",
       "submit": "Sync church tree",
       "running": "Syncing church tree… this can take a minute",
       "done": "Tree synced: {{churches}} churches, {{members}} servants, {{edges}} assignments. {{ended}} assignments ended and {{removed}} churches removed since the last sync. {{orphans}} churches have no parent in the portal.",

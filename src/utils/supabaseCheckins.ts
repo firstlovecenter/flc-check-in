@@ -557,6 +557,50 @@ export async function getEventDisplaySecret(eventId: string): Promise<string | n
   return typeof data === 'string' && data.startsWith('\\x') ? data.slice(2) : data
 }
 
+export interface EventScopeRef { level: string; id: string; name?: string | null }
+
+/** Every church an event covers (migration 047). The primary one is also on
+ *  the event row as scope_*; multi-church events have more. */
+export async function getEventScopes(eventId: string): Promise<EventScopeRef[]> {
+  const { data, error } = await supabase
+    .from('event_scopes')
+    .select('scope_level, scope_church_id, scope_church_name, is_primary')
+    .eq('event_id', eventId)
+    .order('is_primary', { ascending: false })
+  if (error) throw error
+  return (data || []).map((r: any) => ({ level: r.scope_level, id: r.scope_church_id, name: r.scope_church_name }))
+}
+
+/** Record the extra churches of a multi-church event. The event row keeps the
+ *  primary; without this the others were silently dropped, so their leaders
+ *  were on the roster but could not find the event. */
+export async function setEventScopes(eventId: string, scopes: EventScopeRef[]): Promise<void> {
+  const { data, error } = await supabase.rpc('set_event_scopes', {
+    p_event_id: eventId,
+    p_scopes: scopes.map((s) => ({ level: s.level, id: s.id, name: s.name ?? null })),
+  })
+  if (error) throw error
+  if (data && data.ok === false) throw new Error(data.reason || 'set_event_scopes failed')
+  invalidateEventListCache()
+}
+
+/** Events visible to any of the given hats, resolved in Postgres over every
+ *  church of every event plus roster overlap (list_events_for_scopes). */
+async function listEventsForScopes(
+  scopes: Array<{ level: string; id: string }>,
+  opts: { statuses?: string[] | null; limit?: number } = {},
+): Promise<CheckinEventRow[]> {
+  if (!scopes.length) return []
+  const { data, error } = await supabase.rpc('list_events_for_scopes', {
+    p_scopes: scopes.map((s) => ({ level: s.level, id: s.id })),
+    p_statuses: opts.statuses ?? null,
+    p_exclude_special_group: true,
+    p_limit: opts.limit ?? 200,
+  })
+  if (error) throw error
+  return (data || []).map(mapEventRow)
+}
+
 export async function getEvent(eventId) {
   // Detail/edit screen — need geofence_polygon and pin_hash.
   const { data, error } = await supabase
@@ -626,6 +670,23 @@ export async function openCheckIn(input: {
  *  SuperAdmins bypass the filter and see all events.
  *  Includes events starting within the next hour (pre-event check-in window). */
 export async function listActiveEvents(user?: AppUser) {
+  // Regular users: server-side visibility over every church of the event
+  // (see listAllEvents). The time window is applied here.
+  if (user && !user.isSuperAdmin && !user.isSuperViewer) {
+    const hats = getUserLeadershipRefs(user).map((r) => ({ level: r.level, id: r.id }))
+    const cacheKey = `u:${user.userId}:hats:${hats.map((h) => `${h.level}:${h.id}`).join('|')}`
+    const cached = _activeEventsCaches.get(cacheKey)
+    if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+    const now = Date.now()
+    const rows = await listEventsForScopes(hats, { statuses: ['ACTIVE'] })
+    const result = rows
+      .filter((e) => new Date(e.starts_at).getTime() <= now + 60 * 60 * 1000 && new Date(e.ends_at).getTime() >= now)
+      .sort((a, b) => new Date(a.ends_at).getTime() - new Date(b.ends_at).getTime())
+      .filter((evt) => isEventRelevantToUser(evt, user))
+    _activeEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+    return result
+  }
+
   const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   // Cache key must distinguish: anonymous ('public'), superadmin ('superadmin'),
@@ -695,6 +756,23 @@ export async function listActiveSpecialGroupEventsForUser(memberId: string) {
 /** Recent past events (ENDED or time-expired ACTIVE), within `daysBack` days,
  *  filtered to the calling user's church hierarchy scope. */
 export async function listRecentPastEvents({ daysBack = 30, user }: { daysBack?: number; user?: AppUser } = {}) {
+  if (user && !user.isSuperAdmin && !user.isSuperViewer) {
+    const hats = getUserLeadershipRefs(user).map((r) => ({ level: r.level, id: r.id }))
+    const cacheKey = `past:${user.userId}:${daysBack}:hats:${hats.map((h) => `${h.level}:${h.id}`).join('|')}`
+    const cached = _pastEventsCaches.get(cacheKey)
+    if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+    const now = Date.now()
+    const cutoff = now - daysBack * 24 * 60 * 60 * 1000
+    const rows = await listEventsForScopes(hats, { statuses: ['ENDED', 'ACTIVE'] })
+    const result = rows
+      .filter((e) => { const end = new Date(e.ends_at).getTime(); return end <= now && end >= cutoff })
+      .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
+      .slice(0, 20)
+      .filter((evt) => isEventRelevantToUser(evt, user))
+    _pastEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+    return result
+  }
+
   const scopeFilter = user ? await buildScopeOrFilter(user) : null
   if (scopeFilter === _NO_SCOPE) return []
   const cacheKey    = `past:${user?.userId ?? 'anon'}:${scopeFilter ?? 'all'}`
@@ -776,6 +854,26 @@ export async function listAllEvents(user?: AppUser, opts?: { focusedScope?: Focu
   const focus = opts?.focusedScope
   if (user && focus?.level && focus?.id) {
     return listAllEventsForFocusedScope(user, { level: focus.level, id: focus.id }, opts)
+  }
+
+  // Regular users: one server call over every church of every event plus
+  // roster overlap (migration 047). The old client OR-filter only matched an
+  // event's FIRST church, which hid multi-church events from everyone else.
+  if (user && !user.isSuperAdmin && !user.isSuperViewer) {
+    const hats = getUserLeadershipRefs(user).map((r) => ({ level: r.level, id: r.id }))
+    const cacheKey = `all:${user.userId}:hats:${hats.map((h) => `${h.level}:${h.id}`).join('|')}`
+    const cached = _allEventsCaches.get(cacheKey)
+    if (cached && Date.now() - cached.ts < EVENTS_LIST_TTL) return cached.data
+    const [rows, groupEvents] = await Promise.all([
+      listEventsForScopes(hats, { limit: Math.max(200, opts?.limit ?? 50) }),
+      user.userId ? listAllSpecialGroupEventsForUser(user.userId) : Promise.resolve([] as any[]),
+    ])
+    const seen = new Set(rows.map((e) => e.id))
+    const merged = [...rows, ...groupEvents.filter((e: any) => !seen.has(e.id))]
+      .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+    const result = merged.filter((evt) => isEventRelevantToUser(evt, user))
+    _allEventsCaches.set(cacheKey, { data: result, ts: Date.now() })
+    return result
   }
 
   const scopeFilter = user ? await buildScopeOrFilter(user) : null
@@ -956,9 +1054,9 @@ export async function listEventsForAdminScopes(
   }
 
   if (!scopes?.length) return []
-  const expandedScopeKeys = await getDescendantScopeKeysForScopes(scopes)
-  if (expandedScopeKeys.size === 0) return []
-  return queryEventsByExpandedScopeKeys(expandedScopeKeys, { statuses })
+  // Same server-side rule as Home: every church of every event, plus events
+  // whose roster includes leaders under these scopes (migration 047).
+  return listEventsForScopes(scopes, { statuses: statuses?.length ? statuses : null, limit: 500 })
 }
 
 /** Lists events the member has personally attended (has a checkin_record for).

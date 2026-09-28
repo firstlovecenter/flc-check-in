@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '../ui/button'
 import { Alert } from '../ui/alert'
 import { snapshotEventScopeFromGraph } from '../../utils/eventScopeSnapshot'
-import { addAuditLog } from '../../utils/supabaseCheckins'
+import { addAuditLog, getEventScopes } from '../../utils/supabaseCheckins'
 import { getCurrentUser, formatName } from '../../utils/auth'
 import { friendlyErrorMessage } from '../../utils/network'
 import type { CheckinEventRow } from '../../types/app'
@@ -39,12 +39,16 @@ export default function RefreshEligibleList({ event }: { event: CheckinEventRow 
     setError(null)
     setResult(null)
     try {
+      // Every church of the event, not just the primary on the row — a
+      // multi-church event refreshed from its first church alone would never
+      // pick up newcomers in the others.
+      const scopes = isSpecialGroup ? [] : await getEventScopes(event.id).catch(() => [])
       const { memberCount, previousCount } = await snapshotEventScopeFromGraph({
         eventId: event.id,
         groupIds: isSpecialGroup ? [event.scope_church_id] : [],
         scopes: isSpecialGroup
           ? []
-          : [{ level: event.scope_level, id: event.scope_church_id }],
+          : (scopes.length ? scopes : [{ level: event.scope_level, id: event.scope_church_id }]),
       })
       // memberCount is what the graph returned now; previousCount is what the
       // snapshot held before. The difference is what this run actually added,

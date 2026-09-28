@@ -11,6 +11,7 @@ import {
   listEventScopeMembersWithProfiles,
   listEventScopeMemberIds,
   listSpecialGroupMembers,
+  getEventScopes,
 } from '../../utils/supabaseCheckins'
 import { getCurrentUser } from '../../utils/auth'
 import { useChurchFocus } from '../../contexts/ChurchFocusContext'
@@ -84,6 +85,16 @@ const EXPORT_PRESETS: ExportPreset[] = [
     },
   },
 ]
+
+/** Graph members across EVERY church of the event (multi-church events keep
+ *  the rest in event_scopes, migration 047), de-duplicated by id. */
+async function membersAcrossEventScopes(evt: { id: string; scope_level: string; scope_church_id: string }) {
+  const scopes = await getEventScopes(evt.id).catch(() => [])
+  const list = scopes.length ? scopes : [{ level: evt.scope_level, id: evt.scope_church_id }]
+  const results = await Promise.all(list.map((s) => getMembersInScope({ level: s.level, churchId: s.id })))
+  const seen = new Set<string>()
+  return results.flat().filter((m: any) => m?.id && !seen.has(m.id) && (seen.add(m.id), true))
+}
 
 function optionsEqual(a: ExportOptions, b: ExportOptions) {
   const normUnitA = (a.unitContains || '').trim().toLowerCase()
@@ -212,7 +223,7 @@ export default function ReportsList() {
           const missingIds = snapIds.filter((id: string) => !byId.has(id))
           if (missingIds.length > 0) {
             try {
-              const graphMembers = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+              const graphMembers = await membersAcrossEventScopes(evt)
               graphById = new Map((graphMembers || []).map((m: any) => [m.id, memberToProfileRow(m)]))
             } catch {
               // If graph is unavailable, keep export resilient with minimal member rows.
@@ -233,7 +244,7 @@ export default function ReportsList() {
             }
           ))
         } else {
-          const members = await getMembersInScope({ level: evt.scope_level, churchId: evt.scope_church_id })
+          const members = await membersAcrossEventScopes(evt)
           rows = members.map(memberToProfileRow)
         }
       }

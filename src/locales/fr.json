@@ -1150,7 +1150,8 @@
     "failed": "Échec de la synchronisation",
     "tree": {
       "heading": "Synchroniser l'arborescence depuis le FL Admin Portal",
-      "description": "Copie chaque église et chaque affectation de leader, adjoint et admin depuis le portail, exactement comme dans le portail. Nécessite une connexion de niveau Dénomination, seule à voir toute l'arborescence. Un résultat partiel est refusé automatiquement : personne qui sert encore ne peut être retiré.",
+      "description": "Copie chaque église et chaque affectation de leader, adjoint et admin depuis le portail, exactement comme dans le portail, puis reconstruit les profils membres — entièrement côté serveur. Nécessite une connexion de niveau Dénomination, seule à voir toute l'arborescence. Un résultat partiel est refusé automatiquement : personne qui sert encore ne peut être retiré.",
+      "profiles": "Profils membres reconstruits depuis l'arborescence : {{upserted}} mis à jour, {{deactivated}} ne servant plus marqués inactifs (historique conservé).",
       "submit": "Synchroniser l'arborescence",
       "running": "Synchronisation de l'arborescence… cela peut prendre une minute",
       "done": "Arborescence synchronisée : {{churches}} églises, {{members}} serviteurs, {{edges}} affectations. {{ended}} affectations terminées et {{removed}} églises retirées depuis la dernière synchronisation. {{orphans}} églises n'ont pas de parent dans le portail.",

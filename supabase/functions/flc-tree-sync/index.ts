@@ -265,8 +265,23 @@ Deno.serve(async (req) => {
     }),
   })
   const applied = await res.json().catch(() => null)
+
+  // Rebuild member_profiles from the tree just applied (migration 047) —
+  // replaces the browser-side "Sync all members" paging. Best-effort: a
+  // failure here leaves the tree applied and is reported, not fatal.
+  let profiles: unknown = null
+  if (res.ok && applied?.ok) {
+    const pr = await fetch(`${supabaseUrl}/rest/v1/rpc/refresh_member_profiles_from_graph`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      body: '{}',
+    })
+    profiles = await pr.json().catch(() => ({ ok: false, reason: `http_${pr.status}` }))
+  }
+
   const summary = {
     ...(applied && typeof applied === 'object' ? applied : { ok: false, reason: 'apply_failed' }),
+    profiles,
     scanned_members: snapshot.scanned,
     pull_ms: pulledMs,
     total_ms: Math.round(performance.now() - started),

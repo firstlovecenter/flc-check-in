@@ -19,6 +19,8 @@ export interface TreeSyncResult {
   orphan_churches?: number
   scanned_members?: number
   total_ms?: number
+  /** member_profiles rebuild that runs after a successful apply (047). */
+  profiles?: { ok?: boolean; upserted?: number; bridged?: number; deactivated?: number; reason?: string } | null
 }
 
 // A full pull is ~100 portal round trips; give it the function's own budget.
