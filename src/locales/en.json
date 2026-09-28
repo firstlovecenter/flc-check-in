@@ -1147,7 +1147,22 @@
     "submit": "Sync all members",
     "done": "Scanned {{fetched}} Graph members, synced {{upserted}} active member, and marked {{deactivated}} cached profile inactive. Historical attendance was preserved.",
     "done_other": "Scanned {{fetched}} Graph members, synced {{upserted}} active members, and marked {{deactivated}} cached profiles inactive. Historical attendance was preserved.",
-    "failed": "Sync failed"
+    "failed": "Sync failed",
+    "tree": {
+      "heading": "Sync church tree from FL Admin Portal",
+      "description": "Copies every church and every leader, deputy and admin assignment from the portal, exactly as the portal has them. Needs a Denomination-level login, because only that sees the whole tree. A partial result is refused automatically, so this can never remove anyone who still serves.",
+      "submit": "Sync church tree",
+      "running": "Syncing church tree… this can take a minute",
+      "done": "Tree synced: {{churches}} churches, {{members}} servants, {{edges}} assignments. {{ended}} assignments ended and {{removed}} churches removed since the last sync. {{orphans}} churches have no parent in the portal.",
+      "errors": {
+        "denomination_role_required": "Only a Denomination leader or admin can sync the tree — other logins can't see all of it.",
+        "snapshot_too_small": "The portal returned far less than the stored tree, so nothing was changed. Try again; if it persists, the portal may be degraded.",
+        "invalid_token": "Your session has expired. Sign in again and retry.",
+        "graph_pull_failed": "The portal did not answer every request, so nothing was changed. Try again shortly.",
+        "token_required": "Sign in again and retry.",
+        "generic": "Tree sync failed ({{reason}}). Nothing was changed."
+      }
+    }
   },
   "groups": {
     "title": "Special Groups",

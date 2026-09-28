@@ -1147,7 +1147,22 @@
     "submit": "Sincronizar todos los miembros",
     "done": "Escaneados {{fetched}} miembros Graph, sincronizado {{upserted}} miembro activo, marcado {{deactivated}} perfil en caché inactivo. Historial preservado.",
     "done_other": "Escaneados {{fetched}} miembros Graph, sincronizados {{upserted}} miembros activos, marcados {{deactivated}} perfiles en caché inactivos. Historial preservado.",
-    "failed": "Error de sincronización"
+    "failed": "Error de sincronización",
+    "tree": {
+      "heading": "Sincronizar el árbol de iglesias desde el FL Admin Portal",
+      "description": "Copia cada iglesia y cada asignación de líder, adjunto y admin del portal, exactamente como están en el portal. Requiere un inicio de sesión de nivel Denominación, el único que ve todo el árbol. Un resultado parcial se rechaza automáticamente, así que nunca puede quitar a nadie que todavía sirve.",
+      "submit": "Sincronizar árbol de iglesias",
+      "running": "Sincronizando el árbol… puede tardar un minuto",
+      "done": "Árbol sincronizado: {{churches}} iglesias, {{members}} servidores, {{edges}} asignaciones. {{ended}} asignaciones terminadas y {{removed}} iglesias retiradas desde la última sincronización. {{orphans}} iglesias no tienen padre en el portal.",
+      "errors": {
+        "denomination_role_required": "Solo un líder o admin de Denominación puede sincronizar el árbol — otros inicios de sesión solo ven una parte.",
+        "snapshot_too_small": "El portal devolvió mucho menos que el árbol guardado, así que no se cambió nada. Inténtelo de nuevo; si persiste, el portal puede estar degradado.",
+        "invalid_token": "Su sesión ha caducado. Inicie sesión de nuevo e inténtelo otra vez.",
+        "graph_pull_failed": "El portal no respondió a todas las solicitudes, así que no se cambió nada. Inténtelo en un momento.",
+        "token_required": "Inicie sesión de nuevo e inténtelo otra vez.",
+        "generic": "La sincronización del árbol falló ({{reason}}). No se cambió nada."
+      }
+    }
   },
   "groups": {
     "title": "Grupos especiales",

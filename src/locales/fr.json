@@ -1147,7 +1147,22 @@
     "submit": "Synchroniser tous les membres",
     "done": "Parcouru {{fetched}} membres Graph, synchronisé {{upserted}} membre actif, marqué {{deactivated}} profil en cache inactif. Historique préservé.",
     "done_other": "Parcouru {{fetched}} membres Graph, synchronisé {{upserted}} membres actifs, marqué {{deactivated}} profils en cache inactifs. Historique préservé.",
-    "failed": "Échec de la synchronisation"
+    "failed": "Échec de la synchronisation",
+    "tree": {
+      "heading": "Synchroniser l'arborescence depuis le FL Admin Portal",
+      "description": "Copie chaque église et chaque affectation de leader, adjoint et admin depuis le portail, exactement comme dans le portail. Nécessite une connexion de niveau Dénomination, seule à voir toute l'arborescence. Un résultat partiel est refusé automatiquement : personne qui sert encore ne peut être retiré.",
+      "submit": "Synchroniser l'arborescence",
+      "running": "Synchronisation de l'arborescence… cela peut prendre une minute",
+      "done": "Arborescence synchronisée : {{churches}} églises, {{members}} serviteurs, {{edges}} affectations. {{ended}} affectations terminées et {{removed}} églises retirées depuis la dernière synchronisation. {{orphans}} églises n'ont pas de parent dans le portail.",
+      "errors": {
+        "denomination_role_required": "Seul un leader ou admin de Dénomination peut synchroniser l'arborescence — les autres connexions n'en voient qu'une partie.",
+        "snapshot_too_small": "Le portail a renvoyé bien moins que l'arborescence enregistrée, rien n'a été modifié. Réessayez ; si cela persiste, le portail est peut-être dégradé.",
+        "invalid_token": "Votre session a expiré. Reconnectez-vous et réessayez.",
+        "graph_pull_failed": "Le portail n'a pas répondu à toutes les requêtes, rien n'a été modifié. Réessayez dans un instant.",
+        "token_required": "Reconnectez-vous et réessayez.",
+        "generic": "Échec de la synchronisation de l'arborescence ({{reason}}). Rien n'a été modifié."
+      }
+    }
   },
   "groups": {
     "title": "Groupes spéciaux",
