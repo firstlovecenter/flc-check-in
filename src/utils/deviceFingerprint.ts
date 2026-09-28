@@ -1,6 +1,7 @@
 // Strict device fingerprint — combines FingerprintJS visitorId with several
 // hardware-level signals (canvas, WebGL, screen, CPU, memory, timezone, media
-// device IDs) and hashes the result with SHA-256.
+// device IDs) plus a random per-install ID (getInstallId — prevents same-model
+// phones colliding) and hashes the result with SHA-256.
 // Persisted in localStorage (stable across sessions) and sessionStorage (fast
 // intra-session access).  API is unchanged — callers get a 64-char hex string.
 //
@@ -10,7 +11,33 @@
 
 const SESSION_KEY = 'flc.checkin.fp.session'
 const LOCAL_KEY   = 'flc.checkin.fp.local'
+const INSTALL_KEY = 'flc.checkin.installId'
 let pending: Promise<string> | null = null
+
+/** A random ID minted once per install and folded into the fingerprint.
+ *
+ *  Hardware/browser signals alone are identical on same-model phones running
+ *  the same software, so two genuine leaders could hash to one fingerprint and
+ *  the second be told "device already used" at the door. A per-install random
+ *  value makes every install unique. Trade-off, chosen deliberately: clearing
+ *  the site's data now yields a new fingerprint (a determined user could use
+ *  that to check in someone else) — wrongly blocking real attendees was judged
+ *  the worse failure. The native app additionally folds in the OS device ID. */
+export function getInstallId(): string {
+  try {
+    const existing = localStorage.getItem(INSTALL_KEY)
+    if (existing) return existing
+    const id = typeof crypto?.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+    localStorage.setItem(INSTALL_KEY, id)
+    return id
+  } catch {
+    // Storage blocked (some private modes): unique per page load, which still
+    // avoids collisions; the fingerprint isn't persisted there anyway.
+    return `ephemeral:${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Signal collectors
@@ -123,8 +150,11 @@ async function computeStrictFingerprint(visitorId: string): Promise<string> {
     `lang:${nav.language ?? '?'}`,
     `tz:${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
     media,
+    // Per-install uniqueness — see getInstallId. Only affects NEW fingerprints:
+    // phones that already stored one keep it (getDeviceFingerprint returns the
+    // persisted value first), so existing device claims are undisturbed.
+    `inst:${getInstallId()}`,
   ]
-  // Only appended on native so the web formula stays byte-identical.
   if (nativeId) signals.push(nativeId)
   return sha256hex(signals.join('||'))
 }
