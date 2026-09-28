@@ -5,6 +5,50 @@ import { MapContainer, TileLayer, LayersControl, Circle, Polygon, Marker, useMap
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { loadGoogleMaps } from '../../utils/googleMaps'
+
+// Google Places is optional and paid. Once it refuses (billing off, key
+// restricted, API disabled) or fails to load, stop asking for the rest of the
+// session — every venue search goes straight to the free OSM search instead of
+// waiting on a request that will be refused again.
+type SearchResult = { placeId?: string; primary: string; secondary?: string; lat?: string; lon?: string }
+
+let googlePlacesDisabled = false
+const GOOGLE_HARD_FAIL = new Set(['REQUEST_DENIED', 'INVALID_REQUEST', 'OVER_QUERY_LIMIT', 'UNKNOWN_ERROR'])
+
+function googlePlacesUsable(): boolean {
+  return !googlePlacesDisabled && !!(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
+}
+
+/** Google predictions, [] for a genuine "no match", or null when Google is
+ *  unusable and the caller should fall back to OSM. */
+async function searchGooglePlaces(q: string, sessionRef: { current: any }): Promise<SearchResult[] | null> {
+  try {
+    const g = await loadGoogleMaps()
+    if (!sessionRef.current) sessionRef.current = new g.maps.places.AutocompleteSessionToken()
+    const service = new g.maps.places.AutocompleteService()
+    const { preds, status } = await new Promise<{ preds: any[] | null; status: string }>((resolve) => {
+      service.getPlacePredictions(
+        { input: q, sessionToken: sessionRef.current, language: 'en', region: 'gh' },
+        (p: any[] | null, s: string) => resolve({ preds: p, status: s }),
+      )
+    })
+    if (GOOGLE_HARD_FAIL.has(status)) {
+      googlePlacesDisabled = true
+      console.warn(`[GeoFencePicker] Google Places unavailable (${status}); using OpenStreetMap search.`)
+      return null
+    }
+    if (status !== 'OK' || !preds) return null // ZERO_RESULTS etc. → let OSM try too
+    return preds.slice(0, 8).map((p) => ({
+      placeId: p.place_id,
+      primary: p.structured_formatting?.main_text || p.description,
+      secondary: p.structured_formatting?.secondary_text || '',
+    }))
+  } catch (err) {
+    googlePlacesDisabled = true
+    console.warn('[GeoFencePicker] Google Places failed to load; using OpenStreetMap search.', err)
+    return null
+  }
+}
 import { PRESET_VENUES } from '../../data/venues'
 import LocationPreWarmer from '../LocationPreWarmer'
 import type { GeofenceInput } from '../../types/app'
@@ -53,7 +97,6 @@ export default function GeoFencePicker({ value, onChange }: Props) {
     value?.type === 'polygon' ? value.polygon : [],
   )
   const [searchQuery, setSearchQuery] = useState('')
-  type SearchResult = { placeId?: string; primary: string; secondary?: string; lat?: string; lon?: string }
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
   // Google Places billing session token — pairs Autocomplete + Place Details
@@ -92,33 +135,19 @@ export default function GeoFencePicker({ value, onChange }: Props) {
   // Debounced place search.
   //   - Google Places Autocomplete when VITE_GOOGLE_MAPS_API_KEY is set
   //     (best Ghana coverage — indexes churches, businesses, fuzzy matching).
-  //   - Falls back to Nominatim (free OSM) when no key configured.
+  //   - Nominatim (free OSM) when there is no key, OR when Google refuses or
+  //     fails. Google is a paid API: with billing off it answers REQUEST_DENIED
+  //     (BillingNotEnabledMapError), and search used to silently return nothing
+  //     instead of falling back — venue search simply looked broken.
   useEffect(() => {
     const q = searchQuery.trim()
     if (q.length < 3) { setSearchResults([]); return }
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
-        const hasGoogleKey = !!(import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY
-        if (hasGoogleKey) {
-          const g = await loadGoogleMaps()
-          if (!placesSessionRef.current) {
-            placesSessionRef.current = new g.maps.places.AutocompleteSessionToken()
-          }
-          const service = new g.maps.places.AutocompleteService()
-          const predictions: any[] = await new Promise((resolve) => {
-            service.getPlacePredictions(
-              { input: q, sessionToken: placesSessionRef.current, language: 'en', region: 'gh' },
-              (preds: any[] | null, status: string) => resolve(status === 'OK' && preds ? preds : []),
-            )
-          })
-          setSearchResults(
-            predictions.slice(0, 8).map((p) => ({
-              placeId: p.place_id,
-              primary: p.structured_formatting?.main_text || p.description,
-              secondary: p.structured_formatting?.secondary_text || '',
-            })),
-          )
+        const googleResults = googlePlacesUsable() ? await searchGooglePlaces(q, placesSessionRef) : null
+        if (googleResults) {
+          setSearchResults(googleResults)
         } else {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1&countrycodes=gh`,
