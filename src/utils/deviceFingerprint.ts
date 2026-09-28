@@ -169,6 +169,24 @@ export async function getDeviceFingerprint(): Promise<string> {
   return pending
 }
 
+/** Compute the fingerprint ahead of submit, but only when that cannot weaken
+ *  it. The fingerprint is computed ONCE per install and frozen, and one of its
+ *  signals (media device IDs) is empty until camera permission is granted —
+ *  so computing it before the camera opens would freeze a lower-entropy value
+ *  forever, making same-model phones likelier to collide. If it is already
+ *  stored, or the camera is already permitted, warming is free and safe;
+ *  otherwise leave it to submit, which runs after the QR scan. */
+export async function warmDeviceFingerprint(): Promise<void> {
+  if (sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(LOCAL_KEY)) {
+    await getDeviceFingerprint()
+    return
+  }
+  try {
+    const status = await navigator.permissions?.query({ name: 'camera' as PermissionName })
+    if (status?.state === 'granted') await getDeviceFingerprint()
+  } catch { /* permissions API unsupported (e.g. older Safari) — skip */ }
+}
+
 /** Invalidate the persisted fingerprint. Useful after a clear-data action
  *  or when an admin wants to free a stuck (event, fingerprint) claim for
  *  testing. Not exposed to end users. */

@@ -19,7 +19,7 @@ import LocationPreWarmer from '../components/LocationPreWarmer'
 import { getCurrentUser, formatName, logout } from '../utils/auth'
 import { openCheckIn, submitCheckIn } from '../utils/supabaseCheckins'
 import { candidateMemberIds } from '../utils/eventEntryGate'
-import { getDeviceFingerprint } from '../utils/deviceFingerprint'
+import { getDeviceFingerprint, warmDeviceFingerprint } from '../utils/deviceFingerprint'
 import { getCurrentPosition } from '../utils/geo'
 import { vibrateSuccess } from '../utils/haptics'
 import { friendlyErrorMessage } from '../utils/network'
@@ -64,11 +64,10 @@ export default function CheckInFormScreen() {
       })
       .catch(() => null)
 
-    // Compute the device fingerprint while the user is still aiming the
-    // camera / reading the PIN. On a phone's FIRST check-in (most of a large
-    // event) it downloads FingerprintJS and hashes a dozen signals — work that
-    // otherwise sat between the scan and the ✓. Later calls hit the cache.
-    void getDeviceFingerprint().catch(() => {})
+    // Warm the device fingerprint while the user is still aiming the camera /
+    // reading the PIN — but only when that can't freeze a weaker value (see
+    // warmDeviceFingerprint). Otherwise submit computes it after the scan.
+    void warmDeviceFingerprint().catch(() => {})
 
     ;(async () => {
       try {
