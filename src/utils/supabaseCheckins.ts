@@ -8,6 +8,7 @@ import { pointInGeofence } from './geo'
 import { getUserLeadershipRefs } from './userScope'
 import { childScopeLevel, getChildChurches, getChurchAncestors } from './membersApi'
 import { fetchDescendantScopesFromDb } from './hierarchyCache'
+import { isNetworkError } from './network'
 import type { AppUser, CheckinEventRow } from '../types/app'
 
 type FocusedScope = { level?: string; id?: string }
@@ -1284,7 +1285,7 @@ export async function submitCheckIn(input) {
 
   // All validation (time, QR HMAC, PIN, geofence, device) is enforced
   // server-side inside the submit_checkin RPC.
-  const { data, error } = await supabase.rpc('submit_checkin', {
+  const params = {
     p_event_id:    eventId,
     p_member_id:   member.id,
     p_member_name: member.name || null,
@@ -1296,7 +1297,17 @@ export async function submitCheckIn(input) {
     p_fingerprint: fingerprint,
     p_qr_token:    qrToken || null,
     p_pin_plain:   pin || null,
-  })
+  }
+  let { data, error } = await supabase.rpc('submit_checkin', params)
+  // One automatic retry when the request never got an answer (dropped venue
+  // Wi-Fi, timeout). Safe because submit_checkin is idempotent: if the first
+  // attempt did land, the retry returns ok + 'already_checked_in'. The QR
+  // token (60s buckets, previous accepted) and PIN (15s, previous accepted)
+  // stay valid across the short wait.
+  if (error && isNetworkError(error.message)) {
+    await new Promise((r) => setTimeout(r, 400 + Math.random() * 600))
+    ;({ data, error } = await supabase.rpc('submit_checkin', params))
+  }
   if (error) return { ok: false, reason: 'rpc_error', error: error.message }
   return data
 }

@@ -64,6 +64,12 @@ export default function CheckInFormScreen() {
       })
       .catch(() => null)
 
+    // Compute the device fingerprint while the user is still aiming the
+    // camera / reading the PIN. On a phone's FIRST check-in (most of a large
+    // event) it downloads FingerprintJS and hashes a dozen signals — work that
+    // otherwise sat between the scan and the ✓. Later calls hit the cache.
+    void getDeviceFingerprint().catch(() => {})
+
     ;(async () => {
       try {
         // ONE round trip for event + eligibility + any existing record. This

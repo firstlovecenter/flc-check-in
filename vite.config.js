@@ -31,9 +31,10 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         disable: isMobile,
-        // Installed PWAs were sticking on old bundles (prompt mode waited for
-        // a tap that never came). Auto-update activates the new SW and reloads.
-        registerType: 'autoUpdate',
+        // 'prompt' = the new SW waits; UpdatePrompt.tsx applies it on the
+        // user's next navigation (no tap needed). 'autoUpdate' reloaded open
+        // pages the instant a deploy landed — mid check-in included.
+        registerType: 'prompt',
         includeAssets: ['android-chrome-192x192.png', 'android-chrome-512x512.png', 'flc-logo-circle.jpeg', 'flc-logo.webp'],
         manifest: {
           name: 'FLC Hineni',
@@ -96,6 +97,15 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     optimizeDeps: { include: ['tslib'] },
+    // Fixed values so suites that import the Supabase client can load without a
+    // local .env (createClient throws on a missing URL) — CI has no .env.
+    // Nothing reaches this URL: tests mock fetch or the client itself.
+    test: {
+      env: {
+        VITE_SUPABASE_URL: 'http://127.0.0.1:54321',
+        VITE_SUPABASE_PUBLISHABLE_KEY: 'test-publishable-key',
+      },
+    },
     build: {
       rollupOptions: {
         output: {
@@ -105,19 +115,27 @@ export default defineConfig(({ mode }) => {
           // QR check-in never downloads leaflet/papaparse. zxing is split on
           // its own because it is only dynamically imported as a fallback on
           // browsers without the native BarcodeDetector API (see QRScanner).
-          // Function form (object form is not supported by Vite 8 / rolldown).
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return
-            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id))
-              return 'vendor-react'
-            if (/[\\/]node_modules[\\/](leaflet|react-leaflet|leaflet-draw|@react-leaflet)[\\/]/.test(id))
-              return 'vendor-maps'
-            if (/[\\/]node_modules[\\/]@zxing[\\/]/.test(id))
-              return 'vendor-zxing'
-            if (/[\\/]node_modules[\\/]qrcode[\\/]/.test(id))
-              return 'vendor-qrcode'
-            if (/[\\/]node_modules[\\/](@supabase|graphql-request|papaparse|date-fns)[\\/]/.test(id))
-              return 'vendor-data'
+          //
+          // Priorities matter. A group also captures its matches' dependencies,
+          // so with the old manualChunks function the maps group swallowed
+          // React itself (react-leaflet depends on it) — and since every
+          // chunk needs React, all 165 KB of Leaflet was preloaded on the
+          // login screen. React now claims its modules first.
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', priority: 40,
+                test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|cookie|set-cookie-parser)[\\/]/ },
+              { name: 'vendor-i18n', priority: 30,
+                test: /[\\/]node_modules[\\/](i18next|react-i18next|i18next-browser-languagedetector|html-parse-stringify|void-elements)[\\/]/ },
+              { name: 'vendor-supabase', priority: 30,
+                test: /[\\/]node_modules[\\/](@supabase|graphql-request|graphql|tslib)[\\/]/ },
+              // Screen-specific libraries: each only loads with its screen.
+              { name: 'vendor-maps', priority: 20,
+                test: /[\\/]node_modules[\\/](leaflet|react-leaflet|leaflet-draw|@react-leaflet)[\\/]/ },
+              { name: 'vendor-zxing', priority: 20, test: /[\\/]node_modules[\\/]@zxing[\\/]/ },
+              { name: 'vendor-qrcode', priority: 20, test: /[\\/]node_modules[\\/]qrcode[\\/]/ },
+              { name: 'vendor-csv', priority: 20, test: /[\\/]node_modules[\\/]papaparse[\\/]/ },
+            ],
           },
         },
       },

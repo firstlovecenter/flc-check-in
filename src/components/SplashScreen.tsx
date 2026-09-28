@@ -4,67 +4,51 @@ import { useTranslation } from 'react-i18next'
 import { getCurrentUser, isTokenExpired, refreshSessionDetailed, logout } from '../utils/auth'
 import { Button } from './ui/button'
 
-// Splash floor durations. SessionStorage already short-circuits the splash
-// entirely on warm intra-tab visits (line 17), so these only matter for the
-// FIRST visit per session.
+// The splash is only ever shown while we genuinely wait on the network (an
+// expired token being refreshed). A valid token or no token at all resolves
+// synchronously and goes straight to Home / Login with no artificial hold —
+// that used to cost every cold open 400 ms, and 1.2 s after a refresh.
+// On native builds the OS launch splash (resources/) already covers boot.
 //
-// MIN_DURATION_SLOW_MS  — held when auth takes a meaningful moment to
-//                         resolve (refresh-token round-trip, etc.). Just
-//                         long enough for the halo to play one cycle.
-// MIN_DURATION_FAST_MS  — held when auth resolves synchronously (valid
-//                         cached token, no network). Just long enough to
-//                         avoid a jarring flash.
-//
-// The "fast" path is what most users see on every cold reload.
-const MIN_DURATION_SLOW_MS = 1200
-const MIN_DURATION_FAST_MS = 400
-const FAST_AUTH_THRESHOLD_MS = 200
+// SPLASH_MIN_MS stops a very fast refresh from flashing the splash for a
+// single frame; it never adds to a refresh that takes longer than this.
+const SPLASH_MIN_MS = 250
 const SPLASH_FLAG = 'flc.splashShown'
 
 type State = 'pending' | 'skip' | 'authed' | 'guest' | 'retry'
 
+/** Decide without touching the network when we can. */
+function initialState(): State {
+  if (sessionStorage.getItem(SPLASH_FLAG) === '1') return 'skip'
+  const accessToken = localStorage.getItem('accessToken')
+  if (!accessToken) return 'guest'
+  if (!isTokenExpired(accessToken)) return getCurrentUser() ? 'authed' : 'guest'
+  return 'pending' // expired → must refresh over the network
+}
+
 export default function SplashScreen({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation()
-  // If we've already played the splash this session, render children directly.
-  const [done, setDone] = useState<State>(() =>
-    sessionStorage.getItem(SPLASH_FLAG) === '1' ? 'skip' : 'pending'
-  )
+  const [done, setDone] = useState<State>(initialState)
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (done !== 'pending') return
+    if (done !== 'pending') {
+      if (done !== 'retry') sessionStorage.setItem(SPLASH_FLAG, '1')
+      return
+    }
 
     let cancelled = false
     const start = Date.now()
 
-    const authCheck = (async (): Promise<'authed' | 'guest' | 'retry'> => {
-      const accessToken = localStorage.getItem('accessToken')
-      if (!accessToken) return 'guest'
-      if (!isTokenExpired(accessToken)) return getCurrentUser() ? 'authed' : 'guest'
-      // Token expired — try refresh. Only clear the session on a real auth
-      // rejection; a network blip keeps tokens so Retry can succeed.
-      const result = await refreshSessionDetailed()
-      if (result.status === 'ok') return 'authed'
-      if (result.status === 'unavailable') return 'retry'
-      logout()
-      return 'guest'
-    })()
-
-    authCheck.then((result) => {
-      const elapsed = Date.now() - start
-      // Pick the floor based on how long auth actually took. Fast resolves
-      // (cached valid token) only need a short flash-prevention pause;
-      // slow resolves (token refresh round-trip) hold long enough for one
-      // halo cycle so the spinner doesn't look glitchy.
-      const floor = elapsed <= FAST_AUTH_THRESHOLD_MS
-        ? MIN_DURATION_FAST_MS
-        : MIN_DURATION_SLOW_MS
-      const remaining = Math.max(0, floor - elapsed)
-      setTimeout(() => {
-        if (cancelled) return
-        if (result !== 'retry') sessionStorage.setItem(SPLASH_FLAG, '1')
-        setDone(result)
-      }, remaining)
+    // Only clear the session on a real auth rejection; a network blip keeps
+    // tokens so Retry can succeed.
+    refreshSessionDetailed().then((result) => {
+      const next: State = result.status === 'ok'
+        ? 'authed'
+        : result.status === 'unavailable' ? 'retry' : 'guest'
+      if (next === 'guest') logout()
+      const remaining = Math.max(0, SPLASH_MIN_MS - (Date.now() - start))
+      setTimeout(() => { if (!cancelled) setDone(next) }, remaining)
     })
 
     return () => { cancelled = true }
