@@ -183,11 +183,20 @@ export default function LeaderHomeScreen() {
   // unrelated re-render is wasted work once the list is stable.
   const eventGroups = useMemo(() => {
     if (state.status !== 'ok') return null
-    const now = new Date()
-    const live     = state.events.filter(e => e.status === 'ACTIVE')
-    const upcoming = state.events.filter(e => e.status !== 'ACTIVE' && e.status !== 'ENDED' && new Date(e.starts_at) > now)
-    const past     = state.events.filter(e => e.status === 'ENDED' || (e.status !== 'ACTIVE' && new Date(e.ends_at) < now))
-      .sort((a, b) => new Date(b.ends_at).getTime() - new Date(a.ends_at).getTime())
+    // Status alone can't say "live": every event is ACTIVE from creation, so
+    // tomorrow's event showed as live with a "Check in now" button. Live means
+    // check-in is actually open — from 1 hour before start (the server's
+    // pre-event window in submit_checkin) until the end. PAUSED events inside
+    // that window stay under Live so their state is visible.
+    const now = Date.now()
+    const opensAt = (e: CheckinEventRow) => new Date(e.starts_at).getTime() - 60 * 60 * 1000
+    const endsAt = (e: CheckinEventRow) => new Date(e.ends_at).getTime()
+    const isPast = (e: CheckinEventRow) => e.status === 'ENDED' || endsAt(e) < now
+    const live     = state.events.filter(e => !isPast(e) && opensAt(e) <= now)
+    const upcoming = state.events.filter(e => !isPast(e) && opensAt(e) > now)
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())
+    const past     = state.events.filter(isPast)
+      .sort((a, b) => endsAt(b) - endsAt(a))
     return { live, upcoming, past }
   }, [state])
 

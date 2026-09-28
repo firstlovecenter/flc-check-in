@@ -171,7 +171,12 @@ export default function EventHistoryList() {
                 : evt.status === 'PAUSED'
                   ? 'bg-warning'
                   : 'bg-muted-foreground'
-            const isLive = evt.status === 'ACTIVE' || evt.status === 'PAUSED'
+            // Live = check-in window actually open (1h before start → end),
+            // not merely status ACTIVE, which every future event also has.
+            const nowMs = Date.now()
+            const isLive = (evt.status === 'ACTIVE' || evt.status === 'PAUSED')
+              && new Date(evt.starts_at).getTime() - 60 * 60 * 1000 <= nowMs
+              && new Date(evt.ends_at).getTime() >= nowMs
             const badgeVariant =
               evt.status === 'ACTIVE' ? 'success' : evt.status === 'PAUSED' ? 'warning' : 'muted'
 

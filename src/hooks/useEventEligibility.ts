@@ -27,6 +27,8 @@ import { friendlyErrorMessage } from '../utils/network'
 import { SCOPE_LEVELS } from '../types/app'
 import type { ViewerCaps } from '../utils/eventCaps'
 import type { AppUser, CheckinEventRow } from '../types/app'
+import { capsForEntry, loadEventEntryState } from '../utils/eventEntryGate'
+import { useChurchFocus } from '../contexts/ChurchFocusContext'
 
 // ─── Module-level SWR cache ──────────────────────────────────────────────
 const ELIGIBILITY_TTL = 4 * 60 * 1000  // 4 min
@@ -83,6 +85,18 @@ function fallbackCapsFromUser(
     level: evt.scope_level,
     id: evt.scope_church_id,
     name: evt.scope_church_name,
+  }
+  // Same rule as capsFor: superadmins manage everything, and are counted only
+  // if the event's own snapshot includes them.
+  if (user.isSuperAdmin) {
+    return {
+      canManage: true,
+      canCheckIn: hasAnyId(ids, eligibleIdSet),
+      canView: true,
+      canViewFullEvent: true,
+      canManuallyCheckIn: true,
+      viewerScope: eventScope,
+    }
   }
   const refs = getUserLeadershipRefs(user)
   const eventScopeIdx = SCOPE_LEVELS.indexOf(evt.scope_level)
@@ -273,12 +287,16 @@ export function useEventEligibility(
   const [records, setRecords]         = useState<any[]>([])
   const [error, setError]             = useState<string | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
+  // The role the viewer is acting as. Screens that don't pass capsOverride
+  // (members list, breakdown, report, manual check-in log) get their caps from
+  // the same server entry gate as the dashboard, for this hat.
+  const { focusedHat } = useChurchFocus()
 
   // ── Initial eligibility load ────────────────────────────────────────────
   useEffect(() => {
     if (!eventId || !user) return
     let cancelled = false
-    const cacheKey = `${eventId}:${user.userId || user.email}`
+    const cacheKey = `${eventId}:${user.userId || user.email}:${focusedHat?.key ?? 'all'}`
 
     // When refreshKey increases, drop the cached entry so the load below
     // hits the network even if the previous entry is still fresh.
@@ -403,7 +421,20 @@ export function useEventEligibility(
         // capsOverride is always supplied now: EventEntryScreen runs the gate
         // for drill-downs too. The fallback below is JWT-only and exists purely
         // so a direct component mount cannot render capability-less.
-        const caps: ViewerCaps = capsOverride ?? (fallbackCapsFromUser(
+        // Without an override, ask the server gate: it knows every church of
+        // the event (multi-church), the synced tree, and superadmin. The JWT
+        // fallback below knew none of those, which is how a denomination admin
+        // was told "Admin access required" on the manual check-in log.
+        let gateCaps: ViewerCaps | null = null
+        if (!capsOverride) {
+          try {
+            const entry = await loadEventEntryState(eventId, user, focusedHat)
+            if (cancelled) return
+            if (entry.found) gateCaps = capsForEntry(user, focusedHat, entry)
+          } catch { /* fall through to the JWT-only fallback */ }
+        }
+
+        const caps: ViewerCaps = capsOverride ?? gateCaps ?? (fallbackCapsFromUser(
           user,
           evt,
           candidateUserIds(user, null),
@@ -472,7 +503,7 @@ export function useEventEligibility(
     })()
 
     return () => { cancelled = true }
-  }, [eventId, user?.userId, user?.email, refreshKey, loadRecords, capsOverride]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventId, user?.userId, user?.email, refreshKey, loadRecords, capsOverride, focusedHat?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Optional poll: cheaply refresh records + event status only ────────
   // The expensive eligibility pipeline above is NOT re-run on every tick.
